@@ -59,30 +59,63 @@ export function ActionDetailPage({
   onStart,
   onContinue,
 }: ActionDetailPageProps) {
+  const [readProgress, setReadProgress] = useState(0)
   const [readComplete, setReadComplete] = useState(false)
   const [accepted, setAccepted] = useState(false)
+  const screenRef = useRef<HTMLElement | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    setReadProgress(0)
     setReadComplete(false)
     setAccepted(false)
+
+    const scrollRoot = screenRef.current?.closest('.app-content') as HTMLElement | null
+    if (scrollRoot) scrollRoot.scrollTo({ top: 0, behavior: 'auto' })
   }, [detail?.acao.id])
 
   useEffect(() => {
-    const target = endRef.current
-    const root = document.querySelector('.app-content')
-    if (!target || !root || readComplete) return
+    const scrollRoot = screenRef.current?.closest('.app-content') as HTMLElement | null
+    if (!scrollRoot) return
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setReadComplete(true)
-      },
-      { root, threshold: 0.65 },
-    )
+    let animationFrame = 0
 
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [detail, readComplete])
+    const calculateReadingProgress = () => {
+      window.cancelAnimationFrame(animationFrame)
+      animationFrame = window.requestAnimationFrame(() => {
+        const maxScroll = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight)
+        const remaining = Math.max(0, maxScroll - scrollRoot.scrollTop)
+        const rootBounds = scrollRoot.getBoundingClientRect()
+        const gateBounds = endRef.current?.getBoundingClientRect()
+        const confirmationReached = Boolean(
+          gateBounds && gateBounds.top <= rootBounds.bottom - 32,
+        )
+        const reachedEnd = maxScroll <= 4 || remaining <= 32 || confirmationReached
+        const calculated = reachedEnd
+          ? 100
+          : Math.min(99, Math.max(0, Math.round((scrollRoot.scrollTop / maxScroll) * 100)))
+
+        setReadProgress((current) => Math.max(current, calculated))
+        if (reachedEnd) setReadComplete(true)
+      })
+    }
+
+    scrollRoot.addEventListener('scroll', calculateReadingProgress, { passive: true })
+    window.addEventListener('resize', calculateReadingProgress)
+
+    const resizeObserver = new ResizeObserver(calculateReadingProgress)
+    resizeObserver.observe(scrollRoot)
+    if (screenRef.current) resizeObserver.observe(screenRef.current)
+
+    calculateReadingProgress()
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+      scrollRoot.removeEventListener('scroll', calculateReadingProgress)
+      window.removeEventListener('resize', calculateReadingProgress)
+      resizeObserver.disconnect()
+    }
+  }, [detail?.acao.id])
 
   const items = detail?.checklist?.itens ?? []
   const risks = useMemo(() => {
@@ -164,14 +197,21 @@ export function ActionDetailPage({
   const tools = technical?.ferramentas ?? []
 
   return (
-    <section className="screen technical-screen">
+    <section ref={screenRef} className="screen technical-screen">
       <div className="technical-progress">
         <div>
           <strong>Leitura da análise técnica</strong>
-          <span>{readComplete ? '100% concluída' : 'Role até o final'}</span>
+          <span>{readComplete ? '100% concluída' : `${readProgress}% lida`}</span>
         </div>
-        <div className="technical-progress__bar">
-          <span style={{ width: readComplete ? '100%' : '32%' }} />
+        <div
+          className="technical-progress__bar"
+          role="progressbar"
+          aria-label="Progresso da leitura técnica"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={readProgress}
+        >
+          <span style={{ width: `${readProgress}%` }} />
         </div>
       </div>
 
