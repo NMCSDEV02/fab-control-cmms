@@ -13,7 +13,6 @@ interface ChecklistExecutionPageProps {
   detail: OperatorActionDetailData
   saving: boolean
   evidenceSaving: boolean
-  finalizing: boolean
   error: string
   validation: FinalizationValidationData | null
   activeStop: OperatorStopData | null
@@ -22,7 +21,6 @@ interface ChecklistExecutionPageProps {
   onSave: (items: ChecklistBatchItemInput[]) => Promise<void>
   onRegisterEvidence: (input: EvidenceInput) => Promise<void>
   onValidate: () => Promise<void>
-  onFinalize: (resultado: 'OK' | 'NOK', observacao: string, durationSeconds: number) => Promise<void>
 }
 
 type DraftAnswer = {
@@ -73,7 +71,6 @@ export function ChecklistExecutionPage({
   detail,
   saving,
   evidenceSaving,
-  finalizing,
   error,
   validation,
   activeStop,
@@ -82,7 +79,6 @@ export function ChecklistExecutionPage({
   onSave,
   onRegisterEvidence,
   onValidate,
-  onFinalize,
 }: ChecklistExecutionPageProps) {
   const items = useMemo(
     () => [...(detail.checklist?.itens ?? [])].sort((a, b) => a.ordem - b.ordem),
@@ -95,8 +91,6 @@ export function ChecklistExecutionPage({
   const [evidenceName, setEvidenceName] = useState('')
   const [evidenceUrl, setEvidenceUrl] = useState('')
   const [evidenceObservation, setEvidenceObservation] = useState('')
-  const [finishResult, setFinishResult] = useState<'OK' | 'NOK'>('OK')
-  const [finishObservation, setFinishObservation] = useState('')
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
@@ -356,34 +350,17 @@ export function ChecklistExecutionPage({
         </div>
       )}
 
-      {validation && (
-        <article className={validation.can_finalize ? 'finalization-panel finalization-panel--ready' : 'finalization-panel'}>
-          <span>{validation.can_finalize ? 'Finalização liberada' : 'Pendências encontradas'}</span>
-          <h2>{validation.message || (validation.can_finalize ? 'Checklist completo.' : 'Resolva as pendências antes de finalizar.')}</h2>
-          {!validation.can_finalize && (
-            <div className="finalization-summary">
-              <b>{validation.finalizacao?.pending_count ?? 0} respostas</b>
-              <b>{validation.finalizacao?.evidence_missing_count ?? 0} evidências</b>
-              <b>{validation.finalizacao?.blockers_count ?? 0} bloqueios</b>
-            </div>
-          )}
-          {validation.can_finalize && (
-            <div className="finish-form">
-              <div className="finish-result">
-                <button type="button" className={finishResult === 'OK' ? 'selected' : ''} onClick={() => setFinishResult('OK')}>Resultado OK</button>
-                <button type="button" className={finishResult === 'NOK' ? 'selected' : ''} onClick={() => setFinishResult('NOK')}>Resultado NOK</button>
-              </div>
-              <textarea value={finishObservation} onChange={(event) => setFinishObservation(event.target.value)} placeholder="Observação final da execução" />
-              <button
-                type="button"
-                className="finalize-button"
-                disabled={finalizing || (finishResult === 'NOK' && finishObservation.trim().length < 5)}
-                onClick={() => void onFinalize(finishResult, finishObservation.trim() || 'Checklist técnico executado conforme procedimento.', Math.floor(elapsed))}
-              >
-                {finalizing ? 'Finalizando…' : 'Finalizar e sincronizar'}
-              </button>
-            </div>
-          )}
+      {validation && !validation.can_finalize && (
+        <article className="checklist-validation-warning">
+          <div>
+            <span>Pendências encontradas</span>
+            <strong>{validation.message || 'Resolva as pendências antes de continuar.'}</strong>
+          </div>
+          <div className="finalization-summary">
+            <b>{validation.finalizacao?.pending_count ?? 0} respostas</b>
+            <b>{validation.finalizacao?.evidence_missing_count ?? 0} evidências</b>
+            <b>{validation.finalizacao?.blockers_count ?? 0} bloqueios</b>
+          </div>
         </article>
       )}
 

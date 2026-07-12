@@ -3,6 +3,7 @@ import { AppHeader, type ConnectionState } from '../components/AppHeader'
 import { BottomNavigation, type AppSection } from '../components/BottomNavigation'
 import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
+import { FinalizationPage } from '../pages/FinalizationPage'
 import { OperatorHome } from '../pages/OperatorHome'
 import { QrPage } from '../pages/QrPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -21,7 +22,7 @@ import {
 import type { ChecklistBatchItemInput, EvidenceInput, FinalizationValidationData, OperatorActionDetailData, OperatorStopData } from '../types/api'
 import type { OperatorAction } from '../types/operator'
 
-type AppView = 'navigation' | 'action-detail' | 'checklist'
+type AppView = 'navigation' | 'action-detail' | 'checklist' | 'finalization'
 
 export function App() {
   const [section, setSection] = useState<AppSection>('home')
@@ -206,7 +207,12 @@ export function App() {
     try {
       const result = await validateOperatorFinalization(selectedActionId)
       setValidation(result)
-      notify(result.can_finalize ? 'Finalização liberada' : 'Checklist possui pendências')
+      if (result.can_finalize) {
+        setView('finalization')
+        notify('Checklist validado. Revise a finalização.')
+      } else {
+        notify('Checklist possui pendências')
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao validar a finalização.'
       setDetailError(message)
@@ -295,7 +301,6 @@ export function App() {
               detail={actionDetail}
               saving={savingChecklist}
               evidenceSaving={savingEvidence}
-              finalizing={finalizing}
               error={detailError}
               validation={validation}
               activeStop={activeStop}
@@ -304,6 +309,15 @@ export function App() {
               onSave={saveChecklist}
               onRegisterEvidence={saveEvidence}
               onValidate={validateFinalization}
+            />
+          ) : view === 'finalization' && actionDetail && validation ? (
+            <FinalizationPage
+              detail={actionDetail}
+              validation={validation}
+              activeStop={activeStop}
+              finalizing={finalizing}
+              error={detailError}
+              onBack={() => { setValidation(null); setView('checklist') }}
               onFinalize={finalizeAction}
             />
           ) : (

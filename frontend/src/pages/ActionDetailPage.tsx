@@ -62,10 +62,12 @@ export function ActionDetailPage({
   const [readProgress, setReadProgress] = useState(0)
   const [readComplete, setReadComplete] = useState(false)
   const [accepted, setAccepted] = useState(false)
+  const maxProgressRef = useRef(0)
   const screenRef = useRef<HTMLElement | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    maxProgressRef.current = 0
     setReadProgress(0)
     setReadComplete(false)
     setAccepted(false)
@@ -75,47 +77,83 @@ export function ActionDetailPage({
   }, [detail?.acao.id])
 
   useEffect(() => {
-    const scrollRoot = screenRef.current?.closest('.app-content') as HTMLElement | null
-    if (!scrollRoot) return
-
     let animationFrame = 0
+    let resizeObserver: ResizeObserver | null = null
 
     const calculateReadingProgress = () => {
-      window.cancelAnimationFrame(animationFrame)
-      animationFrame = window.requestAnimationFrame(() => {
-        const maxScroll = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight)
-        const remaining = Math.max(0, maxScroll - scrollRoot.scrollTop)
-        const rootBounds = scrollRoot.getBoundingClientRect()
-        const gateBounds = endRef.current?.getBoundingClientRect()
-        const confirmationReached = Boolean(
-          gateBounds && gateBounds.top <= rootBounds.bottom - 32,
-        )
-        const reachedEnd = maxScroll <= 4 || remaining <= 32 || confirmationReached
-        const calculated = reachedEnd
-          ? 100
-          : Math.min(99, Math.max(0, Math.round((scrollRoot.scrollTop / maxScroll) * 100)))
+      const screen = screenRef.current
+      const gate = endRef.current
+      if (!screen || !gate) return
 
-        setReadProgress((current) => Math.max(current, calculated))
-        if (reachedEnd) setReadComplete(true)
-      })
+      const scrollRoot = screen.closest('.app-content') as HTMLElement | null
+      const rootBounds = scrollRoot?.getBoundingClientRect()
+      const viewportTop = rootBounds?.top ?? 0
+      const viewportBottom = rootBounds?.bottom ?? window.innerHeight
+      const viewportHeight = Math.max(1, viewportBottom - viewportTop)
+      const screenBounds = screen.getBoundingClientRect()
+      const gateBounds = gate.getBoundingClientRect()
+
+      // Funciona tanto quando o scroll ocorre em .app-content quanto no documento.
+      const distanceRead = Math.max(0, viewportTop - screenBounds.top)
+      const gateOffset = Math.max(1, gate.offsetTop)
+      const readingTarget = Math.max(
+        1,
+        gateOffset - viewportHeight + Math.min(220, viewportHeight * 0.35),
+      )
+
+      const gateReached =
+        gateBounds.top <= viewportBottom - Math.min(72, viewportHeight * 0.1)
+
+      const rootAtBottom = scrollRoot
+        ? scrollRoot.scrollHeight - scrollRoot.scrollTop - scrollRoot.clientHeight <= 12
+        : document.documentElement.scrollHeight - window.scrollY - window.innerHeight <= 12
+
+      const calculated = gateReached || rootAtBottom
+        ? 100
+        : Math.min(99, Math.max(0, Math.round((distanceRead / readingTarget) * 100)))
+
+      const nextProgress = Math.max(maxProgressRef.current, calculated)
+      maxProgressRef.current = nextProgress
+      setReadProgress((current) => current === nextProgress ? current : nextProgress)
+
+      if (nextProgress >= 100) setReadComplete(true)
     }
 
-    scrollRoot.addEventListener('scroll', calculateReadingProgress, { passive: true })
-    window.addEventListener('resize', calculateReadingProgress)
+    const scheduleCalculation = () => {
+      window.cancelAnimationFrame(animationFrame)
+      animationFrame = window.requestAnimationFrame(calculateReadingProgress)
+    }
 
-    const resizeObserver = new ResizeObserver(calculateReadingProgress)
-    resizeObserver.observe(scrollRoot)
-    if (screenRef.current) resizeObserver.observe(screenRef.current)
+    // Captura scroll de qualquer elemento, incluindo navegadores móveis.
+    document.addEventListener('scroll', scheduleCalculation, true)
+    document.addEventListener('touchmove', scheduleCalculation, { passive: true, capture: true })
+    window.addEventListener('scroll', scheduleCalculation, { passive: true })
+    window.addEventListener('resize', scheduleCalculation)
+    window.addEventListener('orientationchange', scheduleCalculation)
 
-    calculateReadingProgress()
+    // Verificação periódica evita depender exclusivamente do evento de scroll.
+    const pollingId = window.setInterval(calculateReadingProgress, 120)
+
+    if ('ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(scheduleCalculation)
+      if (screenRef.current) resizeObserver.observe(screenRef.current)
+      const scrollRoot = screenRef.current?.closest('.app-content')
+      if (scrollRoot) resizeObserver.observe(scrollRoot)
+    }
+
+    scheduleCalculation()
 
     return () => {
       window.cancelAnimationFrame(animationFrame)
-      scrollRoot.removeEventListener('scroll', calculateReadingProgress)
-      window.removeEventListener('resize', calculateReadingProgress)
-      resizeObserver.disconnect()
+      window.clearInterval(pollingId)
+      document.removeEventListener('scroll', scheduleCalculation, true)
+      document.removeEventListener('touchmove', scheduleCalculation, true)
+      window.removeEventListener('scroll', scheduleCalculation)
+      window.removeEventListener('resize', scheduleCalculation)
+      window.removeEventListener('orientationchange', scheduleCalculation)
+      resizeObserver?.disconnect()
     }
-  }, [detail?.acao.id])
+  }, [detail?.acao.id, loading])
 
   const items = detail?.checklist?.itens ?? []
   const risks = useMemo(() => {
