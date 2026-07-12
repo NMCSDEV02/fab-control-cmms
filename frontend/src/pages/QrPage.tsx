@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { QrIcon, ScanIcon } from '../components/Icons'
-import { getOperatorQrContext, registerOperatorParameter } from '../services/api/operator'
-import type { OperatorQrContextData, QrParameterData } from '../types/api'
+import { finishOperatorStop, getOperatorQrContext, registerOperatorOccurrence, registerOperatorParameter, startOperatorStop } from '../services/api/operator'
+import type { FinishStopResponseData, OperatorQrContextData, QrParameterData } from '../types/api'
+import { ActiveStopBanner } from '../components/ActiveStopBanner'
 
 type BarcodeDetectorResult = { rawValue?: string }
 type BarcodeDetectorInstance = {
@@ -73,6 +74,18 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [parameterUnit, setParameterUnit] = useState('h')
   const [componentId, setComponentId] = useState('')
   const [savingParameter, setSavingParameter] = useState(false)
+  const [stopModalOpen, setStopModalOpen] = useState(false)
+  const [stopReason, setStopReason] = useState('')
+  const [savingStop, setSavingStop] = useState(false)
+  const [returnCategory, setReturnCategory] = useState('')
+  const [returnJustification, setReturnJustification] = useState('')
+  const [returnValidation, setReturnValidation] = useState<FinishStopResponseData | null>(null)
+  const [occurrenceOpen, setOccurrenceOpen] = useState(false)
+  const [occurrenceTitle, setOccurrenceTitle] = useState('')
+  const [occurrenceDescription, setOccurrenceDescription] = useState('')
+  const [occurrenceSeverity, setOccurrenceSeverity] = useState('MEDIA')
+  const [occurrenceComponentId, setOccurrenceComponentId] = useState('')
+  const [savingOccurrence, setSavingOccurrence] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -206,6 +219,87 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     }
   }
 
+  async function startStop() {
+    if (!context?.ativo?.id) return
+    setSavingStop(true)
+    try {
+      await startOperatorStop({
+        ativo_id: context.ativo.id,
+        componente_id: context.componente?.id || '',
+        motivo_parada: stopReason.trim() || 'Parada operacional iniciada pelo operador.',
+      })
+      setStopModalOpen(false)
+      setStopReason('')
+      onNotify('Parada iniciada')
+      await lookup(lastQuery || context.ativo.tag || context.ativo.id)
+    } catch (cause) {
+      onNotify(cause instanceof Error ? cause.message : 'Falha ao iniciar a parada')
+    } finally {
+      setSavingStop(false)
+    }
+  }
+
+  async function finishStop() {
+    if (!context?.parada_ativa?.id || !context.ativo?.id) return
+    setSavingStop(true)
+    try {
+      const result = await finishOperatorStop({
+        parada_id: context.parada_ativa.id,
+        ativo_id: context.ativo.id,
+        categoria_retorno: returnCategory,
+        justificativa_divergencia: returnJustification.trim(),
+      })
+      setReturnValidation(result)
+
+      if (result.requires_justification) {
+        setStopModalOpen(true)
+        onNotify('Justifique o intervalo antes do retorno')
+        return
+      }
+
+      setStopModalOpen(false)
+      setReturnValidation(null)
+      setReturnCategory('')
+      setReturnJustification('')
+      onNotify('Parada finalizada. Equipamento em operação.')
+      await lookup(lastQuery || context.ativo.tag || context.ativo.id)
+    } catch (cause) {
+      onNotify(cause instanceof Error ? cause.message : 'Falha ao finalizar a parada')
+    } finally {
+      setSavingStop(false)
+    }
+  }
+
+  async function saveOccurrence() {
+    if (!context?.ativo?.id) return
+    if (!occurrenceTitle.trim() || occurrenceDescription.trim().length < 5) {
+      onNotify('Informe o título e uma descrição da ocorrência')
+      return
+    }
+
+    setSavingOccurrence(true)
+    try {
+      await registerOperatorOccurrence({
+        ativo_id: context.ativo.id,
+        componente_id: occurrenceComponentId || context.componente?.id || '',
+        titulo: occurrenceTitle.trim(),
+        descricao: occurrenceDescription.trim(),
+        severidade: occurrenceSeverity,
+      })
+      setOccurrenceOpen(false)
+      setOccurrenceTitle('')
+      setOccurrenceDescription('')
+      setOccurrenceSeverity('MEDIA')
+      setOccurrenceComponentId('')
+      onNotify('Ocorrência registrada e enviada para análise')
+      await lookup(lastQuery || context.ativo.tag || context.ativo.id)
+    } catch (cause) {
+      onNotify(cause instanceof Error ? cause.message : 'Falha ao registrar ocorrência')
+    } finally {
+      setSavingOccurrence(false)
+    }
+  }
+
   function reset() {
     stopCamera()
     setContext(null)
@@ -312,12 +406,14 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         <h1>{asset?.tag || asset?.id} — {asset?.nome || 'Equipamento'}</h1>
         <p>{asset?.localizacao_tecnica || asset?.tipo || 'Localização não informada'}</p>
         <div className="asset-data-grid">
-          <div><span>Status</span><strong>{asset?.status || 'Não informado'}</strong></div>
+          <div><span>Status</span><strong>{context.parada_ativa ? 'PARADO' : (asset?.status || 'Não informado')}</strong></div>
           <div><span>Saúde</span><strong>{health !== undefined && health !== '' ? `${health}%` : 'Não informada'}</strong></div>
           <div><span>Criticidade</span><strong>{asset?.criticidade || 'Não informada'}</strong></div>
           <div><span>Horímetro</span><strong>{asset?.horimetro_atual !== undefined && asset?.horimetro_atual !== '' ? `${asset.horimetro_atual} h` : 'Não informado'}</strong></div>
         </div>
       </article>
+
+      {context.parada_ativa && <ActiveStopBanner stop={context.parada_ativa} />}
 
       <section className="content-section">
         <div className="section-heading section-heading--button">
@@ -399,6 +495,30 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         )}
       </section>
 
+      {(context.ocorrencias_abertas?.length ?? 0) > 0 && (
+        <section className="content-section">
+          <div className="section-heading">
+            <div>
+              <h2>Ocorrências aguardando análise</h2>
+              <p>Registros enviados para gestão e administração.</p>
+            </div>
+            <span>{context.ocorrencias_abertas?.length ?? 0}</span>
+          </div>
+          <div className="history-list">
+            {context.ocorrencias_abertas?.map((item) => (
+              <article className="history-card occurrence-card" key={item.id}>
+                <div>
+                  <strong>{item.titulo}</strong>
+                  <p>{item.descricao}</p>
+                  <small>{formatDate(item.criado_em)}</small>
+                </div>
+                <span className="history-status">{item.severidade}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="content-section">
         <div className="section-heading">
           <div>
@@ -430,9 +550,111 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
       </section>
 
       <div className="qr-next-actions">
-        <button type="button" className="secondary-action" onClick={() => onNotify('Registro de ocorrência será ligado na próxima fase.')}>Informar ocorrência</button>
-        <button type="button" className="danger-action" onClick={() => onNotify('Controle de parada será ligado na próxima fase.')}>Registrar parada</button>
+        <button type="button" className="secondary-action" onClick={() => setOccurrenceOpen(true)}>Informar ocorrência</button>
+        <button
+          type="button"
+          className={context.parada_ativa ? 'danger-action danger-action--finish' : 'danger-action'}
+          onClick={() => {
+            setReturnValidation(null)
+            setStopModalOpen(true)
+          }}
+        >
+          {context.parada_ativa ? 'Finalizar parada' : 'Registrar parada'}
+        </button>
       </div>
+
+      {occurrenceOpen && (
+        <div className="evidence-modal-backdrop">
+          <form className="evidence-modal operational-modal" onSubmit={(event) => { event.preventDefault(); void saveOccurrence() }}>
+            <div><span>Ocorrência operacional</span><h2>Informar condição do equipamento</h2></div>
+            <label><span>Título</span><input value={occurrenceTitle} onChange={(event) => setOccurrenceTitle(event.target.value)} placeholder="Ex.: Ruído anormal no fechamento" /></label>
+            <label><span>Descrição</span><textarea value={occurrenceDescription} onChange={(event) => setOccurrenceDescription(event.target.value)} placeholder="Descreva objetivamente o que foi observado." /></label>
+            <label><span>Severidade</span>
+              <select value={occurrenceSeverity} onChange={(event) => setOccurrenceSeverity(event.target.value)}>
+                <option value="BAIXA">Baixa</option>
+                <option value="MEDIA">Média</option>
+                <option value="ALTA">Alta</option>
+                <option value="CRITICA">Crítica</option>
+              </select>
+            </label>
+            <label><span>Componente</span>
+              <select value={occurrenceComponentId} onChange={(event) => setOccurrenceComponentId(event.target.value)}>
+                <option value="">Equipamento geral</option>
+                {(context.componentes ?? []).map((component) => (
+                  <option key={component.id} value={component.id}>{component.tag || component.id} — {component.nome}</option>
+                ))}
+              </select>
+            </label>
+            <div className="evidence-modal__actions">
+              <button type="button" className="secondary-button" onClick={() => setOccurrenceOpen(false)}>Cancelar</button>
+              <button type="submit" className="primary-button" disabled={savingOccurrence}>{savingOccurrence ? 'Enviando…' : 'Registrar ocorrência'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {stopModalOpen && (
+        <div className="evidence-modal-backdrop">
+          <form className="evidence-modal operational-modal" onSubmit={(event) => {
+            event.preventDefault()
+            if (context.parada_ativa) void finishStop()
+            else void startStop()
+          }}>
+            <div>
+              <span>Controle de parada</span>
+              <h2>{context.parada_ativa ? 'Confirmar retorno à operação' : 'Iniciar parada agora'}</h2>
+            </div>
+
+            {!context.parada_ativa ? (
+              <label>
+                <span>Motivo resumido</span>
+                <textarea value={stopReason} onChange={(event) => setStopReason(event.target.value)} placeholder="Opcional. Ex.: Falha no ciclo de fechamento." />
+              </label>
+            ) : (
+              <>
+                <ActiveStopBanner stop={context.parada_ativa} compact />
+                {returnValidation?.requires_justification && (
+                  <div className="return-justification-alert">
+                    O retorno ocorreu após a tolerância de {returnValidation.tolerance_minutes} minuto(s).
+                    Informe a causa do intervalo.
+                  </div>
+                )}
+                {returnValidation?.requires_justification && (
+                  <>
+                    <label><span>Motivo do intervalo</span>
+                      <select value={returnCategory} onChange={(event) => setReturnCategory(event.target.value)}>
+                        <option value="">Selecione</option>
+                        <option value="LIMPEZA_AREA">Limpeza da área</option>
+                        <option value="TESTE_PRODUCAO">Teste de produção</option>
+                        <option value="AJUSTE_PROCESSO">Ajuste de processo</option>
+                        <option value="FALTA_MATERIA_PRIMA">Falta de matéria-prima</option>
+                        <option value="AGUARDANDO_QUALIDADE">Aguardando qualidade</option>
+                        <option value="AGUARDANDO_OPERADOR">Aguardando operador</option>
+                        <option value="OUTRO">Outro</option>
+                      </select>
+                    </label>
+                    <label><span>Justificativa</span><textarea value={returnJustification} onChange={(event) => setReturnJustification(event.target.value)} placeholder="Explique o motivo do tempo adicional." /></label>
+                  </>
+                )}
+                {!returnValidation?.requires_justification && (
+                  <p className="operational-modal__note">Confirme somente quando a máquina estiver efetivamente produzindo novamente.</p>
+                )}
+              </>
+            )}
+
+            <div className="evidence-modal__actions">
+              <button type="button" className="secondary-button" onClick={() => setStopModalOpen(false)}>Cancelar</button>
+              <button
+                type="submit"
+                className={context.parada_ativa ? 'primary-button return-button' : 'primary-button danger-confirm-button'}
+                disabled={savingStop || Boolean(returnValidation?.requires_justification && (!returnCategory || returnJustification.trim().length < 5))}
+              >
+                {savingStop ? 'Salvando…' : context.parada_ativa ? 'Máquina voltou a operar' : 'Iniciar parada'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   )
 }

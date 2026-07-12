@@ -4,8 +4,10 @@ import type {
   EvidenceInput,
   FinalizationValidationData,
   OperatorActionDetailData,
+  OperatorStopData,
   RawChecklistItem,
 } from '../types/api'
+import { ActiveStopBanner } from '../components/ActiveStopBanner'
 
 interface ChecklistExecutionPageProps {
   detail: OperatorActionDetailData
@@ -14,6 +16,7 @@ interface ChecklistExecutionPageProps {
   finalizing: boolean
   error: string
   validation: FinalizationValidationData | null
+  activeStop: OperatorStopData | null
   onBack: () => void
   onRefresh: () => Promise<void>
   onSave: (items: ChecklistBatchItemInput[]) => Promise<void>
@@ -73,6 +76,7 @@ export function ChecklistExecutionPage({
   finalizing,
   error,
   validation,
+  activeStop,
   onBack,
   onRefresh,
   onSave,
@@ -242,6 +246,7 @@ export function ChecklistExecutionPage({
 
   return (
     <section className="screen checklist-screen">
+      {activeStop && <ActiveStopBanner stop={activeStop} compact />}
       <article className="execution-header-card">
         <div>
           <span>Execução em andamento</span>

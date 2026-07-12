@@ -191,7 +191,7 @@ function operadorContextoQr_(p){
 
   var ctx = resolveQr_(qr);
   if(!ctx.found){
-    return {found:false, tipo_contexto:"NAO_ENCONTRADO", mensagem_operador:"QR/TAG não encontrado.", ativo:null, componente:null, componentes:[], acoes_pendentes:[], proxima_acao:null, historico_recente:[], parametros_recentes:[], parametros_atuais:[], saude:null};
+    return {found:false, tipo_contexto:"NAO_ENCONTRADO", mensagem_operador:"QR/TAG não encontrado.", ativo:null, componente:null, componentes:[], acoes_pendentes:[], proxima_acao:null, historico_recente:[], parametros_recentes:[], parametros_atuais:[], parada_ativa:null, ocorrencias_abertas:[], saude:null};
   }
 
   cmmsMotorRecalcular_({ativo_id:ctx.ativo.id, __auth:p.__auth});
@@ -222,6 +222,13 @@ function operadorContextoQr_(p){
   var parametrosAtuais = Object.keys(parametrosMapa).map(function(k){ return parametrosMapa[k]; });
 
   var saude = saudeAtivo_(ctx.ativo.id);
+  var paradaAtiva = typeof paradaAtivaPorAtivo114_ === "function" ? paradaAtivaPorAtivo114_(ctx.ativo.id) : null;
+  var ocorrenciasAbertas = (typeof ensureParadasOperacionaisSchema114_ === "function")
+    ? rows_("ocorrencias_operacionais", true).filter(function(o){
+        return String(o.ativo_id) === String(ctx.ativo.id) &&
+          ["FINALIZADA","CANCELADA"].indexOf(upper_(o.status)) < 0;
+      }).sort(sortByDateDesc_("criado_em")).slice(0,20).map(strip_)
+    : [];
 
   return {
     found:true,
@@ -234,6 +241,8 @@ function operadorContextoQr_(p){
     historico_recente:hist,
     parametros_recentes:parametrosRecentes,
     parametros_atuais:parametrosAtuais,
+    parada_ativa:paradaAtiva ? paradaSerializada114_(paradaAtiva) : null,
+    ocorrencias_abertas:ocorrenciasAbertas,
     saude:saude,
     mensagem_operador:acoes.length ? "Existem ações pendentes para este equipamento." : "Equipamento sem ações pendentes."
   };
@@ -311,7 +320,10 @@ function operadorIniciarAcao_(p){
   var open = rows_("execucoes").find(function(e){ return String(e.acao_id)===String(acao.id) && upper_(e.status) !== ST.FINALIZADA; });
   if(open){
     requireExecucaoDoOperador1081_(open, auth);
-    return {started:true, already_started:true, acao_id:acao.id, execucao_id:open.id, status:ST.EM_EXECUCAO};
+    var paradaExistente = typeof paradaVincularInicioManutencao114_ === "function"
+      ? paradaVincularInicioManutencao114_(acao, open, auth)
+      : null;
+    return {started:true, already_started:true, acao_id:acao.id, execucao_id:open.id, status:ST.EM_EXECUCAO, parada:paradaExistente};
   }
 
   var ex = fit_("execucoes", {
@@ -339,8 +351,12 @@ function operadorIniciarAcao_(p){
 
   criarChecklistExec_(acao, ex);
 
+  var paradaInicio = typeof paradaVincularInicioManutencao114_ === "function"
+    ? paradaVincularInicioManutencao114_(acao, ex, auth)
+    : null;
+
   hist_({ativo_id:acao.ativo_id, componente_id:acao.componente_id, os_id:acao.os_id, acao_id:acao.id, execucao_id:ex.id, evento:"ACAO_INICIADA", descricao:"Operador iniciou: "+acao.titulo, usuario_id:auth.usuario_id||"", perfil:auth.perfil||ROLE.OPERADOR});
-  return {started:true, acao_id:acao.id, execucao_id:ex.id, status:ST.EM_EXECUCAO};
+  return {started:true, acao_id:acao.id, execucao_id:ex.id, status:ST.EM_EXECUCAO, parada:paradaInicio};
 }
 
 function keepZero_(v){
@@ -444,8 +460,12 @@ function operadorFinalizarAcao_(p){
   update_("os_acoes", acao.__rowIndex, {status:novo, finalizado_em:now_(), atualizado_em:now_()});
   releaseLocksForAction_(acao.id, "ACAO_FINALIZADA");
 
+  var paradaFim = typeof paradaRegistrarFimManutencao114_ === "function"
+    ? paradaRegistrarFimManutencao114_(acao, ex, auth)
+    : null;
+
   hist_({ativo_id:acao.ativo_id, componente_id:acao.componente_id, os_id:acao.os_id, acao_id:acao.id, execucao_id:ex.id, evento:"ACAO_FINALIZADA_OPERADOR", descricao:"Resultado: "+upper_(p.resultado)+". "+clean_(p.observacao), usuario_id:auth.usuario_id||"", perfil:auth.perfil||ROLE.OPERADOR});
-  return {finalized:true, acao_id:acao.id, execucao_id:ex.id, status_acao:novo};
+  return {finalized:true, acao_id:acao.id, execucao_id:ex.id, status_acao:novo, parada:paradaFim};
 }
 
 function validateChecklist_(execId){

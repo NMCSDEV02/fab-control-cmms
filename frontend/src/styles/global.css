@@ -1819,3 +1819,132 @@ p {
   .qr-action-available b { justify-self: start; }
   .parameter-card--real { grid-template-columns: 1fr; }
 }
+
+
+/* Fase 6 — parada operacional persistente e ocorrências */
+.active-stop-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #e6a8a8;
+  border-radius: 22px;
+  color: #fff;
+  background: linear-gradient(135deg, #a91f2a, #d5363a);
+  box-shadow: 0 12px 28px rgba(179, 32, 43, 0.18);
+}
+
+.active-stop-banner span,
+.active-stop-banner small {
+  display: block;
+}
+
+.active-stop-banner > div:first-child > span {
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.82;
+}
+
+.active-stop-banner > div:first-child > strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.94rem;
+}
+
+.active-stop-banner small {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  opacity: 0.82;
+}
+
+.active-stop-banner__timer {
+  min-width: 112px;
+  padding: 9px 10px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.14);
+  text-align: right;
+}
+
+.active-stop-banner__timer span {
+  font-size: 0.65rem;
+  font-weight: 850;
+  opacity: 0.82;
+}
+
+.active-stop-banner__timer strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 1.24rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.active-stop-banner--compact {
+  padding: 11px 12px;
+  border-radius: 17px;
+}
+
+.active-stop-banner--compact small {
+  display: none;
+}
+
+.active-stop-banner--compact .active-stop-banner__timer {
+  min-width: 104px;
+}
+
+.danger-action--finish {
+  background: var(--green);
+}
+
+.occurrence-card {
+  border-left: 4px solid #e6a12b;
+}
+
+.operational-modal select {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  background: #fff;
+}
+
+.operational-modal__note {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.return-justification-alert {
+  padding: 10px 11px;
+  border: 1px solid #efd29f;
+  border-radius: 14px;
+  color: #7b4b0b;
+  background: #fff8eb;
+  font-size: 0.76rem;
+  font-weight: 850;
+  line-height: 1.4;
+}
+
+.danger-confirm-button {
+  background: var(--red);
+}
+
+.return-button {
+  background: var(--green);
+}
+
+@media (max-width: 520px) {
+  .active-stop-banner {
+    grid-template-columns: 1fr;
+  }
+
+  .active-stop-banner__timer {
+    width: 100%;
+    text-align: left;
+  }
+}

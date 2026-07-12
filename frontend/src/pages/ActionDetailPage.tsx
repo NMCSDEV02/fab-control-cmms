@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { OperatorActionDetailData, RawChecklistItem } from '../types/api'
+import type { OperatorActionDetailData, OperatorStopData, RawChecklistItem } from '../types/api'
+import { ActiveStopBanner } from '../components/ActiveStopBanner'
 
 interface ActionDetailPageProps {
   detail: OperatorActionDetailData | null
   loading: boolean
   error: string
   starting: boolean
+  activeStop: OperatorStopData | null
   onBack: () => void
   onRetry: () => void
   onStart: () => Promise<void>
@@ -51,6 +53,7 @@ export function ActionDetailPage({
   loading,
   error,
   starting,
+  activeStop,
   onBack,
   onRetry,
   onStart,
@@ -158,6 +161,8 @@ export function ActionDetailPage({
       </div>
 
       <button type="button" className="back-link" onClick={onBack}>← Voltar para a fila</button>
+
+      {activeStop && <ActiveStopBanner stop={activeStop} />}
 
       <article className="technical-hero">
         <div className="technical-hero__top">

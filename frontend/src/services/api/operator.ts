@@ -1,4 +1,4 @@
-import type { ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterParameterData, RegisterParameterInput, StartActionData } from '../../types/api'
+import type { ActiveStopResponseData, FinishStopInput, FinishStopResponseData, ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterOccurrenceInput, RegisterOccurrenceResponseData, RegisterParameterData, RegisterParameterInput, StartActionData, StartStopInput, StartStopResponseData } from '../../types/api'
 import type {
   ActionGroup,
   ActionPriority,
@@ -264,5 +264,90 @@ export async function registerOperatorParameter(
   )
 
   if (!response.data) throw new Error('A API não confirmou o registro do parâmetro.')
+  return response.data
+}
+
+
+export async function getOperatorActiveStop(
+  input: { ativo_id?: string; acao_id?: string },
+): Promise<ActiveStopResponseData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<ActiveStopResponseData>(
+    'operador.parada_ativa',
+    {
+      token,
+      ativo_id: input.ativo_id ?? '',
+      acao_id: input.acao_id ?? '',
+    },
+  )
+
+  if (!response.data) throw new Error('A API não retornou a parada ativa.')
+  return response.data
+}
+
+export async function startOperatorStop(
+  input: StartStopInput,
+): Promise<StartStopResponseData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<StartStopResponseData>(
+    'operador.iniciar_parada',
+    {
+      token,
+      ativo_id: input.ativo_id,
+      componente_id: input.componente_id ?? '',
+      tipo: input.tipo ?? 'NAO_PROGRAMADA',
+      motivo_parada: input.motivo_parada ?? '',
+    },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou o início da parada.')
+  return response.data
+}
+
+export async function finishOperatorStop(
+  input: FinishStopInput,
+): Promise<FinishStopResponseData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<FinishStopResponseData>(
+    'operador.finalizar_parada',
+    {
+      token,
+      parada_id: input.parada_id ?? '',
+      ativo_id: input.ativo_id ?? '',
+      categoria_retorno: input.categoria_retorno ?? '',
+      justificativa_divergencia: input.justificativa_divergencia ?? '',
+    },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou a finalização da parada.')
+  return response.data
+}
+
+export async function registerOperatorOccurrence(
+  input: RegisterOccurrenceInput,
+): Promise<RegisterOccurrenceResponseData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<RegisterOccurrenceResponseData>(
+    'operador.registrar_ocorrencia',
+    {
+      token,
+      ativo_id: input.ativo_id,
+      componente_id: input.componente_id ?? '',
+      tipo: input.tipo ?? 'OPERACIONAL',
+      titulo: input.titulo,
+      descricao: input.descricao,
+      severidade: input.severidade ?? 'MEDIA',
+    },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou a ocorrência.')
   return response.data
 }

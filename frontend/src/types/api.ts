@@ -285,6 +285,7 @@ export interface StartActionData {
   execucao_id?: string
   status?: string
   version?: string
+  parada?: OperatorStopData | null
 }
 
 
@@ -381,8 +382,114 @@ export interface FinalizeActionData {
   acao_id: string
   execucao_id: string
   status_acao: string
+  parada?: OperatorStopData | null
 }
 
+
+
+export interface OperatorStopData {
+  id: string
+  ativo_id: string
+  componente_id?: string
+  os_id?: string
+  acao_id?: string
+  execucao_id?: string
+  origem?: string
+  tipo?: string
+  status: string
+  iniciada_em: string
+  iniciada_por?: string
+  manutencao_iniciada_em?: string
+  manutencao_finalizada_em?: string
+  finalizada_em?: string
+  finalizada_por?: string
+  tempo_parada_segundos?: number
+  tempo_espera_manutencao_segundos?: number
+  tempo_execucao_segundos?: number
+  tempo_retorno_operacional_segundos?: number
+  elapsed_seconds?: number
+  motivo_parada?: string
+  categoria_retorno?: string
+  justificativa_divergencia?: string
+  tolerancia_retorno_min?: number
+  requires_return_confirmation?: boolean
+  server_time?: string
+}
+
+export interface OperatorOccurrenceData {
+  id: string
+  ativo_id: string
+  componente_id?: string
+  tipo?: string
+  titulo: string
+  descricao: string
+  severidade: string
+  status: string
+  usuario_id?: string
+  perfil?: string
+  os_id?: string
+  acao_id?: string
+  criado_em?: string
+  atualizado_em?: string
+}
+
+export interface ActiveStopResponseData {
+  found: boolean
+  ativo_id: string
+  parada_ativa: OperatorStopData | null
+  server_time?: string
+}
+
+export interface StartStopInput {
+  ativo_id: string
+  componente_id?: string
+  tipo?: string
+  motivo_parada?: string
+}
+
+export interface StartStopResponseData {
+  started: boolean
+  already_open?: boolean
+  parada: OperatorStopData
+}
+
+export interface FinishStopInput {
+  parada_id?: string
+  ativo_id?: string
+  categoria_retorno?: string
+  justificativa_divergencia?: string
+}
+
+export interface FinishStopResponseData {
+  closed: boolean
+  already_closed?: boolean
+  requires_justification?: boolean
+  tolerance_minutes?: number
+  delay_seconds?: number
+  categories?: string[]
+  parada: OperatorStopData
+  metricas?: {
+    tempo_parada_segundos: number
+    tempo_espera_manutencao_segundos: number
+    tempo_execucao_segundos: number
+    tempo_retorno_operacional_segundos: number
+  }
+}
+
+export interface RegisterOccurrenceInput {
+  ativo_id: string
+  componente_id?: string
+  tipo?: string
+  titulo: string
+  descricao: string
+  severidade?: string
+}
+
+export interface RegisterOccurrenceResponseData {
+  saved: boolean
+  occurrence: OperatorOccurrenceData
+  notified_profiles?: string[]
+}
 
 export interface QrAssetData {
   id: string
@@ -472,6 +579,8 @@ export interface OperatorQrContextData {
   historico_recente?: QrHistoryData[]
   parametros_recentes?: QrParameterData[]
   parametros_atuais?: QrParameterData[]
+  parada_ativa?: OperatorStopData | null
+  ocorrencias_abertas?: OperatorOccurrenceData[]
   saude?: {
     pct?: number
     status?: string

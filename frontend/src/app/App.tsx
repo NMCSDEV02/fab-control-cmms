@@ -9,6 +9,7 @@ import { SettingsPage } from '../pages/SettingsPage'
 import { hasApiConfiguration } from '../services/api/config'
 import {
   getOperatorActionDetail,
+  getOperatorActiveStop,
   finalizeOperatorAction,
   getOperatorActions,
   getSystemHealth,
@@ -17,7 +18,7 @@ import {
   startOperatorAction,
   validateOperatorFinalization,
 } from '../services/api/operator'
-import type { ChecklistBatchItemInput, EvidenceInput, FinalizationValidationData, OperatorActionDetailData } from '../types/api'
+import type { ChecklistBatchItemInput, EvidenceInput, FinalizationValidationData, OperatorActionDetailData, OperatorStopData } from '../types/api'
 import type { OperatorAction } from '../types/operator'
 
 type AppView = 'navigation' | 'action-detail' | 'checklist'
@@ -43,6 +44,7 @@ export function App() {
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
   const [validation, setValidation] = useState<FinalizationValidationData | null>(null)
+  const [activeStop, setActiveStop] = useState<OperatorStopData | null>(null)
 
   const configured = hasApiConfiguration()
 
@@ -94,6 +96,15 @@ export function App() {
     try {
       const detail = await getOperatorActionDetail(actionId)
       setActionDetail(detail)
+      try {
+        const stop = await getOperatorActiveStop({
+          ativo_id: detail.ativo?.id || detail.acao.ativo_id,
+          acao_id: actionId,
+        })
+        setActiveStop(stop.parada_ativa)
+      } catch {
+        setActiveStop(null)
+      }
     } catch (cause) {
       setDetailError(cause instanceof Error ? cause.message : 'Falha ao abrir a ação.')
     } finally {
@@ -118,6 +129,7 @@ export function App() {
     setActionDetail(null)
     setDetailError('')
     setValidation(null)
+    setActiveStop(null)
     void refresh()
   }
 
@@ -125,8 +137,9 @@ export function App() {
     if (!selectedActionId) return
     setStarting(true)
     try {
-      await startOperatorAction(selectedActionId)
-      notify('Execução iniciada')
+      const result = await startOperatorAction(selectedActionId)
+      setActiveStop(result.parada ?? null)
+      notify('Execução iniciada. Equipamento marcado como parado.')
       await Promise.all([loadActionDetail(selectedActionId), refresh()])
       setView('checklist')
     } catch (cause) {
@@ -212,7 +225,8 @@ export function App() {
         observacao,
         duracao_segundos: durationSeconds,
       })
-      notify(`Ação finalizada: ${result.status_acao}`)
+      setActiveStop(result.parada ?? activeStop)
+      notify(`Ação finalizada: ${result.status_acao}. Aguardando retorno operacional.`)
       setView('navigation')
       setSection('home')
       setSelectedActionId('')
@@ -273,6 +287,7 @@ export function App() {
               onBack={closeAction}
               onRetry={() => void loadActionDetail(selectedActionId)}
               onStart={startAction}
+              activeStop={activeStop}
               onContinue={() => { setValidation(null); setView('checklist') }}
             />
           ) : view === 'checklist' && actionDetail ? (
@@ -283,6 +298,7 @@ export function App() {
               finalizing={finalizing}
               error={detailError}
               validation={validation}
+              activeStop={activeStop}
               onBack={() => setView('action-detail')}
               onRefresh={refreshCurrentDetail}
               onSave={saveChecklist}

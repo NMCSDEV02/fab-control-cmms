@@ -1,6 +1,6 @@
 const FAB = {
   APP_NAME: "FAB Control",
-  VERSION: "1.1.3-qr-operador-real",
+  VERSION: "1.1.4-paradas-operacionais",
   TZ: "America/Sao_Paulo",
   TOKEN_HOURS: 12,
   LOCK_TTL_SECONDS: 120,
@@ -24,6 +24,11 @@ const ST = {
   ATIVO: "ATIVO",
   INATIVO: "INATIVO",
   OPERANDO: "OPERANDO",
+  PARADO: "PARADO",
+  PARADA_ABERTA: "PARADA_ABERTA",
+  MANUTENCAO_EM_EXECUCAO: "MANUTENCAO_EM_EXECUCAO",
+  AGUARDANDO_RETORNO_OPERACIONAL: "AGUARDANDO_RETORNO_OPERACIONAL",
+  AGUARDANDO_ANALISE: "AGUARDANDO_ANALISE",
   ABERTA: "ABERTA",
   PENDENTE: "PENDENTE",
   EM_EXECUCAO: "EM_EXECUCAO",
@@ -74,6 +79,9 @@ const SH = {
   materiais_uso: ["id", "execucao_id", "acao_id", "material_id", "quantidade", "unidade", "observacao", "usuario_id", "criado_em"],
   parametros: ["id", "ativo_id", "componente_id", "parametro", "valor", "unidade", "origem", "registrado_por", "registrado_em", "criado_em"],
 
+  paradas_equipamento: ["id", "ativo_id", "componente_id", "os_id", "acao_id", "execucao_id", "origem", "tipo", "status", "iniciada_em", "iniciada_por", "manutencao_iniciada_em", "manutencao_finalizada_em", "finalizada_em", "finalizada_por", "tempo_parada_segundos", "tempo_espera_manutencao_segundos", "tempo_execucao_segundos", "tempo_retorno_operacional_segundos", "motivo_parada", "categoria_retorno", "justificativa_divergencia", "tolerancia_retorno_min", "criado_em", "atualizado_em"],
+  ocorrencias_operacionais: ["id", "ativo_id", "componente_id", "tipo", "titulo", "descricao", "severidade", "status", "usuario_id", "perfil", "os_id", "acao_id", "criado_em", "atualizado_em"],
+
   historico: ["id", "ativo_id", "componente_id", "os_id", "acao_id", "execucao_id", "evento", "descricao", "usuario_id", "perfil", "criado_em"],
   execucao_locks: ["id", "ativo_id", "acao_id", "usuario_id", "sessao_id", "status", "adquirido_em", "ultimo_ping_em", "expira_em", "liberado_em", "motivo_liberacao", "user_agent"],
   telemetria_sessoes: ["id", "sessao_id", "usuario_id", "ativo_id", "acao_id", "evento", "visibilidade", "delta_segundos", "tempo_total_segundos", "tempo_visivel_segundos", "tempo_oculto_segundos", "user_agent", "criado_em"],
@@ -91,12 +99,12 @@ const PUBLIC_ACTIONS = ["sistema.health", "sistema.bootstrap", "auth.login"];
 
 const PERM = {
   ADMIN: [
-    "cmms.operador_visual_schema_upgrade", "cmms.tela_operador_schema_upgrade", "operador.home", "operador.painel", "cmms.operador_ui_schema_upgrade", "cmms.operacional_ui_schema_upgrade", "cmms.contrato_frontend_schema_upgrade", "cmms.frontend_contract_schema_upgrade", "cmms.execucao_checklist_schema_upgrade", "cmms.auditoria_operador_schema_upgrade", "admin.corrigir_auditoria_execucao_operador", "admin.gerar_acao_teste_checklist", "operador.minhas_acoes", "operador.tela_acao", "operador.salvar_checklist_lote", "operador.detalhar_checklist_execucao", "operador.validar_finalizacao_acao",
+    "cmms.paradas_operacionais_schema_upgrade", "cmms.operador_visual_schema_upgrade", "cmms.tela_operador_schema_upgrade", "operador.home", "operador.painel", "cmms.operador_ui_schema_upgrade", "cmms.operacional_ui_schema_upgrade", "cmms.contrato_frontend_schema_upgrade", "cmms.frontend_contract_schema_upgrade", "cmms.execucao_checklist_schema_upgrade", "cmms.auditoria_operador_schema_upgrade", "admin.corrigir_auditoria_execucao_operador", "admin.gerar_acao_teste_checklist", "operador.minhas_acoes", "operador.tela_acao", "operador.salvar_checklist_lote", "operador.detalhar_checklist_execucao", "operador.validar_finalizacao_acao",
     "admin.listar_tipos_item_checklist", "admin.listar_regras_checklist", "admin.validar_catalogo_item_checklist", "admin.salvar_item_modelo_checklist", "admin.remover_item_modelo_checklist", "admin.reordenar_itens_modelo_checklist", "admin.clonar_item_modelo_checklist", "admin.listar_itens_modelo_checklist", "admin.detalhar_modelo_checklist_catalogo", "cmms.catalogo_checklist_schema_upgrade",
     "cmms.schema_upgrade", "admin.salvar_modelo_checklist", "admin.enviar_modelo_checklist_validacao", "admin.detalhe_modelo_checklist", "admin.listar_modelos_checklist", "admin.modelos_devolvidos", "admin.corrigir_modelo_checklist", "admin.criar_revisao_modelo_checklist", "gestor.modelos_em_validacao", "gestor.listar_modelos_checklist", "gestor.detalhe_modelo_checklist", "gestor.validar_modelo_checklist", "operador.listar_checklist_execucao",
     "sistema.warmup", "admin.resumo", "perf.cache_clear", "perf.cache_status", "admin.resumo_cache", "admin.listar", "admin.obter", "admin.salvar", "admin.gerar_qr", "admin.criar_demo", "admin.recalcular_ativo",
-    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.registrar_material", "operador.registrar_parametro",
-    "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
+    "gestor.listar_paradas", "gestor.listar_ocorrencias", "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "cmms.kpis_base", "cmms.diagnostico", "perf.cache_status", "perf.cache_clear", "cmms.higiene_diagnosticar", "cmms.higienizar_status", "cmms.higienizar_duplicidades", "cmms.higienizar_base",
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
@@ -107,7 +115,8 @@ const PERM = {
     "gestor.modelos_em_validacao", "gestor.listar_modelos_checklist", "gestor.detalhe_modelo_checklist", "gestor.validar_modelo_checklist", "admin.detalhe_modelo_checklist", "operador.listar_checklist_execucao",
     "sistema.warmup",
     "admin.resumo", "perf.cache_clear", "perf.cache_status", "admin.resumo_cache", "admin.listar", "admin.obter", "admin.recalcular_ativo",
-    "operador.contexto_qr", "operador.contexto_qr_fast",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
+    "gestor.listar_paradas", "gestor.listar_ocorrencias",
     "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "cmms.kpis_base", "cmms.diagnostico", "perf.cache_status", "perf.cache_clear", "cmms.higiene_diagnosticar", "cmms.higienizar_status", "cmms.higienizar_duplicidades",
@@ -118,7 +127,7 @@ const PERM = {
     "operador.validar_resposta_checklist_item",
     "operador.listar_checklist_execucao",
     "sistema.warmup",
-    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.registrar_material", "operador.registrar_parametro",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
   ]
