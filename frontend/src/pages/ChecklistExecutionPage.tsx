@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import type {
   ChecklistBatchItemInput,
   EvidenceInput,
-  FinalizationValidationData,
   OperatorActionDetailData,
   OperatorStopData,
   RawChecklistItem,
@@ -11,21 +10,34 @@ import { ActiveStopBanner } from '../components/ActiveStopBanner'
 
 interface ChecklistExecutionPageProps {
   detail: OperatorActionDetailData
-  saving: boolean
   evidenceSaving: boolean
+  finalizing: boolean
   error: string
-  validation: FinalizationValidationData | null
   activeStop: OperatorStopData | null
   onBack: () => void
   onRefresh: () => Promise<void>
-  onSave: (items: ChecklistBatchItemInput[]) => Promise<void>
   onRegisterEvidence: (input: EvidenceInput) => Promise<void>
-  onValidate: () => Promise<void>
+  onFinish: (
+    items: ChecklistBatchItemInput[],
+    resultado: 'OK' | 'NOK',
+    observacao: string,
+    durationSeconds: number,
+  ) => Promise<void>
+  onReturnHome: () => void
 }
 
 type DraftAnswer = {
   answer: string
   observation: string
+}
+
+type CompletionPhase = 'idle' | 'syncing' | 'success'
+
+type CompletionSummary = {
+  durationSeconds: number
+  comparison: string
+  checklistTotal: number
+  evidenceCount: number
 }
 
 function typeOf(item: RawChecklistItem): string {
@@ -64,21 +76,30 @@ function formatElapsed(seconds: number): string {
   const hours = Math.floor(safe / 3600)
   const minutes = Math.floor((safe % 3600) / 60)
   const secs = safe % 60
-  return [hours, minutes, secs].map((value) => String(value).padStart(2, '0')).join(':')
+  return [hours, minutes, secs]
+    .map((value) => String(value).padStart(2, '0'))
+    .join(':')
+}
+
+function comparisonLabel(elapsedSeconds: number, plannedMinutes?: number): string {
+  const plannedSeconds = Math.max(0, Number(plannedMinutes || 0) * 60)
+  if (!plannedSeconds) return 'Tempo registrado'
+  const difference = Math.floor(elapsedSeconds - plannedSeconds)
+  if (difference <= 0) return 'Dentro do tempo previsto'
+  return `${formatElapsed(difference)} acima do previsto`
 }
 
 export function ChecklistExecutionPage({
   detail,
-  saving,
   evidenceSaving,
+  finalizing,
   error,
-  validation,
   activeStop,
   onBack,
   onRefresh,
-  onSave,
   onRegisterEvidence,
-  onValidate,
+  onFinish,
+  onReturnHome,
 }: ChecklistExecutionPageProps) {
   const items = useMemo(
     () => [...(detail.checklist?.itens ?? [])].sort((a, b) => a.ordem - b.ordem),
@@ -92,6 +113,8 @@ export function ChecklistExecutionPage({
   const [evidenceUrl, setEvidenceUrl] = useState('')
   const [evidenceObservation, setEvidenceObservation] = useState('')
   const [elapsed, setElapsed] = useState(0)
+  const [completionPhase, setCompletionPhase] = useState<CompletionPhase>('idle')
+  const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null)
 
   useEffect(() => {
     const initial: Record<string, DraftAnswer> = {}
@@ -106,7 +129,10 @@ export function ChecklistExecutionPage({
   }, [items])
 
   useEffect(() => {
-    const startValue = detail.execucao?.iniciou_em || detail.acao.iniciado_em || detail.execucao?.abriu_em
+    const startValue =
+      detail.execucao?.iniciou_em ||
+      detail.acao.iniciado_em ||
+      detail.execucao?.abriu_em
     const start = startValue ? new Date(startValue).getTime() : Date.now()
     const tick = () => setElapsed(Math.max(0, (Date.now() - start) / 1000))
     tick()
@@ -114,18 +140,35 @@ export function ChecklistExecutionPage({
     return () => window.clearInterval(timer)
   }, [detail.acao.iniciado_em, detail.execucao?.abriu_em, detail.execucao?.iniciou_em])
 
+  useEffect(() => {
+    if (completionPhase !== 'success') return
+    const timer = window.setTimeout(onReturnHome, 2000)
+    return () => window.clearTimeout(timer)
+  }, [completionPhase, onReturnHome])
+
   const current = items[index]
-  const currentDraft = current ? drafts[current.id] ?? { answer: '', observation: '' } : null
-  const answeredCount = items.filter((item) => answered(item, drafts[item.id] ?? { answer: '', observation: '' })).length
-  const percentage = items.length ? Math.round((answeredCount / items.length) * 100) : 0
+  const currentDraft = current
+    ? drafts[current.id] ?? { answer: '', observation: '' }
+    : null
+  const answeredCount = items.filter((item) =>
+    answered(item, drafts[item.id] ?? { answer: '', observation: '' }),
+  ).length
+  const percentage = items.length
+    ? Math.round((answeredCount / items.length) * 100)
+    : 0
   const isLast = index === items.length - 1
-  const currentAnswered = current && currentDraft ? answered(current, currentDraft) : false
+  const currentAnswered = current && currentDraft
+    ? answered(current, currentDraft)
+    : false
 
   function updateDraft(patch: Partial<DraftAnswer>) {
     if (!current) return
     setDrafts((value) => ({
       ...value,
-      [current.id]: { ...(value[current.id] ?? { answer: '', observation: '' }), ...patch },
+      [current.id]: {
+        ...(value[current.id] ?? { answer: '', observation: '' }),
+        ...patch,
+      },
     }))
     setMessage('')
   }
@@ -136,7 +179,11 @@ export function ChecklistExecutionPage({
       setMessage('Responda este item antes de continuar.')
       return
     }
-    if (typeOf(current) === 'OK_NOK' && currentDraft.answer === 'NOK' && currentDraft.observation.trim().length < 5) {
+    if (
+      typeOf(current) === 'OK_NOK' &&
+      currentDraft.answer === 'NOK' &&
+      currentDraft.observation.trim().length < 5
+    ) {
       setMessage('Resposta NOK exige observação técnica.')
       return
     }
@@ -171,8 +218,45 @@ export function ChecklistExecutionPage({
     return payload
   }
 
-  async function synchronize() {
-    const missing = items.filter((item) => required(item) && !answered(item, drafts[item.id] ?? { answer: '', observation: '' }))
+  function resolveExecutionResult(): {
+    resultado: 'OK' | 'NOK'
+    observacao: string
+  } {
+    const nonConformities = items.filter((item) => {
+      const draft = drafts[item.id] ?? { answer: '', observation: '' }
+      return typeOf(item) === 'OK_NOK' && draft.answer === 'NOK'
+    })
+
+    const observations = items
+      .map((item) => {
+        const draft = drafts[item.id] ?? { answer: '', observation: '' }
+        return draft.observation.trim()
+      })
+      .filter(Boolean)
+
+    if (nonConformities.length) {
+      return {
+        resultado: 'NOK',
+        observacao:
+          observations.join(' | ') ||
+          'Checklist concluído com condição não conforme registrada.',
+      }
+    }
+
+    return {
+      resultado: 'OK',
+      observacao:
+        observations.join(' | ') ||
+        'Checklist técnico executado conforme procedimento.',
+    }
+  }
+
+  async function finishExecution() {
+    const missing = items.filter(
+      (item) =>
+        required(item) &&
+        !answered(item, drafts[item.id] ?? { answer: '', observation: '' }),
+    )
     if (missing.length) {
       setIndex(Math.max(0, items.findIndex((item) => item.id === missing[0].id)))
       setMessage(`Existem ${missing.length} item(ns) obrigatório(s) pendente(s).`)
@@ -181,7 +265,11 @@ export function ChecklistExecutionPage({
 
     const invalidNok = items.find((item) => {
       const draft = drafts[item.id] ?? { answer: '', observation: '' }
-      return typeOf(item) === 'OK_NOK' && draft.answer === 'NOK' && draft.observation.trim().length < 5
+      return (
+        typeOf(item) === 'OK_NOK' &&
+        draft.answer === 'NOK' &&
+        draft.observation.trim().length < 5
+      )
     })
     if (invalidNok) {
       setIndex(items.findIndex((item) => item.id === invalidNok.id))
@@ -189,8 +277,41 @@ export function ChecklistExecutionPage({
       return
     }
 
-    await onSave(buildPayload())
-    await onValidate()
+    const durationSeconds = Math.floor(elapsed)
+    const evidenceCount = items.reduce(
+      (sum, item) => sum + (item.evidencias_count ?? 0),
+      0,
+    )
+    const result = resolveExecutionResult()
+
+    setMessage('')
+    setCompletionSummary({
+      durationSeconds,
+      comparison: comparisonLabel(
+        durationSeconds,
+        detail.plano?.tempo_estimado_min,
+      ),
+      checklistTotal: items.length,
+      evidenceCount,
+    })
+    setCompletionPhase('syncing')
+
+    try {
+      await onFinish(
+        buildPayload(),
+        result.resultado,
+        result.observacao,
+        durationSeconds,
+      )
+      setCompletionPhase('success')
+    } catch (cause) {
+      setCompletionPhase('idle')
+      setMessage(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível finalizar a execução.',
+      )
+    }
   }
 
   async function submitEvidence() {
@@ -221,8 +342,12 @@ export function ChecklistExecutionPage({
           <h1>Nenhum item foi retornado</h1>
           <p>A execução precisa possuir um checklist gerado pelo back-end.</p>
           <div className="detail-error-actions">
-            <button type="button" className="secondary-button" onClick={onBack}>Voltar</button>
-            <button type="button" onClick={() => void onRefresh()}>Atualizar</button>
+            <button type="button" className="secondary-button" onClick={onBack}>
+              Voltar
+            </button>
+            <button type="button" onClick={() => void onRefresh()}>
+              Atualizar
+            </button>
           </div>
         </article>
       </section>
@@ -241,18 +366,32 @@ export function ChecklistExecutionPage({
   return (
     <section className="screen checklist-screen">
       {activeStop && <ActiveStopBanner stop={activeStop} compact />}
+
       <article className="execution-header-card">
         <div>
           <span>Execução em andamento</span>
           <h1>{detail.acao.titulo || detail.os?.titulo}</h1>
-          <p>{detail.componente?.tag || detail.componente?.id} — {detail.componente?.nome}</p>
+          <p>
+            {detail.componente?.tag || detail.componente?.id} —{' '}
+            {detail.componente?.nome}
+          </p>
         </div>
-        <div className="execution-time"><span>Tempo de execução</span><strong>{formatElapsed(elapsed)}</strong></div>
-        <div className="execution-progress"><span style={{ width: `${percentage}%` }} /></div>
-        <small>Item {index + 1} de {items.length} · {answeredCount}/{items.length} concluídos</small>
+        <div className="execution-time">
+          <span>Tempo de execução</span>
+          <strong>{formatElapsed(elapsed)}</strong>
+        </div>
+        <div className="execution-progress">
+          <span style={{ width: `${percentage}%` }} />
+        </div>
+        <small>
+          Item {index + 1} de {items.length} · {answeredCount}/{items.length}{' '}
+          concluídos
+        </small>
       </article>
 
-      {(message || error) && <div className="checklist-alert">{error || message}</div>}
+      {(message || error) && (
+        <div className="checklist-alert">{error || message}</div>
+      )}
 
       <article className="checklist-item-card">
         <div className="checklist-item-card__top">
@@ -273,7 +412,9 @@ export function ChecklistExecutionPage({
             />
             {unit && <span>{unit}</span>}
             {(min !== undefined || max !== undefined) && (
-              <small>Faixa: {min ?? '—'} a {max ?? '—'} {unit}</small>
+              <small>
+                Faixa: {min ?? '—'} a {max ?? '—'} {unit}
+              </small>
             )}
           </div>
         )}
@@ -283,7 +424,11 @@ export function ChecklistExecutionPage({
             {options.map((option) => (
               <button
                 type="button"
-                className={currentDraft.answer === option ? 'answer-option answer-option--selected' : 'answer-option'}
+                className={
+                  currentDraft.answer === option
+                    ? 'answer-option answer-option--selected'
+                    : 'answer-option'
+                }
                 key={option}
                 onClick={() => updateDraft({ answer: option })}
               >
@@ -305,20 +450,40 @@ export function ChecklistExecutionPage({
         {instruction && (
           <button
             type="button"
-            className={currentDraft.answer ? 'instruction-check instruction-check--done' : 'instruction-check'}
-            onClick={() => updateDraft({ answer: currentDraft.answer ? '' : 'LIDO' })}
+            className={
+              currentDraft.answer
+                ? 'instruction-check instruction-check--done'
+                : 'instruction-check'
+            }
+            onClick={() =>
+              updateDraft({ answer: currentDraft.answer ? '' : 'LIDO' })
+            }
           >
-            {currentDraft.answer ? '✓ Instrução confirmada' : 'Confirmar leitura da instrução'}
+            {currentDraft.answer
+              ? '✓ Instrução confirmada'
+              : 'Confirmar leitura da instrução'}
           </button>
         )}
 
         {evidence && (
           <div className="evidence-answer">
-            <div className={(current.evidencias_count ?? 0) > 0 ? 'evidence-status evidence-status--done' : 'evidence-status'}>
-              <strong>{(current.evidencias_count ?? 0) > 0 ? 'Evidência anexada' : 'Evidência necessária'}</strong>
+            <div
+              className={
+                (current.evidencias_count ?? 0) > 0
+                  ? 'evidence-status evidence-status--done'
+                  : 'evidence-status'
+              }
+            >
+              <strong>
+                {(current.evidencias_count ?? 0) > 0
+                  ? 'Evidência anexada'
+                  : 'Evidência necessária'}
+              </strong>
               <span>{current.evidencias_count ?? 0} arquivo(s) registrado(s)</span>
             </div>
-            <button type="button" onClick={() => setShowEvidence(true)}>Anexar evidência</button>
+            <button type="button" onClick={() => setShowEvidence(true)}>
+              Anexar evidência
+            </button>
           </div>
         )}
 
@@ -327,7 +492,9 @@ export function ChecklistExecutionPage({
             <span>Observação técnica</span>
             <textarea
               value={currentDraft.observation}
-              onChange={(event) => updateDraft({ observation: event.target.value })}
+              onChange={(event) =>
+                updateDraft({ observation: event.target.value })
+              }
               placeholder="Opcional. Obrigatória quando houver não conformidade."
             />
           </label>
@@ -336,42 +503,141 @@ export function ChecklistExecutionPage({
 
       {showEvidence && (
         <div className="evidence-modal-backdrop">
-          <form className="evidence-modal" onSubmit={(event) => { event.preventDefault(); void submitEvidence() }}>
-            <div><span>Evidência do checklist</span><h2>{current.titulo}</h2></div>
-            <label><span>Nome do arquivo</span><input value={evidenceName} onChange={(event) => setEvidenceName(event.target.value)} placeholder="foto-equipamento.jpg" /></label>
-            <label><span>Link do arquivo</span><input type="url" value={evidenceUrl} onChange={(event) => setEvidenceUrl(event.target.value)} placeholder="https://drive.google.com/..." /></label>
-            <label><span>Observação</span><textarea value={evidenceObservation} onChange={(event) => setEvidenceObservation(event.target.value)} placeholder="Descreva o que a evidência comprova." /></label>
-            <small>Nesta versão, o back-end atual registra uma URL. O upload direto da câmera será implementado quando o serviço de arquivos for criado.</small>
+          <form
+            className="evidence-modal"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void submitEvidence()
+            }}
+          >
+            <div>
+              <span>Evidência do checklist</span>
+              <h2>{current.titulo}</h2>
+            </div>
+            <label>
+              <span>Nome do arquivo</span>
+              <input
+                value={evidenceName}
+                onChange={(event) => setEvidenceName(event.target.value)}
+                placeholder="foto-equipamento.jpg"
+              />
+            </label>
+            <label>
+              <span>Link do arquivo</span>
+              <input
+                type="url"
+                value={evidenceUrl}
+                onChange={(event) => setEvidenceUrl(event.target.value)}
+                placeholder="https://drive.google.com/..."
+              />
+            </label>
+            <label>
+              <span>Observação</span>
+              <textarea
+                value={evidenceObservation}
+                onChange={(event) => setEvidenceObservation(event.target.value)}
+                placeholder="Descreva o que a evidência comprova."
+              />
+            </label>
+            <small>
+              Nesta versão, o back-end atual registra uma URL. O upload direto da
+              câmera será implementado quando o serviço de arquivos for criado.
+            </small>
             <div className="evidence-modal__actions">
-              <button type="button" className="secondary-button" onClick={() => setShowEvidence(false)}>Cancelar</button>
-              <button type="submit" className="primary-button" disabled={evidenceSaving}>{evidenceSaving ? 'Enviando…' : 'Registrar evidência'}</button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setShowEvidence(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={evidenceSaving}
+              >
+                {evidenceSaving ? 'Enviando…' : 'Registrar evidência'}
+              </button>
             </div>
           </form>
         </div>
       )}
 
-      {validation && !validation.can_finalize && (
-        <article className="checklist-validation-warning">
-          <div>
-            <span>Pendências encontradas</span>
-            <strong>{validation.message || 'Resolva as pendências antes de continuar.'}</strong>
-          </div>
-          <div className="finalization-summary">
-            <b>{validation.finalizacao?.pending_count ?? 0} respostas</b>
-            <b>{validation.finalizacao?.evidence_missing_count ?? 0} evidências</b>
-            <b>{validation.finalizacao?.blockers_count ?? 0} bloqueios</b>
-          </div>
-        </article>
-      )}
-
       <div className="checklist-footer">
-        <button type="button" className="secondary-button" disabled={index === 0} onClick={() => { setMessage(''); setIndex((value) => Math.max(0, value - 1)) }}>Anterior</button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={index === 0 || finalizing}
+          onClick={() => {
+            setMessage('')
+            setIndex((value) => Math.max(0, value - 1))
+          }}
+        >
+          Anterior
+        </button>
         {!isLast ? (
-          <button type="button" className="primary-button" onClick={goNext}>Próximo item</button>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={finalizing}
+            onClick={goNext}
+          >
+            Próximo item
+          </button>
         ) : (
-          <button type="button" className="primary-button" disabled={saving} onClick={() => void synchronize()}>{saving ? 'Sincronizando…' : 'Salvar e validar'}</button>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={finalizing}
+            onClick={() => void finishExecution()}
+          >
+            {finalizing ? 'Sincronizando…' : 'Finalizar e sincronizar'}
+          </button>
         )}
       </div>
+
+      {completionPhase !== 'idle' && completionSummary && (
+        <div className="execution-completion-overlay" role="dialog" aria-modal="true">
+          <article className="execution-completion-card">
+            {completionPhase === 'syncing' ? (
+              <div className="execution-completion-center">
+                <div className="execution-sync-spinner" aria-hidden="true" />
+                <h2>Sincronizando dados</h2>
+                <p>
+                  Enviando checklist, parâmetros, evidências e tempo total.
+                </p>
+              </div>
+            ) : (
+              <div className="execution-completion-center">
+                <div className="execution-success-check" aria-hidden="true">✓</div>
+                <h2>Execução concluída</h2>
+                <p>Dados sincronizados com sucesso.</p>
+                <div className="execution-result-grid">
+                  <div>
+                    <span>Tempo de execução</span>
+                    <strong>{formatElapsed(completionSummary.durationSeconds)}</strong>
+                  </div>
+                  <div>
+                    <span>Comparação</span>
+                    <strong>{completionSummary.comparison}</strong>
+                  </div>
+                  <div>
+                    <span>Checklist</span>
+                    <strong>
+                      {completionSummary.checklistTotal}/
+                      {completionSummary.checklistTotal}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Evidências</span>
+                    <strong>{completionSummary.evidenceCount} foto(s)</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+          </article>
+        </div>
+      )}
     </section>
   )
 }

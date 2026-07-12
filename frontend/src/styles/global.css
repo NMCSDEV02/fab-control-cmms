@@ -2304,3 +2304,107 @@ p {
     text-align: left;
   }
 }
+
+
+/* Hotfix operador 7.5 — finalização direta com popup do Mockup 17 */
+.execution-completion-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  padding: 22px;
+  display: grid;
+  place-items: center;
+  background: rgba(40, 53, 72, .52);
+  backdrop-filter: blur(2px);
+}
+
+.execution-completion-card {
+  width: min(100%, 560px);
+  padding: clamp(24px, 6vw, 34px);
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(12, 24, 43, .28);
+}
+
+.execution-completion-center {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.execution-completion-center h2 {
+  margin-top: 18px;
+  font-size: clamp(1.25rem, 4.5vw, 1.75rem);
+  line-height: 1.15;
+}
+
+.execution-completion-center > p {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.execution-sync-spinner {
+  width: 66px;
+  height: 66px;
+  border: 7px solid #e6edf7;
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: execution-sync-spin .8s linear infinite;
+}
+
+@keyframes execution-sync-spin {
+  to { transform: rotate(360deg); }
+}
+
+.execution-success-check {
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 3rem;
+  font-weight: 700;
+}
+
+.execution-result-grid {
+  width: 100%;
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.execution-result-grid > div {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #f8fafc;
+  text-align: left;
+}
+
+.execution-result-grid span,
+.execution-result-grid strong {
+  display: block;
+}
+
+.execution-result-grid span {
+  color: var(--muted);
+  font-size: .7rem;
+}
+
+.execution-result-grid strong {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: .92rem;
+  line-height: 1.25;
+}
+
+@media (max-width: 520px) {
+  .execution-completion-overlay { padding: 22px; }
+  .execution-completion-card { border-radius: 26px; }
+  .execution-result-grid { grid-template-columns: 1fr 1fr; }
+}

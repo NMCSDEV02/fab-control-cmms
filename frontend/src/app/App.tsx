@@ -3,7 +3,6 @@ import { AppHeader, type ConnectionState } from '../components/AppHeader'
 import { BottomNavigation, type AppSection } from '../components/BottomNavigation'
 import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
-import { FinalizationPage } from '../pages/FinalizationPage'
 import { OperatorHome } from '../pages/OperatorHome'
 import { QrPage } from '../pages/QrPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -19,10 +18,10 @@ import {
   startOperatorAction,
   validateOperatorFinalization,
 } from '../services/api/operator'
-import type { ChecklistBatchItemInput, EvidenceInput, FinalizationValidationData, OperatorActionDetailData, OperatorStopData } from '../types/api'
+import type { ChecklistBatchItemInput, EvidenceInput, OperatorActionDetailData, OperatorStopData } from '../types/api'
 import type { OperatorAction } from '../types/operator'
 
-type AppView = 'navigation' | 'action-detail' | 'checklist' | 'finalization'
+type AppView = 'navigation' | 'action-detail' | 'checklist'
 
 export function App() {
   const [section, setSection] = useState<AppSection>('home')
@@ -41,10 +40,8 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [starting, setStarting] = useState(false)
-  const [savingChecklist, setSavingChecklist] = useState(false)
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
-  const [validation, setValidation] = useState<FinalizationValidationData | null>(null)
   const [activeStop, setActiveStop] = useState<OperatorStopData | null>(null)
 
   const configured = hasApiConfiguration()
@@ -129,7 +126,6 @@ export function App() {
     setSelectedActionId('')
     setActionDetail(null)
     setDetailError('')
-    setValidation(null)
     setActiveStop(null)
     void refresh()
   }
@@ -159,28 +155,6 @@ export function App() {
     await loadActionDetail(selectedActionId)
   }
 
-  async function saveChecklist(items: ChecklistBatchItemInput[]) {
-    if (!selectedActionId) return
-    setSavingChecklist(true)
-    setDetailError('')
-    try {
-      const result = await saveOperatorChecklistBatch(selectedActionId, items)
-      if (result.error_count > 0) {
-        const first = result.erros?.[0]?.message || 'Alguns itens não foram salvos.'
-        throw new Error(first)
-      }
-      notify(`${result.saved_count} item(ns) sincronizado(s)`)
-      await refreshCurrentDetail()
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Falha ao salvar o checklist.'
-      setDetailError(message)
-      notify(message)
-      throw cause
-    } finally {
-      setSavingChecklist(false)
-    }
-  }
-
   async function saveEvidence(input: EvidenceInput) {
     if (!selectedActionId || !actionDetail?.execucao?.id) {
       throw new Error('Execução não identificada para registrar evidência.')
@@ -201,51 +175,64 @@ export function App() {
     }
   }
 
-  async function validateFinalization() {
-    if (!selectedActionId) return
-    setDetailError('')
-    try {
-      const result = await validateOperatorFinalization(selectedActionId)
-      setValidation(result)
-      if (result.can_finalize) {
-        setView('finalization')
-        notify('Checklist validado. Revise a finalização.')
-      } else {
-        notify('Checklist possui pendências')
-      }
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Falha ao validar a finalização.'
-      setDetailError(message)
-      notify(message)
-      throw cause
+  async function finishOperatorExecution(
+    items: ChecklistBatchItemInput[],
+    resultado: 'OK' | 'NOK',
+    observacao: string,
+    durationSeconds: number,
+  ) {
+    if (!selectedActionId) {
+      throw new Error('Ação não identificada para finalização.')
     }
-  }
 
-  async function finalizeAction(resultado: 'OK' | 'NOK', observacao: string, durationSeconds: number) {
-    if (!selectedActionId) return
     setFinalizing(true)
     setDetailError('')
+
     try {
+      const saved = await saveOperatorChecklistBatch(selectedActionId, items)
+      if (saved.error_count > 0) {
+        const first = saved.erros?.[0]?.message || 'Alguns itens não foram salvos.'
+        throw new Error(first)
+      }
+
+      // Verificação técnica silenciosa: apenas impede finalizar checklist incompleto.
+      // A aprovação da execução permanece sob responsabilidade da gestão.
+      const readiness = await validateOperatorFinalization(selectedActionId)
+      if (!readiness.can_finalize) {
+        throw new Error(
+          readiness.message ||
+          'Existem respostas, evidências ou bloqueios pendentes no checklist.',
+        )
+      }
+
       const result = await finalizeOperatorAction(selectedActionId, {
         resultado,
         observacao,
         duracao_segundos: durationSeconds,
       })
+
       setActiveStop(result.parada ?? activeStop)
-      notify(`Ação finalizada: ${result.status_acao}. Aguardando retorno operacional.`)
-      setView('navigation')
-      setSection('home')
-      setSelectedActionId('')
-      setActionDetail(null)
-      setValidation(null)
       await refresh()
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Falha ao finalizar a ação.'
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : 'Falha ao finalizar a execução.'
       setDetailError(message)
-      notify(message)
+      throw cause
     } finally {
       setFinalizing(false)
     }
+  }
+
+  function returnHomeAfterCompletion() {
+    setView('navigation')
+    setSection('home')
+    setSelectedActionId('')
+    setActionDetail(null)
+    setDetailError('')
+    setActiveStop(null)
+    void refresh()
   }
 
   async function testConnection() {
@@ -294,31 +281,20 @@ export function App() {
               onRetry={() => void loadActionDetail(selectedActionId)}
               onStart={startAction}
               activeStop={activeStop}
-              onContinue={() => { setValidation(null); setView('checklist') }}
+              onContinue={() => setView('checklist')}
             />
           ) : view === 'checklist' && actionDetail ? (
             <ChecklistExecutionPage
               detail={actionDetail}
-              saving={savingChecklist}
               evidenceSaving={savingEvidence}
+              finalizing={finalizing}
               error={detailError}
-              validation={validation}
               activeStop={activeStop}
               onBack={() => setView('action-detail')}
               onRefresh={refreshCurrentDetail}
-              onSave={saveChecklist}
               onRegisterEvidence={saveEvidence}
-              onValidate={validateFinalization}
-            />
-          ) : view === 'finalization' && actionDetail && validation ? (
-            <FinalizationPage
-              detail={actionDetail}
-              validation={validation}
-              activeStop={activeStop}
-              finalizing={finalizing}
-              error={detailError}
-              onBack={() => { setValidation(null); setView('checklist') }}
-              onFinalize={finalizeAction}
+              onFinish={finishOperatorExecution}
+              onReturnHome={returnHomeAfterCompletion}
             />
           ) : (
             <>
