@@ -102,7 +102,7 @@ export function SettingsPage({
           <strong>Interface</strong>
           <p>Mockup 17 Definitivo · fila, QR, checklist, parada e ocorrência integrados.</p>
         </div>
-        <span className="status-chip">Fase 6.1</span>
+        <span className="status-chip">Operador 7.6</span>
       </article>
     </section>
   )

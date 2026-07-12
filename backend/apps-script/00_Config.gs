@@ -1,6 +1,6 @@
 const FAB = {
   APP_NAME: "FAB Control",
-  VERSION: "1.1.4-paradas-operacionais",
+  VERSION: "1.1.5-operador-parada-tecnica",
   TZ: "America/Sao_Paulo",
   TOKEN_HOURS: 12,
   LOCK_TTL_SECONDS: 120,
@@ -60,7 +60,7 @@ const SH = {
 
   materiais: ["id", "sku", "nome", "unidade", "estoque_atual", "estoque_minimo", "status", "criado_em", "atualizado_em"],
 
-  planos_manutencao: ["id", "ativo_id", "componente_id", "nome", "tipo", "criticidade", "gatilho_tipo", "gatilho_valor", "unidade", "recorrencia_dias", "tempo_estimado_min", "requer_bloqueio", "requer_evidencia", "max_sessoes", "status", "ultimo_disparo_em", "criado_em", "atualizado_em", "workflow_status", "validado_gestao", "validado_por", "validado_em", "devolvido_por", "devolvido_em", "devolvido_motivo", "enviado_validacao_em", "revisao", "setor_id", "modelo_base_id", "revisao_origem_id", "substitui_plano_id", "substituido_por", "substituido_em"],
+  planos_manutencao: ["id", "ativo_id", "componente_id", "nome", "tipo", "criticidade", "gatilho_tipo", "gatilho_valor", "unidade", "recorrencia_dias", "tempo_estimado_min", "requer_bloqueio", "requer_evidencia", "max_sessoes", "status", "ultimo_disparo_em", "criado_em", "atualizado_em", "workflow_status", "validado_gestao", "validado_por", "validado_em", "devolvido_por", "devolvido_em", "devolvido_motivo", "enviado_validacao_em", "revisao", "setor_id", "modelo_base_id", "revisao_origem_id", "substitui_plano_id", "substituido_por", "substituido_em", "modo_parada_manutencao"],
 
   plano_itens: ["id", "plano_id", "ordem", "titulo", "instrucao", "tipo_resposta", "obrigatorio", "evidencia_obrigatoria", "foto_referencia_url", "limite_min", "limite_max", "unidade", "criado_em", "atualizado_em", "parametro_nome", "valor_esperado", "opcoes_json", "bloqueia_finalizacao", "categoria", "peso", "status", "validacao_regra"],
 
@@ -68,9 +68,9 @@ const SH = {
 
   ordens_servico: ["id", "codigo", "ativo_id", "componente_id", "origem", "tipo", "titulo", "descricao", "prioridade", "status", "solicitante_id", "responsavel_id", "aberta_em", "planejada_para", "iniciada_em", "finalizada_em", "criado_em", "atualizado_em"],
 
-  os_acoes: ["id", "os_id", "ativo_id", "componente_id", "plano_id", "origem", "tipo", "titulo", "descricao", "prioridade", "status", "responsavel_id", "gerado_em", "iniciado_em", "finalizado_em", "atualizado_em"],
+  os_acoes: ["id", "os_id", "ativo_id", "componente_id", "plano_id", "origem", "tipo", "titulo", "descricao", "prioridade", "status", "responsavel_id", "gerado_em", "iniciado_em", "finalizado_em", "atualizado_em", "modo_parada_manutencao"],
 
-  execucoes: ["id", "acao_id", "os_id", "ativo_id", "componente_id", "operador_id", "resultado", "observacao", "duracao_segundos", "abriu_em", "iniciou_em", "finalizou_em", "status", "criado_em", "atualizado_em"],
+  execucoes: ["id", "acao_id", "os_id", "ativo_id", "componente_id", "operador_id", "resultado", "observacao", "duracao_segundos", "abriu_em", "iniciou_em", "finalizou_em", "status", "criado_em", "atualizado_em", "modo_execucao_manutencao"],
 
   checklist_execucao: ["id", "execucao_id", "acao_id", "plano_item_id", "ordem", "titulo", "instrucao", "tipo_resposta", "obrigatorio", "resposta", "observacao", "evidencia_obrigatoria", "status", "responsavel_id", "data_hora", "criado_em", "atualizado_em", "parametro_nome", "valor_esperado", "opcoes_json", "limite_min", "limite_max", "unidade", "valor_numero", "conforme", "bloqueia_finalizacao", "validacao_msg", "evidencias_count", "categoria"],
 
@@ -80,6 +80,7 @@ const SH = {
   parametros: ["id", "ativo_id", "componente_id", "parametro", "valor", "unidade", "origem", "registrado_por", "registrado_em", "criado_em"],
 
   paradas_equipamento: ["id", "ativo_id", "componente_id", "os_id", "acao_id", "execucao_id", "origem", "tipo", "status", "iniciada_em", "iniciada_por", "manutencao_iniciada_em", "manutencao_finalizada_em", "finalizada_em", "finalizada_por", "tempo_parada_segundos", "tempo_espera_manutencao_segundos", "tempo_execucao_segundos", "tempo_retorno_operacional_segundos", "motivo_parada", "categoria_retorno", "justificativa_divergencia", "tolerancia_retorno_min", "criado_em", "atualizado_em"],
+  paradas_manutencao: ["id", "ativo_id", "componente_id", "os_id", "acao_id", "execucao_id", "modo_configurado", "decisao_execucao", "status", "equipamento_ja_parado", "alterou_status_ativo", "iniciada_em", "finalizada_em", "duracao_segundos", "usuario_id", "criado_em", "atualizado_em"],
   ocorrencias_operacionais: ["id", "ativo_id", "componente_id", "tipo", "titulo", "descricao", "severidade", "status", "usuario_id", "perfil", "os_id", "acao_id", "criado_em", "atualizado_em"],
 
   historico: ["id", "ativo_id", "componente_id", "os_id", "acao_id", "execucao_id", "evento", "descricao", "usuario_id", "perfil", "criado_em"],

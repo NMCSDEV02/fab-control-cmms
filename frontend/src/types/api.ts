@@ -154,6 +154,7 @@ export interface OperatorActionDetailData {
     gerado_em?: string
     iniciado_em?: string
     finalizado_em?: string
+    modo_parada_manutencao?: MaintenanceStopMode
   }
   os?: {
     id?: string
@@ -191,6 +192,7 @@ export interface OperatorActionDetailData {
     nome?: string
     tipo?: string
     criticidade?: string
+    modo_parada_manutencao?: MaintenanceStopMode
     gatilho_tipo?: string
     gatilho_valor?: number
     unidade?: string
@@ -212,6 +214,7 @@ export interface OperatorActionDetailData {
     iniciou_em?: string
     finalizou_em?: string
     status?: string
+    modo_execucao_manutencao?: MaintenanceStartDecision | 'COM_PARADA' | 'SEM_PARADA'
   } | null
   checklist?: {
     modelo?: boolean
@@ -278,14 +281,47 @@ export interface OperatorActionDetailData {
   }
 }
 
+export type MaintenanceStopMode =
+  | 'OBRIGATORIA'
+  | 'DECISAO_EXECUTOR'
+  | 'SEM_PARADA'
+
+export type MaintenanceStartDecision =
+  | 'PARAR_EQUIPAMENTO'
+  | 'SEM_PARADA'
+
+export interface MaintenanceStopData {
+  id: string
+  ativo_id: string
+  componente_id?: string
+  os_id?: string
+  acao_id?: string
+  execucao_id?: string
+  modo_configurado?: MaintenanceStopMode
+  decisao_execucao?: 'COM_PARADA' | 'SEM_PARADA'
+  status?: string
+  equipamento_ja_parado?: boolean | string
+  alterou_status_ativo?: boolean | string
+  iniciada_em?: string
+  finalizada_em?: string
+  duracao_segundos?: number
+  usuario_id?: string
+}
+
 export interface StartActionData {
   ok?: boolean
   started?: boolean
+  already_started?: boolean
   acao_id?: string
   execucao_id?: string
   status?: string
   version?: string
+  modo_parada_manutencao?: MaintenanceStopMode
+  decisao_parada_manutencao?: MaintenanceStartDecision
+  modo_execucao_manutencao?: 'COM_PARADA' | 'SEM_PARADA'
   parada?: OperatorStopData | null
+  parada_operacional?: OperatorStopData | null
+  parada_manutencao?: MaintenanceStopData | null
 }
 
 
@@ -379,10 +415,13 @@ export interface FinalizeActionInput {
 
 export interface FinalizeActionData {
   finalized: boolean
+  already_finalized?: boolean
   acao_id: string
   execucao_id: string
   status_acao: string
   parada?: OperatorStopData | null
+  parada_operacional?: OperatorStopData | null
+  parada_manutencao?: MaintenanceStopData | null
 }
 
 

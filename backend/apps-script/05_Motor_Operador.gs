@@ -152,6 +152,9 @@ function createAction_(ativo, plano, osId, decision){
     titulo:plano.nome,
     descricao:desc,
     prioridade:plano.criticidade || "MEDIA",
+    modo_parada_manutencao:normalizaModoParadaManutencao115_(
+      plano.modo_parada_manutencao
+    ),
     status:ST.PENDENTE,
     responsavel_id:"",
     gerado_em:now_(),
@@ -315,16 +318,55 @@ function operadorIniciarAcao_(p){
   var auth = requireOperadorAuth1081_(p.__auth || {}, "operador.iniciar_acao");
   var acao = find_("os_acoes","id",p.acao_id);
   if(!acao) err_("ACTION_NOT_FOUND","Ação não encontrada.",404);
-  if([ST.PENDENTE,ST.EM_EXECUCAO].indexOf(upper_(acao.status)) < 0) err_("ACTION_INVALID_STATUS","Ação não pode iniciar. Status atual: "+acao.status,400);
+  if([ST.PENDENTE,ST.EM_EXECUCAO].indexOf(upper_(acao.status)) < 0){
+    err_("ACTION_INVALID_STATUS","Ação não pode iniciar. Status atual: "+acao.status,400);
+  }
 
-  var open = rows_("execucoes").find(function(e){ return String(e.acao_id)===String(acao.id) && upper_(e.status) !== ST.FINALIZADA; });
+  var open = rows_("execucoes").find(function(e){
+    return String(e.acao_id)===String(acao.id) &&
+      upper_(e.status) !== ST.FINALIZADA;
+  });
+
   if(open){
     requireExecucaoDoOperador1081_(open, auth);
-    var paradaExistente = typeof paradaVincularInicioManutencao114_ === "function"
-      ? paradaVincularInicioManutencao114_(acao, open, auth)
-      : null;
-    return {started:true, already_started:true, acao_id:acao.id, execucao_id:open.id, status:ST.EM_EXECUCAO, parada:paradaExistente};
+    criarChecklistExec_(acao, open);
+
+    var existingPolicy = clean_(open.modo_execucao_manutencao)
+      ? {
+          modo_configurado:modoParadaAcao115_(acao),
+          decisao:upper_(open.modo_execucao_manutencao) === "SEM_PARADA"
+            ? "SEM_PARADA"
+            : "PARAR_EQUIPAMENTO",
+          parada_operacional:paradaAtivaPorAtivo114_(acao.ativo_id)
+        }
+      : resolverDecisaoInicioManutencao115_(acao, p);
+
+    var existingMaintenanceStop = iniciarCondicaoManutencao115_(
+      acao,
+      open,
+      auth,
+      existingPolicy
+    );
+
+    return {
+      started:true,
+      already_started:true,
+      acao_id:acao.id,
+      execucao_id:open.id,
+      status:ST.EM_EXECUCAO,
+      modo_parada_manutencao:existingPolicy.modo_configurado,
+      decisao_parada_manutencao:existingPolicy.decisao,
+      modo_execucao_manutencao:existingPolicy.decisao === "SEM_PARADA"
+        ? "SEM_PARADA"
+        : "COM_PARADA",
+      parada_operacional:existingPolicy.parada_operacional
+        ? paradaSerializada114_(existingPolicy.parada_operacional)
+        : null,
+      parada_manutencao:existingMaintenanceStop
+    };
   }
+
+  var policy = resolverDecisaoInicioManutencao115_(acao, p);
 
   var ex = fit_("execucoes", {
     id:uuid_("EXE"),
@@ -336,6 +378,9 @@ function operadorIniciarAcao_(p){
     resultado:"",
     observacao:"",
     duracao_segundos:0,
+    modo_execucao_manutencao:policy.decisao === "SEM_PARADA"
+      ? "SEM_PARADA"
+      : "COM_PARADA",
     abriu_em:now_(),
     iniciou_em:now_(),
     finalizou_em:"",
@@ -345,18 +390,59 @@ function operadorIniciarAcao_(p){
   });
   append_("execucoes", ex);
 
-  update_("os_acoes", acao.__rowIndex, {status:ST.EM_EXECUCAO, responsavel_id:auth.usuario_id||"", iniciado_em:acao.iniciado_em||now_(), atualizado_em:now_()});
+  update_("os_acoes", acao.__rowIndex, {
+    status:ST.EM_EXECUCAO,
+    responsavel_id:auth.usuario_id||"",
+    iniciado_em:acao.iniciado_em||now_(),
+    modo_parada_manutencao:policy.modo_configurado,
+    atualizado_em:now_()
+  });
+
   var os = acao.os_id ? find_("ordens_servico","id",acao.os_id) : null;
-  if(os && upper_(os.status) === ST.ABERTA) update_("ordens_servico", os.__rowIndex, {status:ST.EM_EXECUCAO, iniciada_em:now_(), atualizado_em:now_()});
+  if(os && upper_(os.status) === ST.ABERTA){
+    update_("ordens_servico", os.__rowIndex, {
+      status:ST.EM_EXECUCAO,
+      iniciada_em:now_(),
+      atualizado_em:now_()
+    });
+  }
 
   criarChecklistExec_(acao, ex);
+  var maintenanceStop = iniciarCondicaoManutencao115_(
+    acao,
+    ex,
+    auth,
+    policy
+  );
 
-  var paradaInicio = typeof paradaVincularInicioManutencao114_ === "function"
-    ? paradaVincularInicioManutencao114_(acao, ex, auth)
-    : null;
+  hist_({
+    ativo_id:acao.ativo_id,
+    componente_id:acao.componente_id,
+    os_id:acao.os_id,
+    acao_id:acao.id,
+    execucao_id:ex.id,
+    evento:"ACAO_INICIADA",
+    descricao:"Operador iniciou: "+acao.titulo+
+      ". Modo: "+(policy.decisao === "SEM_PARADA" ? "SEM_PARADA" : "COM_PARADA"),
+    usuario_id:auth.usuario_id||"",
+    perfil:auth.perfil||ROLE.OPERADOR
+  });
 
-  hist_({ativo_id:acao.ativo_id, componente_id:acao.componente_id, os_id:acao.os_id, acao_id:acao.id, execucao_id:ex.id, evento:"ACAO_INICIADA", descricao:"Operador iniciou: "+acao.titulo, usuario_id:auth.usuario_id||"", perfil:auth.perfil||ROLE.OPERADOR});
-  return {started:true, acao_id:acao.id, execucao_id:ex.id, status:ST.EM_EXECUCAO, parada:paradaInicio};
+  return {
+    started:true,
+    acao_id:acao.id,
+    execucao_id:ex.id,
+    status:ST.EM_EXECUCAO,
+    modo_parada_manutencao:policy.modo_configurado,
+    decisao_parada_manutencao:policy.decisao,
+    modo_execucao_manutencao:policy.decisao === "SEM_PARADA"
+      ? "SEM_PARADA"
+      : "COM_PARADA",
+    parada_operacional:policy.parada_operacional
+      ? paradaSerializada114_(policy.parada_operacional)
+      : null,
+    parada_manutencao:maintenanceStop
+  };
 }
 
 function keepZero_(v){
@@ -444,28 +530,101 @@ function operadorFinalizarAcao_(p){
   var auth = requireOperadorAuth1081_(p.__auth || {}, "operador.finalizar_acao");
   var acao = find_("os_acoes","id",p.acao_id);
   if(!acao) err_("ACTION_NOT_FOUND","Ação não encontrada.",404);
-  if([ST.PENDENTE,ST.EM_EXECUCAO].indexOf(upper_(acao.status)) < 0) err_("ACTION_INVALID_STATUS","Ação não pode finalizar. Status atual: "+acao.status,400);
 
-  var execs = rows_("execucoes").filter(function(e){ return String(e.acao_id)===String(acao.id); }).sort(sortByDateDesc_("criado_em"));
+  var execs = rows_("execucoes")
+    .filter(function(e){ return String(e.acao_id)===String(acao.id); })
+    .sort(sortByDateDesc_("criado_em"));
   if(!execs.length) err_("EXECUTION_NOT_FOUND","Execução não encontrada.",404);
+
   var ex = execs[0];
   requireExecucaoDoOperador1081_(ex, auth);
 
+  // Idempotência: se o back-end concluiu e a resposta de rede se perdeu,
+  // o operador pode repetir a chamada sem refazer o checklist.
+  if(
+    upper_(ex.status) === ST.FINALIZADA &&
+    [ST.AGUARDANDO_VALIDACAO,ST.BLOQUEADA,ST.CONCLUIDA].indexOf(
+      upper_(acao.status)
+    ) >= 0
+  ){
+    var repairedMaintenanceStop = finalizarCondicaoManutencao115_(
+      acao,
+      ex,
+      auth
+    );
+    var existingOperationalStop = paradaAtivaPorAtivo114_(acao.ativo_id);
+    return {
+      finalized:true,
+      already_finalized:true,
+      acao_id:acao.id,
+      execucao_id:ex.id,
+      status_acao:acao.status,
+      parada_operacional:existingOperationalStop
+        ? paradaSerializada114_(existingOperationalStop)
+        : null,
+      parada_manutencao:repairedMaintenanceStop
+    };
+  }
+
+  if([ST.PENDENTE,ST.EM_EXECUCAO].indexOf(upper_(acao.status)) < 0){
+    err_("ACTION_INVALID_STATUS","Ação não pode finalizar. Status atual: "+acao.status,400);
+  }
+
   validateChecklist_(ex.id);
 
-  if(respostaCritica_(p.resultado) && clean_(p.observacao).length < 5) err_("OBS_REQUIRED","Resultado crítico exige observação.",400);
+  if(respostaCritica_(p.resultado) && clean_(p.observacao).length < 5){
+    err_("OBS_REQUIRED","Resultado crítico exige observação.",400);
+  }
 
-  var novo = upper_(p.resultado) === "OK" ? ST.AGUARDANDO_VALIDACAO : ST.BLOQUEADA;
-  update_("execucoes", ex.__rowIndex, {resultado:upper_(p.resultado), observacao:clean_(p.observacao), duracao_segundos:num_(p.duracao_segundos,0), finalizou_em:now_(), status:ST.FINALIZADA, atualizado_em:now_()});
-  update_("os_acoes", acao.__rowIndex, {status:novo, finalizado_em:now_(), atualizado_em:now_()});
+  var novo = upper_(p.resultado) === "OK"
+    ? ST.AGUARDANDO_VALIDACAO
+    : ST.BLOQUEADA;
+
+  update_("execucoes", ex.__rowIndex, {
+    resultado:upper_(p.resultado),
+    observacao:clean_(p.observacao),
+    duracao_segundos:num_(p.duracao_segundos,0),
+    finalizou_em:now_(),
+    status:ST.FINALIZADA,
+    atualizado_em:now_()
+  });
+  update_("os_acoes", acao.__rowIndex, {
+    status:novo,
+    finalizado_em:now_(),
+    atualizado_em:now_()
+  });
   releaseLocksForAction_(acao.id, "ACAO_FINALIZADA");
 
-  var paradaFim = typeof paradaRegistrarFimManutencao114_ === "function"
-    ? paradaRegistrarFimManutencao114_(acao, ex, auth)
-    : null;
+  var maintenanceStop = finalizarCondicaoManutencao115_(
+    acao,
+    ex,
+    auth
+  );
+  var operationalStop = paradaAtivaPorAtivo114_(acao.ativo_id);
 
-  hist_({ativo_id:acao.ativo_id, componente_id:acao.componente_id, os_id:acao.os_id, acao_id:acao.id, execucao_id:ex.id, evento:"ACAO_FINALIZADA_OPERADOR", descricao:"Resultado: "+upper_(p.resultado)+". "+clean_(p.observacao), usuario_id:auth.usuario_id||"", perfil:auth.perfil||ROLE.OPERADOR});
-  return {finalized:true, acao_id:acao.id, execucao_id:ex.id, status_acao:novo, parada:paradaFim};
+  hist_({
+    ativo_id:acao.ativo_id,
+    componente_id:acao.componente_id,
+    os_id:acao.os_id,
+    acao_id:acao.id,
+    execucao_id:ex.id,
+    evento:"ACAO_FINALIZADA_OPERADOR",
+    descricao:"Resultado: "+upper_(p.resultado)+". "+clean_(p.observacao),
+    usuario_id:auth.usuario_id||"",
+    perfil:auth.perfil||ROLE.OPERADOR
+  });
+
+  return {
+    finalized:true,
+    already_finalized:false,
+    acao_id:acao.id,
+    execucao_id:ex.id,
+    status_acao:novo,
+    parada_operacional:operationalStop
+      ? paradaSerializada114_(operationalStop)
+      : null,
+    parada_manutencao:maintenanceStop
+  };
 }
 
 function validateChecklist_(execId){

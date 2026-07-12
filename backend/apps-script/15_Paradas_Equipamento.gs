@@ -5,7 +5,11 @@
 
 function ensureParadasOperacionaisSchema114_(){
   var ss = getSpreadsheet_();
+  ensureSheet_(ss, "planos_manutencao", SH.planos_manutencao);
+  ensureSheet_(ss, "os_acoes", SH.os_acoes);
+  ensureSheet_(ss, "execucoes", SH.execucoes);
   ensureSheet_(ss, "paradas_equipamento", SH.paradas_equipamento);
+  ensureSheet_(ss, "paradas_manutencao", SH.paradas_manutencao);
   ensureSheet_(ss, "ocorrencias_operacionais", SH.ocorrencias_operacionais);
 
   var cfg = find_("config", "chave", "parada.tolerancia_retorno_min");
@@ -19,6 +23,29 @@ function ensureParadasOperacionaisSchema114_(){
   }
 }
 
+function backfillModoParadaManutencao115_(){
+  rows_("planos_manutencao", true).forEach(function(plano){
+    if(clean_(plano.modo_parada_manutencao)) return;
+    update_("planos_manutencao", plano.__rowIndex, {
+      modo_parada_manutencao:"DECISAO_EXECUTOR",
+      atualizado_em:now_()
+    });
+  });
+
+  rows_("os_acoes", true).forEach(function(acao){
+    if(clean_(acao.modo_parada_manutencao)) return;
+    var plano = clean_(acao.plano_id)
+      ? find_("planos_manutencao","id",acao.plano_id)
+      : null;
+    update_("os_acoes", acao.__rowIndex, {
+      modo_parada_manutencao:normalizaModoParadaManutencao115_(
+        plano && plano.modo_parada_manutencao
+      ),
+      atualizado_em:now_()
+    });
+  });
+}
+
 function cmmsParadasOperacionaisSchemaUpgrade114_(p, auth){
   auth = auth || p.__auth || {};
   if(upper_(auth.perfil) !== ROLE.ADMIN){
@@ -26,11 +53,22 @@ function cmmsParadasOperacionaisSchemaUpgrade114_(p, auth){
   }
 
   ensureParadasOperacionaisSchema114_();
+  backfillModoParadaManutencao115_();
+
   return {
     upgraded:true,
     version:FAB.VERSION,
-    sheets:["paradas_equipamento","ocorrencias_operacionais"],
+    sheets:[
+      "paradas_equipamento",
+      "paradas_manutencao",
+      "ocorrencias_operacionais"
+    ],
     total_sheets:Object.keys(SH).length,
+    maintenance_stop_modes:[
+      "OBRIGATORIA",
+      "DECISAO_EXECUTOR",
+      "SEM_PARADA"
+    ],
     tolerance_minutes:paradaToleranciaMin114_()
   };
 }
@@ -53,7 +91,9 @@ function paradaAtivaPorAtivo114_(ativoId){
   ensureParadasOperacionaisSchema114_();
   return rows_("paradas_equipamento", true)
     .filter(function(r){
-      return String(r.ativo_id) === String(ativoId) && paradaStatusAberto114_(r.status);
+      return String(r.ativo_id) === String(ativoId) &&
+        upper_(r.origem) === "OPERADOR" &&
+        paradaStatusAberto114_(r.status);
     })
     .sort(sortByDateDesc_("iniciada_em"))[0] || null;
 }
@@ -62,7 +102,9 @@ function paradaAtivaPorAcao114_(acaoId){
   ensureParadasOperacionaisSchema114_();
   return rows_("paradas_equipamento", true)
     .filter(function(r){
-      return String(r.acao_id) === String(acaoId) && paradaStatusAberto114_(r.status);
+      return String(r.acao_id) === String(acaoId) &&
+        upper_(r.origem) === "OPERADOR" &&
+        paradaStatusAberto114_(r.status);
     })
     .sort(sortByDateDesc_("iniciada_em"))[0] || null;
 }
@@ -168,6 +210,8 @@ function criarParada114_(input, auth){
   });
 
   append_("paradas_equipamento", row);
+  var inserted = find_("paradas_equipamento", "id", row.id);
+  if(!inserted) err_("STOP_CREATE_FAILED", "Falha ao registrar parada operacional.", 500);
   atualizarStatusAtivo114_(refs.ativo, ST.PARADO);
 
   hist_({
@@ -182,7 +226,7 @@ function criarParada114_(input, auth){
     perfil:auth && auth.perfil || ROLE.OPERADOR
   });
 
-  return row;
+  return inserted;
 }
 
 function operadorParadaAtiva114_(p, auth){
@@ -282,7 +326,10 @@ function operadorFinalizarParada114_(p, auth){
   });
 
   var ativo = find_("ativos", "id", row.ativo_id);
-  atualizarStatusAtivo114_(ativo, ST.OPERANDO);
+  var maintenanceStop = typeof paradaManutencaoAtivaPorAtivo115_ === "function"
+    ? paradaManutencaoAtivaPorAtivo115_(row.ativo_id)
+    : null;
+  atualizarStatusAtivo114_(ativo, maintenanceStop ? ST.PARADO : ST.OPERANDO);
 
   hist_({
     ativo_id:row.ativo_id,

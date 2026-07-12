@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { OperatorActionDetailData, OperatorStopData, RawChecklistItem } from '../types/api'
+import type { MaintenanceStartDecision, MaintenanceStopMode, OperatorActionDetailData, OperatorStopData, RawChecklistItem } from '../types/api'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
 
 interface ActionDetailPageProps {
@@ -10,7 +10,7 @@ interface ActionDetailPageProps {
   activeStop: OperatorStopData | null
   onBack: () => void
   onRetry: () => void
-  onStart: () => Promise<void>
+  onStart: (decision: MaintenanceStartDecision) => Promise<void>
   onContinue: () => void
 }
 
@@ -62,6 +62,7 @@ export function ActionDetailPage({
   const [readProgress, setReadProgress] = useState(0)
   const [readComplete, setReadComplete] = useState(false)
   const [accepted, setAccepted] = useState(false)
+  const [startDecisionOpen, setStartDecisionOpen] = useState(false)
   const maxProgressRef = useRef(0)
   const screenRef = useRef<HTMLElement | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
@@ -71,6 +72,7 @@ export function ActionDetailPage({
     setReadProgress(0)
     setReadComplete(false)
     setAccepted(false)
+    setStartDecisionOpen(false)
 
     const scrollRoot = screenRef.current?.closest('.app-content') as HTMLElement | null
     if (scrollRoot) scrollRoot.scrollTo({ top: 0, behavior: 'auto' })
@@ -188,6 +190,26 @@ export function ActionDetailPage({
     canStartByState,
   )
   const acceptanceId = `technical-acceptance-${detail?.acao.id ?? 'action'}`
+  const configuredStopMode = (
+    detail?.acao.modo_parada_manutencao ||
+    detail?.plano?.modo_parada_manutencao ||
+    'DECISAO_EXECUTOR'
+  ).toUpperCase() as MaintenanceStopMode
+  const equipmentAlreadyStopped =
+    Boolean(activeStop) ||
+    normalizedStatus(detail?.ativo?.status) === 'PARADO'
+
+  function startWithConfiguredMode() {
+    if (configuredStopMode === 'OBRIGATORIA' || equipmentAlreadyStopped) {
+      void onStart('PARAR_EQUIPAMENTO')
+      return
+    }
+    if (configuredStopMode === 'SEM_PARADA') {
+      void onStart('SEM_PARADA')
+      return
+    }
+    setStartDecisionOpen(true)
+  }
 
   if (loading) {
     return (
@@ -365,6 +387,20 @@ export function ActionDetailPage({
         <div><span>Duração prevista</span><strong>{detail.plano?.tempo_estimado_min ? `${detail.plano.tempo_estimado_min} min` : 'Não informada'}</strong></div>
         <div><span>Gerada em</span><strong>{formatDate(detail.acao.gerado_em)}</strong></div>
         <div><span>Checklist</span><strong>{detail.checklist?.total ?? items.length} itens</strong></div>
+        <div>
+          <span>Parada da máquina</span>
+          <strong>
+            {alreadyStarted && detail.execucao?.modo_execucao_manutencao
+              ? detail.execucao.modo_execucao_manutencao === 'SEM_PARADA'
+                ? 'Execução sem parada'
+                : 'Parada técnica ativa'
+              : configuredStopMode === 'OBRIGATORIA'
+                ? 'Obrigatória'
+                : configuredStopMode === 'SEM_PARADA'
+                  ? 'Sem parada'
+                  : 'Decisão do executor'}
+          </strong>
+        </div>
       </div>
 
       <div ref={endRef} className="reading-gate">
@@ -391,6 +427,56 @@ export function ActionDetailPage({
         </label>
       </div>
 
+      {startDecisionOpen && (
+        <div className="evidence-modal-backdrop">
+          <article className="evidence-modal maintenance-start-modal" role="dialog" aria-modal="true">
+            <div>
+              <span>Condição de execução</span>
+              <h2>Como esta manutenção será realizada?</h2>
+              <p>
+                Esta escolha registra a parada técnica da manutenção. Ela não encerra
+                nem substitui uma parada operacional informada pela produção.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="maintenance-start-choice maintenance-start-choice--stop"
+              disabled={starting}
+              onClick={() => {
+                setStartDecisionOpen(false)
+                void onStart('PARAR_EQUIPAMENTO')
+              }}
+            >
+              <strong>Parar equipamento</strong>
+              <span>A máquina será marcada como parada durante a execução técnica.</span>
+            </button>
+
+            <button
+              type="button"
+              className="maintenance-start-choice"
+              disabled={starting}
+              onClick={() => {
+                setStartDecisionOpen(false)
+                void onStart('SEM_PARADA')
+              }}
+            >
+              <strong>Executar sem parada</strong>
+              <span>A intervenção será realizada mantendo o equipamento em operação.</span>
+            </button>
+
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={starting}
+              onClick={() => setStartDecisionOpen(false)}
+            >
+              Cancelar
+            </button>
+          </article>
+        </div>
+      )}
+
       <div className="technical-action-bar">
         <button type="button" className="secondary-button" onClick={onBack}>Voltar</button>
         {alreadyStarted ? (
@@ -401,7 +487,7 @@ export function ActionDetailPage({
           <button
             type="button"
             className="primary-button"
-            onClick={() => void onStart()}
+            onClick={startWithConfiguredMode}
             disabled={starting}
           >
             {starting ? 'Iniciando…' : 'Iniciar execução'}

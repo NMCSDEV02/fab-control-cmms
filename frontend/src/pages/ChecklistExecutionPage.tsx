@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChecklistBatchItemInput,
   EvidenceInput,
@@ -16,6 +16,7 @@ interface ChecklistExecutionPageProps {
   activeStop: OperatorStopData | null
   onBack: () => void
   onRefresh: () => Promise<void>
+  onSaveProgress: (items: ChecklistBatchItemInput[]) => Promise<void>
   onRegisterEvidence: (input: EvidenceInput) => Promise<void>
   onFinish: (
     items: ChecklistBatchItemInput[],
@@ -97,6 +98,7 @@ export function ChecklistExecutionPage({
   activeStop,
   onBack,
   onRefresh,
+  onSaveProgress,
   onRegisterEvidence,
   onFinish,
   onReturnHome,
@@ -115,18 +117,61 @@ export function ChecklistExecutionPage({
   const [elapsed, setElapsed] = useState(0)
   const [completionPhase, setCompletionPhase] = useState<CompletionPhase>('idle')
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null)
+  const initializedDraftKeyRef = useRef('')
+  const draftStorageKey = `fab-control:checklist-draft:${detail.execucao?.id || detail.acao.id}`
 
   useEffect(() => {
-    const initial: Record<string, DraftAnswer> = {}
+    const serverDrafts: Record<string, DraftAnswer> = {}
     for (const item of items) {
-      initial[item.id] = {
+      serverDrafts[item.id] = {
         answer: existingAnswer(item),
         observation: item.observacao ?? '',
       }
     }
-    setDrafts(initial)
-    setIndex((current) => Math.min(current, Math.max(0, items.length - 1)))
-  }, [items])
+
+    if (initializedDraftKeyRef.current !== draftStorageKey) {
+      let cached: Record<string, DraftAnswer> = {}
+      try {
+        const stored = window.sessionStorage.getItem(draftStorageKey)
+        cached = stored ? JSON.parse(stored) as Record<string, DraftAnswer> : {}
+      } catch {
+        cached = {}
+      }
+
+      setDrafts({ ...serverDrafts, ...cached })
+      initializedDraftKeyRef.current = draftStorageKey
+      setIndex((current) => Math.min(current, Math.max(0, items.length - 1)))
+      return
+    }
+
+    // Atualizações do back-end, como evidências, não podem apagar respostas locais.
+    setDrafts((currentDrafts) => {
+      const next = { ...currentDrafts }
+      for (const item of items) {
+        const server = serverDrafts[item.id]
+        const local = next[item.id]
+        if (!local) {
+          next[item.id] = server
+          continue
+        }
+        next[item.id] = {
+          answer: local.answer || server.answer,
+          observation: local.observation || server.observation,
+        }
+      }
+      return next
+    })
+  }, [draftStorageKey, items])
+
+  useEffect(() => {
+    if (initializedDraftKeyRef.current !== draftStorageKey) return
+    if (!Object.keys(drafts).length) return
+    try {
+      window.sessionStorage.setItem(draftStorageKey, JSON.stringify(drafts))
+    } catch {
+      // Armazenamento local indisponível: a execução continua usando memória.
+    }
+  }, [draftStorageKey, drafts])
 
   useEffect(() => {
     const startValue =
@@ -303,6 +348,11 @@ export function ChecklistExecutionPage({
         result.observacao,
         durationSeconds,
       )
+      try {
+        window.sessionStorage.removeItem(draftStorageKey)
+      } catch {
+        // Sem impacto na conclusão.
+      }
       setCompletionPhase('success')
     } catch (cause) {
       setCompletionPhase('idle')
@@ -320,6 +370,7 @@ export function ChecklistExecutionPage({
       setMessage('Informe o nome e o link da evidência.')
       return
     }
+    await onSaveProgress(buildPayload())
     await onRegisterEvidence({
       checklist_execucao_id: current.id,
       tipo: 'FOTO',
@@ -366,6 +417,28 @@ export function ChecklistExecutionPage({
   return (
     <section className="screen checklist-screen">
       {activeStop && <ActiveStopBanner stop={activeStop} compact />}
+
+      <article
+        className={
+          detail.execucao?.modo_execucao_manutencao === 'SEM_PARADA'
+            ? 'maintenance-mode-banner maintenance-mode-banner--running'
+            : 'maintenance-mode-banner maintenance-mode-banner--stopped'
+        }
+      >
+        <span>Condição da manutenção</span>
+        <strong>
+          {detail.execucao?.modo_execucao_manutencao === 'SEM_PARADA'
+            ? 'Execução sem parada do equipamento'
+            : 'Parada técnica vinculada à execução'}
+        </strong>
+        <small>
+          {activeStop
+            ? 'A parada operacional da produção permanece registrada separadamente.'
+            : detail.execucao?.modo_execucao_manutencao === 'SEM_PARADA'
+              ? 'A máquina permanece em operação durante o serviço.'
+              : 'Esta parada termina junto com a execução técnica.'}
+        </small>
+      </article>
 
       <article className="execution-header-card">
         <div>

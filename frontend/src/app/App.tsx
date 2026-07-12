@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AppHeader, type ConnectionState } from '../components/AppHeader'
 import { BottomNavigation, type AppSection } from '../components/BottomNavigation'
+import { OperationOverlay } from '../components/OperationOverlay'
 import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
 import { OperatorHome } from '../pages/OperatorHome'
@@ -16,9 +17,8 @@ import {
   registerOperatorEvidence,
   saveOperatorChecklistBatch,
   startOperatorAction,
-  validateOperatorFinalization,
 } from '../services/api/operator'
-import type { ChecklistBatchItemInput, EvidenceInput, OperatorActionDetailData, OperatorStopData } from '../types/api'
+import type { ChecklistBatchItemInput, EvidenceInput, MaintenanceStartDecision, OperatorActionDetailData, OperatorStopData } from '../types/api'
 import type { OperatorAction } from '../types/operator'
 
 type AppView = 'navigation' | 'action-detail' | 'checklist'
@@ -40,6 +40,7 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [starting, setStarting] = useState(false)
+  const [savingChecklist, setSavingChecklist] = useState(false)
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
   const [activeStop, setActiveStop] = useState<OperatorStopData | null>(null)
@@ -130,13 +131,20 @@ export function App() {
     void refresh()
   }
 
-  async function startAction() {
+  async function startAction(decision: MaintenanceStartDecision) {
     if (!selectedActionId) return
     setStarting(true)
+    setDetailError('')
     try {
-      const result = await startOperatorAction(selectedActionId)
-      setActiveStop(result.parada ?? null)
-      notify('Execução iniciada. Equipamento marcado como parado.')
+      const result = await startOperatorAction(selectedActionId, decision)
+      setActiveStop(result.parada_operacional ?? result.parada ?? activeStop)
+
+      if (result.modo_execucao_manutencao === 'SEM_PARADA') {
+        notify('Execução iniciada sem parada do equipamento.')
+      } else {
+        notify('Execução iniciada com parada técnica da manutenção.')
+      }
+
       await Promise.all([loadActionDetail(selectedActionId), refresh()])
       setView('checklist')
     } catch (cause) {
@@ -153,6 +161,26 @@ export function App() {
   async function refreshCurrentDetail() {
     if (!selectedActionId) return
     await loadActionDetail(selectedActionId)
+  }
+
+  async function saveChecklistProgress(items: ChecklistBatchItemInput[]) {
+    if (!selectedActionId || items.length === 0) return
+    setSavingChecklist(true)
+    setDetailError('')
+    try {
+      const result = await saveOperatorChecklistBatch(selectedActionId, items)
+      if (result.error_count > 0) {
+        const first = result.erros?.[0]?.message || 'Alguns itens não foram salvos.'
+        throw new Error(first)
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Falha ao salvar o progresso.'
+      setDetailError(message)
+      notify(message)
+      throw cause
+    } finally {
+      setSavingChecklist(false)
+    }
   }
 
   async function saveEvidence(input: EvidenceInput) {
@@ -195,24 +223,15 @@ export function App() {
         throw new Error(first)
       }
 
-      // Verificação técnica silenciosa: apenas impede finalizar checklist incompleto.
-      // A aprovação da execução permanece sob responsabilidade da gestão.
-      const readiness = await validateOperatorFinalization(selectedActionId)
-      if (!readiness.can_finalize) {
-        throw new Error(
-          readiness.message ||
-          'Existem respostas, evidências ou bloqueios pendentes no checklist.',
-        )
-      }
-
+      // O endpoint final já verifica respostas, evidências e bloqueios.
+      // A aprovação continua sendo responsabilidade da gestão.
       const result = await finalizeOperatorAction(selectedActionId, {
         resultado,
         observacao,
         duracao_segundos: durationSeconds,
       })
 
-      setActiveStop(result.parada ?? activeStop)
-      await refresh()
+      setActiveStop(result.parada_operacional ?? result.parada ?? activeStop)
     } catch (cause) {
       const message =
         cause instanceof Error
@@ -261,6 +280,36 @@ export function App() {
     setSection(next)
   }
 
+  const operationOverlay = detailLoading
+    ? {
+        visible: true,
+        title: 'Carregando ação',
+        description: 'Consultando análise técnica e checklist.',
+      }
+    : starting
+      ? {
+          visible: true,
+          title: 'Iniciando execução',
+          description: 'Preparando checklist e condição do equipamento.',
+        }
+      : savingChecklist
+        ? {
+            visible: true,
+            title: 'Salvando progresso',
+            description: 'Protegendo as respostas já preenchidas.',
+          }
+        : savingEvidence
+          ? {
+              visible: true,
+              title: 'Registrando evidência',
+              description: 'Sincronizando o arquivo com a execução.',
+            }
+          : {
+              visible: false,
+              title: '',
+              description: '',
+            }
+
   return (
     <div className="app-stage">
       <section className="app-frame">
@@ -292,6 +341,7 @@ export function App() {
               activeStop={activeStop}
               onBack={() => setView('action-detail')}
               onRefresh={refreshCurrentDetail}
+              onSaveProgress={saveChecklistProgress}
               onRegisterEvidence={saveEvidence}
               onFinish={finishOperatorExecution}
               onReturnHome={returnHomeAfterCompletion}
@@ -326,6 +376,12 @@ export function App() {
         {view === 'navigation' && (
           <BottomNavigation active={section} onChange={changeSection} />
         )}
+
+        <OperationOverlay
+          visible={operationOverlay.visible}
+          title={operationOverlay.title}
+          description={operationOverlay.description}
+        />
 
         <div className={toast ? 'toast toast--visible' : 'toast'} role="status" aria-live="polite">
           {toast}

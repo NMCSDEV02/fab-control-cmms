@@ -2408,3 +2408,144 @@ p {
   .execution-completion-card { border-radius: 26px; }
   .execution-result-grid { grid-template-columns: 1fr 1fr; }
 }
+
+
+/* Hotfix operador 7.6 — persistência, loading global e decisão de parada */
+.operation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(20, 31, 48, .48);
+  backdrop-filter: blur(2px);
+}
+
+.operation-overlay__card {
+  width: min(390px, 100%);
+  padding: 28px 24px;
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(18, 30, 48, .28);
+  text-align: center;
+}
+
+.operation-overlay__spinner {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 18px;
+  border: 6px solid #e5edfb;
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: operation-spin .8s linear infinite;
+}
+
+.operation-overlay__card h2 {
+  font-size: 1.18rem;
+}
+
+.operation-overlay__card p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+@keyframes operation-spin {
+  to { transform: rotate(360deg); }
+}
+
+.maintenance-start-modal {
+  display: grid;
+  gap: 12px;
+}
+
+.maintenance-start-modal > div:first-child p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.maintenance-start-choice {
+  width: 100%;
+  min-height: 86px;
+  padding: 14px 15px;
+  border: 1.5px solid var(--line);
+  border-radius: 17px;
+  background: #fff;
+  text-align: left;
+}
+
+.maintenance-start-choice strong,
+.maintenance-start-choice span {
+  display: block;
+}
+
+.maintenance-start-choice strong {
+  color: var(--text);
+  font-size: .9rem;
+}
+
+.maintenance-start-choice span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.4;
+}
+
+.maintenance-start-choice--stop {
+  border-color: #e7b5b7;
+  background: #fff5f5;
+}
+
+.maintenance-start-choice--stop strong {
+  color: #a6272d;
+}
+
+
+.maintenance-mode-banner {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+.maintenance-mode-banner span {
+  font-size: .66rem;
+  font-weight: 950;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.maintenance-mode-banner strong {
+  font-size: .83rem;
+}
+
+.maintenance-mode-banner small {
+  color: var(--muted);
+  font-size: .7rem;
+  line-height: 1.35;
+}
+
+.maintenance-mode-banner--stopped {
+  border-color: #efc5a0;
+  background: #fff7ed;
+}
+
+.maintenance-mode-banner--stopped span,
+.maintenance-mode-banner--stopped strong {
+  color: #9a4e0d;
+}
+
+.maintenance-mode-banner--running {
+  border-color: #b9ddc8;
+  background: #effaf3;
+}
+
+.maintenance-mode-banner--running span,
+.maintenance-mode-banner--running strong {
+  color: var(--green);
+}

@@ -1,4 +1,4 @@
-import type { ActiveStopResponseData, FinishStopInput, FinishStopResponseData, ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterOccurrenceInput, RegisterOccurrenceResponseData, RegisterParameterData, RegisterParameterInput, StartActionData, StartStopInput, StartStopResponseData } from '../../types/api'
+import type { ActiveStopResponseData, FinishStopInput, FinishStopResponseData, ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, MaintenanceStartDecision, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterOccurrenceInput, RegisterOccurrenceResponseData, RegisterParameterData, RegisterParameterInput, StartActionData, StartStopInput, StartStopResponseData } from '../../types/api'
 import type {
   ActionGroup,
   ActionPriority,
@@ -182,13 +182,18 @@ export async function getOperatorActionDetail(
 
 export async function startOperatorAction(
   actionId: string,
+  decision: MaintenanceStartDecision,
 ): Promise<StartActionData> {
   const token = getOperatorToken()
   if (!token) throw new Error('Token do operador não configurado.')
 
   const response = await callApi<StartActionData>(
     'operador.iniciar_acao',
-    { token, acao_id: actionId },
+    {
+      token,
+      acao_id: actionId,
+      decisao_parada_manutencao: decision,
+    },
   )
 
   if (!response.data) {
