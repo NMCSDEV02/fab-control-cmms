@@ -1,0 +1,3 @@
+export interface ApiEnvelope<T>{ok:boolean;action:string;elapsed_ms?:number;data?:T;error?:{code:string;message:string;details?:unknown}}
+const apiBaseUrl=import.meta.env.VITE_API_BASE_URL as string|undefined
+export async function callApi<T>(action:string,payload:Record<string,unknown>):Promise<ApiEnvelope<T>>{if(!apiBaseUrl)throw new Error('VITE_API_BASE_URL não configurada.');const response=await fetch(apiBaseUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload})});if(!response.ok)throw new Error(`Falha HTTP ${response.status}.`);return response.json() as Promise<ApiEnvelope<T>>}
