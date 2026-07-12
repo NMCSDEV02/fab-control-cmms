@@ -96,12 +96,27 @@ export function ActionDetailPage({
       })
   }, [items])
 
-  const status = normalizedStatus(detail?.acao.status)
-  const alreadyStarted = status === 'EM_EXECUCAO'
-  const canStart =
-    detail?.ui?.can_start ??
-    detail?.operator_screen?.action_bar?.buttons?.find((button) => button.id === 'iniciar')?.enabled ??
-    status === 'PENDENTE'
+  const status = normalizedStatus(
+    detail?.acao.status || detail?.operator_screen?.header?.status,
+  )
+  const uiState = normalizedStatus(detail?.ui?.state)
+  const alreadyStarted = status === 'EM_EXECUCAO' || uiState === 'EM_EXECUCAO'
+  const startButton = detail?.operator_screen?.action_bar?.buttons?.find(
+    (button) =>
+      button.endpoint === 'operador.iniciar_acao' ||
+      ['INICIAR', 'INICIAR_ACAO', 'START'].includes(
+        normalizedStatus(button.id),
+      ),
+  )
+  const canStartByState =
+    ['PENDENTE', 'ABERTA', 'AGUARDANDO_INICIO'].includes(status) ||
+    uiState === 'AGUARDANDO_INICIO'
+  const canStart = Boolean(
+    detail?.ui?.can_start ||
+    startButton?.enabled ||
+    canStartByState,
+  )
+  const acceptanceId = `technical-acceptance-${detail?.acao.id ?? 'action'}`
 
   if (loading) {
     return (
@@ -280,14 +295,21 @@ export function ActionDetailPage({
             ? 'Análise percorrida até o final. Confirme a leitura.'
             : 'Role a análise até o final para liberar a confirmação.'}
         </div>
-        <label className={readComplete ? 'reading-confirmation' : 'reading-confirmation reading-confirmation--locked'}>
+        <label
+          htmlFor={acceptanceId}
+          className={readComplete ? 'reading-confirmation' : 'reading-confirmation reading-confirmation--locked'}
+        >
           <input
+            id={acceptanceId}
             type="checkbox"
             checked={accepted}
             disabled={!readComplete}
-            onChange={(event) => setAccepted(event.target.checked)}
+            onChange={(event) => setAccepted(event.currentTarget.checked)}
           />
-          <span>Li a análise, compreendi as etapas e os riscos da atividade.</span>
+          <span>
+            <strong>Confirmo a leitura técnica</strong>
+            Li a análise, compreendi as etapas e os riscos da atividade.
+          </span>
         </label>
       </div>
 
@@ -307,8 +329,14 @@ export function ActionDetailPage({
             {starting ? 'Iniciando…' : 'Iniciar execução'}
           </button>
         ) : (
-          <div className="start-locked">
-            {!readComplete ? 'Leia até o final' : 'Confirme a leitura para iniciar'}
+          <div className="start-locked" aria-live="polite">
+            {!readComplete
+              ? 'Leia até o final'
+              : !accepted
+                ? 'Marque a confirmação de leitura'
+                : !canStart
+                  ? 'Ação indisponível para início'
+                  : 'Preparando início'}
           </div>
         )}
       </div>

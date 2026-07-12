@@ -23,20 +23,67 @@ function mapStatus(value?: string): ActionStatus {
   return 'PENDENTE'
 }
 
+function cardClassificationText(card: RawOperatorCard): string {
+  return [
+    card.group,
+    card.grupo,
+    card.origem,
+    card.tipo,
+    card.title,
+    card.subtitle,
+    card.description,
+    card.primary_action?.label,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toUpperCase()
+}
+
 function mapGroup(card: RawOperatorCard, priority: ActionPriority): ActionGroup {
-  const source = String(card.group ?? card.grupo ?? card.origem ?? '').toUpperCase()
-  if (source.includes('NAO_PROGRAM') || source.includes('NÃO_PROGRAM') || source.includes('EMERGEN')) {
+  const source = cardClassificationText(card)
+
+  const nonScheduledTerms = [
+    'NAO_PROGRAM',
+    'NÃO PROGRAM',
+    'EMERGEN',
+    'CORRETIV',
+    'OCORR',
+    'FALHA',
+    'QUEBRA',
+    'URGENT',
+  ]
+  if (nonScheduledTerms.some((term) => source.includes(term))) {
     return 'NAO_PROGRAMADA'
   }
-  if (source.includes('PROGRAM')) return 'PROGRAMADA'
 
-  // Compatibilidade temporária com o contrato 1.1.2, que ainda não expõe grupo.
+  const scheduledTerms = [
+    'PROGRAM',
+    'PREVENT',
+    'PREDIT',
+    'INSPE',
+    'CHECKLIST',
+    'LUBR',
+    'ROTA',
+    'PLANO',
+    'PERIOD',
+  ]
+  if (scheduledTerms.some((term) => source.includes(term))) {
+    return 'PROGRAMADA'
+  }
+
+  // Compatibilidade com contratos antigos que não expõem origem/grupo.
   return priority === 'CRITICA' ? 'NAO_PROGRAMADA' : 'PROGRAMADA'
 }
 
 function inferType(card: RawOperatorCard, group: ActionGroup): string {
   const explicit = String(card.tipo ?? '').trim()
   if (explicit) return explicit.toUpperCase()
+
+  const source = cardClassificationText(card)
+  if (source.includes('PREVENT')) return 'PREVENTIVA'
+  if (source.includes('PREDIT')) return 'PREDITIVA'
+  if (source.includes('INSPE') || source.includes('CHECKLIST')) return 'INSPEÇÃO'
+  if (source.includes('CORRETIV')) return 'CORRETIVA'
   if (group === 'NAO_PROGRAMADA') return 'EMERGENCIAL'
   return 'PROGRAMADA'
 }
@@ -94,7 +141,12 @@ export async function getOperatorActions(signal?: AbortSignal): Promise<Operator
 
   const response = await callApi<OperatorActionsData>(
     'operador.minhas_acoes',
-    { token },
+    {
+      token,
+      status: 'PENDENTE,EM_EXECUCAO,AGUARDANDO_VALIDACAO,CONCLUIDA',
+      incluir_concluidas: true,
+      limite: 200,
+    },
     signal,
   )
 

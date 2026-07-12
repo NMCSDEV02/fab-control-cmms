@@ -1,6 +1,9 @@
+import { useMemo, useState } from 'react'
 import type { OperatorAction } from '../types/operator'
 import { ActionCard } from '../components/ActionCard'
 import { ArrowIcon, QrIcon } from '../components/Icons'
+
+type QueueView = 'PENDENTES' | 'EM_EXECUCAO' | 'CONCLUIDAS'
 
 export interface OperatorHomeProps {
   actions: OperatorAction[]
@@ -13,6 +16,20 @@ export interface OperatorHomeProps {
   onOpenQr: () => void
 }
 
+function statusMatchesView(action: OperatorAction, view: QueueView): boolean {
+  if (view === 'PENDENTES') return action.status === 'PENDENTE'
+  if (view === 'EM_EXECUCAO') return action.status === 'EM_EXECUCAO'
+
+  // Para o operador, uma ação aguardando validação já teve a execução concluída.
+  return action.status === 'AGUARDANDO_VALIDACAO' || action.status === 'CONCLUIDA'
+}
+
+function queueDescription(view: QueueView): string {
+  if (view === 'PENDENTES') return 'Ações liberadas para início.'
+  if (view === 'EM_EXECUCAO') return 'Atividades em execução neste turno.'
+  return 'Execuções finalizadas ou aguardando validação.'
+}
+
 export function OperatorHome({
   actions,
   loading,
@@ -23,12 +40,43 @@ export function OperatorHome({
   onOpenAction,
   onOpenQr,
 }: OperatorHomeProps) {
-  const pending = actions.filter((action) => action.status === 'PENDENTE')
-  const running = actions.filter((action) => action.status === 'EM_EXECUCAO')
-  const completed = actions.filter((action) => action.status === 'CONCLUIDA')
-  const emergency = pending.filter((action) => action.group === 'NAO_PROGRAMADA')
-  const scheduled = pending.filter((action) => action.group === 'PROGRAMADA')
-  const currentEmergency = emergency[0]
+  const [activeView, setActiveView] = useState<QueueView>('PENDENTES')
+
+  const pending = useMemo(
+    () => actions.filter((action) => action.status === 'PENDENTE'),
+    [actions],
+  )
+  const running = useMemo(
+    () => actions.filter((action) => action.status === 'EM_EXECUCAO'),
+    [actions],
+  )
+  const completed = useMemo(
+    () =>
+      actions.filter(
+        (action) =>
+          action.status === 'AGUARDANDO_VALIDACAO' ||
+          action.status === 'CONCLUIDA',
+      ),
+    [actions],
+  )
+
+  const visibleActions = useMemo(
+    () => actions.filter((action) => statusMatchesView(action, activeView)),
+    [actions, activeView],
+  )
+  const nonScheduled = useMemo(
+    () => visibleActions.filter((action) => action.group === 'NAO_PROGRAMADA'),
+    [visibleActions],
+  )
+  const scheduled = useMemo(
+    () => visibleActions.filter((action) => action.group === 'PROGRAMADA'),
+    [visibleActions],
+  )
+
+  const currentEmergency =
+    activeView === 'PENDENTES'
+      ? pending.find((action) => action.group === 'NAO_PROGRAMADA')
+      : undefined
 
   if (!configured) {
     return (
@@ -103,85 +151,93 @@ export function OperatorHome({
         <div>
           <span>Fila de operação</span>
           <h1>Manutenções do turno</h1>
-          <p>Dados sincronizados com o contrato real do operador.</p>
+          <p>{queueDescription(activeView)}</p>
         </div>
         <button className="refresh-button" type="button" onClick={onRetry} disabled={loading}>
           {loading ? 'Atualizando…' : 'Atualizar'}
         </button>
       </header>
 
-      <div className="summary-grid" aria-label="Resumo das ações">
-        <article className="summary-card summary-card--active">
+      <div className="summary-grid" aria-label="Filtrar ações por situação">
+        <button
+          type="button"
+          className={activeView === 'PENDENTES' ? 'summary-card summary-card--active' : 'summary-card'}
+          aria-pressed={activeView === 'PENDENTES'}
+          onClick={() => setActiveView('PENDENTES')}
+        >
           <strong>{pending.length}</strong>
           <span>Pendentes</span>
-        </article>
-        <article className="summary-card">
+        </button>
+        <button
+          type="button"
+          className={activeView === 'EM_EXECUCAO' ? 'summary-card summary-card--active' : 'summary-card'}
+          aria-pressed={activeView === 'EM_EXECUCAO'}
+          onClick={() => setActiveView('EM_EXECUCAO')}
+        >
           <strong>{running.length}</strong>
           <span>Em execução</span>
-        </article>
-        <article className="summary-card">
+        </button>
+        <button
+          type="button"
+          className={activeView === 'CONCLUIDAS' ? 'summary-card summary-card--active' : 'summary-card'}
+          aria-pressed={activeView === 'CONCLUIDAS'}
+          onClick={() => setActiveView('CONCLUIDAS')}
+        >
           <strong>{completed.length}</strong>
           <span>Concluídas</span>
-        </article>
+        </button>
       </div>
 
-      {actions.length === 0 && (
-        <article className="empty-panel">
-          <strong>Nenhuma ação para exibir</strong>
-          <p>A fila será atualizada quando uma ação for atribuída ao operador.</p>
-        </article>
-      )}
-
-      {running.length > 0 && (
-        <section className="content-section">
-          <div className="section-heading">
-            <div>
-              <h2>Em execução</h2>
-              <p>Atividades já iniciadas neste turno.</p>
-            </div>
-            <span>{running.length} ativa{running.length > 1 ? 's' : ''}</span>
+      <section className="content-section maintenance-type-section">
+        <div className="section-heading">
+          <div>
+            <h2>Não programadas</h2>
+            <p>Ocorrências, emergências e intervenções não previstas.</p>
           </div>
-          <div className="scheduled-grid">
-            {running.map((action) => (
-              <ActionCard key={action.id} action={action} onOpen={onOpenAction} />
+          <span>{nonScheduled.length}</span>
+        </div>
+
+        {nonScheduled.length > 0 ? (
+          <div className={activeView === 'PENDENTES' ? 'emergency-list' : 'scheduled-grid'}>
+            {nonScheduled.map((action) => (
+              <ActionCard
+                key={action.id}
+                action={action}
+                compact={activeView === 'PENDENTES'}
+                onOpen={onOpenAction}
+              />
             ))}
           </div>
-        </section>
-      )}
+        ) : (
+          <article className="queue-empty-card">
+            <strong>Nenhuma manutenção não programada</strong>
+            <p>Não há ações deste tipo na situação selecionada.</p>
+          </article>
+        )}
+      </section>
 
-      {emergency.length > 0 && (
-        <section className="content-section">
-          <div className="section-heading">
-            <div>
-              <h2>Não programadas</h2>
-              <p>Ação imediata por criticidade.</p>
-            </div>
-            <span>{emergency.length} urgente</span>
+      <section className="content-section maintenance-type-section">
+        <div className="section-heading">
+          <div>
+            <h2>Programadas</h2>
+            <p>Preventivas, inspeções e atividades dentro da janela planejada.</p>
           </div>
-          <div className="emergency-list">
-            {emergency.map((action) => (
-              <ActionCard key={action.id} action={action} compact onOpen={onOpenAction} />
-            ))}
-          </div>
-        </section>
-      )}
+          <span>{scheduled.length}</span>
+        </div>
 
-      {scheduled.length > 0 && (
-        <section className="content-section">
-          <div className="section-heading">
-            <div>
-              <h2>Programadas</h2>
-              <p>Preparação e execução dentro da janela.</p>
-            </div>
-            <span>{scheduled.length} hoje</span>
-          </div>
+        {scheduled.length > 0 ? (
           <div className="scheduled-grid">
             {scheduled.map((action) => (
               <ActionCard key={action.id} action={action} onOpen={onOpenAction} />
             ))}
           </div>
-        </section>
-      )}
+        ) : (
+          <article className="queue-empty-card">
+            <strong>Nenhuma manutenção programada</strong>
+            <p>Não há ações deste tipo na situação selecionada.</p>
+          </article>
+        )}
+      </section>
 
       <button className="qr-shortcut" type="button" onClick={onOpenQr}>
         <span className="qr-shortcut__icon"><QrIcon /></span>

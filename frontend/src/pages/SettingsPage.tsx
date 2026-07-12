@@ -100,9 +100,9 @@ export function SettingsPage({
       <article className="settings-card">
         <div>
           <strong>Interface</strong>
-          <p>Mockup 17 Definitivo · integração real da fila do operador.</p>
+          <p>Mockup 17 Definitivo · fila, QR, checklist, parada e ocorrência integrados.</p>
         </div>
-        <span className="status-chip">Fase 2</span>
+        <span className="status-chip">Fase 6.1</span>
       </article>
     </section>
   )
