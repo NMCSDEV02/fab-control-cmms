@@ -382,3 +382,115 @@ export interface FinalizeActionData {
   execucao_id: string
   status_acao: string
 }
+
+
+export interface QrAssetData {
+  id: string
+  linha_id?: string
+  tag?: string
+  qr_payload?: string
+  nome?: string
+  tipo?: string
+  criticidade?: string
+  status?: string
+  saude_pct?: number | string
+  horimetro_atual?: number | string
+  fabricante?: string
+  modelo?: string
+  numero_serie?: string
+  localizacao_tecnica?: string
+}
+
+export interface QrComponentData {
+  id: string
+  ativo_id?: string
+  tag?: string
+  nome?: string
+  tipo?: string
+  criticidade?: string
+  status?: string
+  horas_acumuladas?: number | string
+}
+
+export interface QrActionData {
+  id: string
+  os_id?: string
+  ativo_id?: string
+  componente_id?: string
+  plano_id?: string
+  origem?: string
+  tipo?: string
+  titulo?: string
+  descricao?: string
+  prioridade?: string
+  status?: string
+  gerado_em?: string
+  componente_nome?: string
+  plano?: {
+    nome?: string
+    tipo?: string
+    tempo_estimado_min?: number | string
+  }
+}
+
+export interface QrHistoryData {
+  id: string
+  ativo_id?: string
+  componente_id?: string
+  os_id?: string
+  acao_id?: string
+  execucao_id?: string
+  evento?: string
+  descricao?: string
+  usuario_id?: string
+  perfil?: string
+  criado_em?: string
+}
+
+export interface QrParameterData {
+  id: string
+  ativo_id?: string
+  componente_id?: string
+  parametro?: string
+  valor?: number | string
+  unidade?: string
+  origem?: string
+  registrado_por?: string
+  registrado_em?: string
+  criado_em?: string
+}
+
+export interface OperatorQrContextData {
+  found: boolean
+  tipo_contexto: string
+  mensagem_operador?: string
+  ativo: QrAssetData | null
+  componente: QrComponentData | null
+  componentes?: QrComponentData[]
+  acoes_pendentes?: QrActionData[]
+  proxima_acao?: QrActionData | null
+  historico_recente?: QrHistoryData[]
+  parametros_recentes?: QrParameterData[]
+  parametros_atuais?: QrParameterData[]
+  saude?: {
+    pct?: number
+    status?: string
+    acoes_abertas?: number
+    os_abertas?: number
+  } | null
+}
+
+export interface RegisterParameterInput {
+  ativo_id: string
+  componente_id?: string
+  parametro: string
+  valor: number
+  unidade?: string
+  origem?: string
+}
+
+export interface RegisterParameterData {
+  saved: boolean
+  parametro: QrParameterData
+  recalculo?: unknown
+}

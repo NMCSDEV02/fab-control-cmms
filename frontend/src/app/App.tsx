@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AppHeader, type ConnectionState } from '../components/AppHeader'
 import { BottomNavigation, type AppSection } from '../components/BottomNavigation'
-import { mockAsset } from '../mocks/operator'
 import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
 import { OperatorHome } from '../pages/OperatorHome'
@@ -102,11 +101,15 @@ export function App() {
     }
   }, [])
 
-  function openAction(action: OperatorAction) {
-    setSelectedActionId(action.id)
+  function openActionById(actionId: string) {
+    setSelectedActionId(actionId)
     setActionDetail(null)
     setView('action-detail')
-    void loadActionDetail(action.id)
+    void loadActionDetail(actionId)
+  }
+
+  function openAction(action: OperatorAction) {
+    openActionById(action.id)
   }
 
   function closeAction() {
@@ -301,7 +304,7 @@ export function App() {
                   onOpenQr={() => setSection('qr')}
                 />
               )}
-              {section === 'qr' && <QrPage asset={mockAsset} onNotify={notify} />}
+              {section === 'qr' && <QrPage onNotify={notify} onOpenAction={openActionById} />}
               {section === 'settings' && (
                 <SettingsPage
                   apiOnline={connectionState === 'online'}

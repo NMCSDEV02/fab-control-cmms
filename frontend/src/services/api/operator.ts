@@ -1,4 +1,4 @@
-import type { ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, OperatorActionDetailData, OperatorActionsData, RawOperatorCard, StartActionData } from '../../types/api'
+import type { ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterParameterData, RegisterParameterInput, StartActionData } from '../../types/api'
 import type {
   ActionGroup,
   ActionPriority,
@@ -223,5 +223,46 @@ export async function finalizeOperatorAction(
   )
 
   if (!response.data) throw new Error('A API não confirmou a finalização.')
+  return response.data
+}
+
+
+export async function getOperatorQrContext(
+  qrPayload: string,
+  signal?: AbortSignal,
+): Promise<OperatorQrContextData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<OperatorQrContextData>(
+    'operador.contexto_qr',
+    { token, qr_payload: qrPayload.trim() },
+    signal,
+  )
+
+  if (!response.data) throw new Error('A API não retornou o contexto do QR Code.')
+  return response.data
+}
+
+export async function registerOperatorParameter(
+  input: RegisterParameterInput,
+): Promise<RegisterParameterData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<RegisterParameterData>(
+    'operador.registrar_parametro',
+    {
+      token,
+      ativo_id: input.ativo_id,
+      componente_id: input.componente_id ?? '',
+      parametro: input.parametro.trim(),
+      valor: input.valor,
+      unidade: input.unidade?.trim() ?? '',
+      origem: input.origem ?? 'OPERADOR_QR',
+    },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou o registro do parâmetro.')
   return response.data
 }
