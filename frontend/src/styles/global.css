@@ -2549,3 +2549,162 @@ p {
 .maintenance-mode-banner--running strong {
   color: var(--green);
 }
+
+/* Operador 7.7 — cache, horímetro e evidências fotográficas */
+.background-refresh {
+  position: fixed;
+  top: calc(78px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 120;
+  transform: translateX(-50%);
+  padding: 7px 13px;
+  border: 1px solid #cbd9f4;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 7px 20px rgba(29, 56, 101, .12);
+  color: var(--blue);
+  font-size: .7rem;
+  font-weight: 850;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.horimeter-guidance,
+.horimeter-qr-note {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  margin-top: 11px;
+  padding: 12px 13px;
+  border: 1px solid #bfd1f5;
+  border-radius: 15px;
+  background: #f2f7ff;
+  color: #315078;
+}
+
+.horimeter-guidance strong,
+.horimeter-qr-note strong {
+  color: #174b98;
+  font-size: .78rem;
+}
+
+.horimeter-guidance span,
+.horimeter-qr-note span {
+  font-size: .69rem;
+  line-height: 1.42;
+}
+
+.horimeter-guidance button {
+  width: max-content;
+  min-height: 35px;
+  margin-top: 4px;
+  padding: 7px 12px;
+  border-radius: 11px;
+  font-size: .7rem;
+}
+
+.evidence-gallery,
+.evidence-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.evidence-thumbnail,
+.evidence-preview-grid figure {
+  position: relative;
+  overflow: hidden;
+  min-height: 118px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #eef3fb;
+}
+
+.evidence-thumbnail {
+  display: grid;
+  place-items: center;
+  color: var(--blue);
+  font-size: .72rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.evidence-thumbnail img,
+.evidence-preview-grid img {
+  width: 100%;
+  height: 118px;
+  display: block;
+  object-fit: cover;
+}
+
+.evidence-file-picker {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  min-height: 94px;
+  padding: 16px;
+  border: 1.5px dashed #9cb8ee;
+  border-radius: 16px;
+  background: #f6f9ff;
+  text-align: center;
+  cursor: pointer;
+}
+
+.evidence-file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.evidence-file-picker span {
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 750;
+}
+
+.evidence-file-picker b {
+  color: var(--blue);
+  font-size: .82rem;
+}
+
+.evidence-preview-grid figure {
+  display: grid;
+  grid-template-rows: 118px auto;
+}
+
+.evidence-preview-grid figcaption {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  background: #fff;
+}
+
+.evidence-preview-grid figcaption span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-preview-grid figcaption button {
+  min-height: 31px;
+  padding: 6px 9px;
+  border: 1px solid #efc4c6;
+  border-radius: 9px;
+  background: #fff5f5;
+  color: #aa292f;
+  font-size: .66rem;
+}
+
+@media (min-width: 700px) {
+  .evidence-gallery,
+  .evidence-preview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

@@ -118,6 +118,8 @@ export interface RawChecklistItem {
   status?: string
   respondido?: boolean
   evidencias_count?: number
+  evidencia_min_fotos?: number
+  evidencias?: EvidenceRecord[]
   input?: {
     tipo_resposta?: string
     componente?: string
@@ -176,7 +178,12 @@ export interface OperatorActionDetailData {
     status?: string
     saude_pct?: number
     horimetro_atual?: number
+    horimetro_modo?: 'MANUAL' | 'TELEMETRIA'
+    horimetro_atualizado_em?: string
+    horimetro_base_servico?: number | string
+    horimetro_base_servico_em?: string
   }
+  horimetro?: HorimeterSummary | null
   componente?: {
     id?: string
     tag?: string
@@ -322,6 +329,7 @@ export interface StartActionData {
   parada?: OperatorStopData | null
   parada_operacional?: OperatorStopData | null
   parada_manutencao?: MaintenanceStopData | null
+  horimetro?: HorimeterSummary | null
 }
 
 
@@ -359,6 +367,22 @@ export interface ChecklistBatchSaveData {
   message?: string
 }
 
+export interface EvidenceRecord {
+  id?: string
+  execucao_id?: string
+  acao_id?: string
+  checklist_execucao_id?: string
+  tipo?: string
+  nome_arquivo?: string
+  url?: string
+  thumbnail_url?: string
+  arquivo_id?: string
+  mime_type?: string
+  tamanho_bytes?: number
+  observacao?: string
+  criado_em?: string
+}
+
 export interface EvidenceInput {
   checklist_execucao_id: string
   tipo: string
@@ -367,21 +391,27 @@ export interface EvidenceInput {
   observacao?: string
 }
 
+export interface EvidencePhotoUploadInput {
+  checklist_execucao_id: string
+  nome_arquivo: string
+  mime_type: string
+  tamanho_bytes: number
+  base64_data: string
+  observacao?: string
+}
+
 export interface EvidenceSaveData {
   saved: boolean
+  uploaded?: boolean
   checklist_execucao_id?: string
   evidencias_count?: number
-  evidencia?: {
-    id?: string
-    execucao_id?: string
-    acao_id?: string
-    checklist_execucao_id?: string
-    tipo?: string
-    nome_arquivo?: string
-    url?: string
-    observacao?: string
-    criado_em?: string
-  }
+  minimo_fotos?: number
+  arquivo_id?: string
+  url?: string
+  thumbnail_url?: string
+  mime_type?: string
+  tamanho_bytes?: number
+  evidencia?: EvidenceRecord
 }
 
 export interface FinalizationValidationData {
@@ -530,6 +560,19 @@ export interface RegisterOccurrenceResponseData {
   notified_profiles?: string[]
 }
 
+export interface HorimeterSummary {
+  ativo_id?: string
+  total_horas: number
+  modo: 'MANUAL' | 'TELEMETRIA'
+  automatico: boolean
+  atualizado_em?: string
+  contador_servico_horas?: number | null
+  contador_servico_base?: number | null
+  contador_servico_reiniciado_em?: string
+  total_reiniciavel: false
+  contador_servico_reiniciavel: true
+}
+
 export interface QrAssetData {
   id: string
   linha_id?: string
@@ -541,6 +584,10 @@ export interface QrAssetData {
   status?: string
   saude_pct?: number | string
   horimetro_atual?: number | string
+  horimetro_modo?: 'MANUAL' | 'TELEMETRIA'
+  horimetro_atualizado_em?: string
+  horimetro_base_servico?: number | string
+  horimetro_base_servico_em?: string
   fabricante?: string
   modelo?: string
   numero_serie?: string
@@ -611,6 +658,7 @@ export interface OperatorQrContextData {
   tipo_contexto: string
   mensagem_operador?: string
   ativo: QrAssetData | null
+  horimetro?: HorimeterSummary | null
   componente: QrComponentData | null
   componentes?: QrComponentData[]
   acoes_pendentes?: QrActionData[]

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChecklistBatchItemInput,
-  EvidenceInput,
+  EvidencePhotoUploadInput,
+  EvidenceSaveData,
   OperatorActionDetailData,
   OperatorStopData,
   RawChecklistItem,
 } from '../types/api'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
+import { prepareEvidencePhoto } from '../services/media/imageEvidence'
 
 interface ChecklistExecutionPageProps {
   detail: OperatorActionDetailData
@@ -17,7 +19,7 @@ interface ChecklistExecutionPageProps {
   onBack: () => void
   onRefresh: () => Promise<void>
   onSaveProgress: (items: ChecklistBatchItemInput[]) => Promise<void>
-  onRegisterEvidence: (input: EvidenceInput) => Promise<void>
+  onRegisterEvidence: (inputs: EvidencePhotoUploadInput[]) => Promise<EvidenceSaveData[]>
   onFinish: (
     items: ChecklistBatchItemInput[],
     resultado: 'OK' | 'NOK',
@@ -31,6 +33,8 @@ type DraftAnswer = {
   answer: string
   observation: string
 }
+
+type SelectedEvidence = { file: File; previewUrl: string }
 
 type CompletionPhase = 'idle' | 'syncing' | 'success'
 
@@ -53,6 +57,22 @@ function optionsOf(item: RawChecklistItem): string[] {
   return []
 }
 
+
+function evidenceMinimum(item: RawChecklistItem): number {
+  const configured = Number(item.evidencia_min_fotos ?? 0)
+  if (Number.isFinite(configured) && configured > 0) return Math.min(10, Math.floor(configured))
+  return typeOf(item) === 'EVIDENCIA' || item.evidencia_obrigatoria ? 1 : 0
+}
+
+function normalizeTechnicalText(value?: string): string {
+  return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+}
+
+function isHourMeterItem(item: RawChecklistItem): boolean {
+  return normalizeTechnicalText(item.parametro_nome) === 'HORIMETRO' ||
+    normalizeTechnicalText(item.titulo).includes('HORIMETRO')
+}
+
 function existingAnswer(item: RawChecklistItem): string {
   const type = typeOf(item)
   if (['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(type)) {
@@ -64,7 +84,7 @@ function existingAnswer(item: RawChecklistItem): string {
 
 function answered(item: RawChecklistItem, draft: DraftAnswer): boolean {
   if (typeOf(item) === 'INSTRUCAO') return Boolean(draft.answer || item.respondido)
-  if (typeOf(item) === 'EVIDENCIA') return (item.evidencias_count ?? 0) > 0
+  if (typeOf(item) === 'EVIDENCIA') return (item.evidencias_count ?? 0) >= evidenceMinimum(item)
   return draft.answer.trim().length > 0
 }
 
@@ -111,20 +131,25 @@ export function ChecklistExecutionPage({
   const [drafts, setDrafts] = useState<Record<string, DraftAnswer>>({})
   const [message, setMessage] = useState('')
   const [showEvidence, setShowEvidence] = useState(false)
-  const [evidenceName, setEvidenceName] = useState('')
-  const [evidenceUrl, setEvidenceUrl] = useState('')
+  const [selectedEvidence, setSelectedEvidence] = useState<SelectedEvidence[]>([])
   const [evidenceObservation, setEvidenceObservation] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const [completionPhase, setCompletionPhase] = useState<CompletionPhase>('idle')
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null)
   const initializedDraftKeyRef = useRef('')
+  const selectedEvidenceRef = useRef<SelectedEvidence[]>([])
   const draftStorageKey = `fab-control:checklist-draft:${detail.execucao?.id || detail.acao.id}`
 
   useEffect(() => {
     const serverDrafts: Record<string, DraftAnswer> = {}
     for (const item of items) {
+      const serverAnswer = existingAnswer(item)
+      const automaticHourMeterValue =
+        isHourMeterItem(item) && detail.horimetro?.automatico
+          ? String(detail.horimetro.total_horas ?? detail.ativo?.horimetro_atual ?? '')
+          : ''
       serverDrafts[item.id] = {
-        answer: existingAnswer(item),
+        answer: serverAnswer || automaticHourMeterValue,
         observation: item.observacao ?? '',
       }
     }
@@ -172,6 +197,14 @@ export function ChecklistExecutionPage({
       // Armazenamento local indisponível: a execução continua usando memória.
     }
   }, [draftStorageKey, drafts])
+
+  useEffect(() => {
+    selectedEvidenceRef.current = selectedEvidence
+  }, [selectedEvidence])
+
+  useEffect(() => () => {
+    selectedEvidenceRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+  }, [])
 
   useEffect(() => {
     const startValue =
@@ -223,6 +256,14 @@ export function ChecklistExecutionPage({
     if (required(current) && !currentAnswered) {
       setMessage('Responda este item antes de continuar.')
       return
+    }
+    if (isHourMeterItem(current)) {
+      const reading = Number(currentDraft.answer.replace(',', '.'))
+      const currentTotal = Number(detail.horimetro?.total_horas ?? detail.ativo?.horimetro_atual ?? 0)
+      if (!Number.isFinite(reading) || reading < currentTotal) {
+        setMessage(`O horímetro total não pode ser menor que ${currentTotal} h.`)
+        return
+      }
     }
     if (
       typeOf(current) === 'OK_NOK' &&
@@ -308,6 +349,31 @@ export function ChecklistExecutionPage({
       return
     }
 
+    const evidenceMissing = items.filter(
+      (item) => evidenceMinimum(item) > (item.evidencias_count ?? 0),
+    )
+    if (evidenceMissing.length) {
+      setIndex(Math.max(0, items.findIndex((item) => item.id === evidenceMissing[0].id)))
+      const first = evidenceMissing[0]
+      setMessage(
+        `Faltam ${evidenceMinimum(first) - (first.evidencias_count ?? 0)} foto(s) obrigatória(s) neste item.`,
+      )
+      return
+    }
+
+    const invalidHourMeter = items.find((item) => {
+      if (!isHourMeterItem(item)) return false
+      const draft = drafts[item.id] ?? { answer: '', observation: '' }
+      const reading = Number(draft.answer.replace(',', '.'))
+      const currentTotal = Number(detail.horimetro?.total_horas ?? detail.ativo?.horimetro_atual ?? 0)
+      return !Number.isFinite(reading) || reading < currentTotal
+    })
+    if (invalidHourMeter) {
+      setIndex(items.findIndex((item) => item.id === invalidHourMeter.id))
+      setMessage('O horímetro total não pode diminuir.')
+      return
+    }
+
     const invalidNok = items.find((item) => {
       const draft = drafts[item.id] ?? { answer: '', observation: '' }
       return (
@@ -366,23 +432,41 @@ export function ChecklistExecutionPage({
 
   async function submitEvidence() {
     if (!current) return
-    if (!evidenceName.trim() || !evidenceUrl.trim()) {
-      setMessage('Informe o nome e o link da evidência.')
+    if (!selectedEvidence.length) {
+      setMessage('Tire ou selecione pelo menos uma foto.')
       return
     }
+
+    const currentCount = current.evidencias_count ?? 0
+    if (currentCount + selectedEvidence.length > 10) {
+      setMessage('O limite é de 10 fotos por item.')
+      return
+    }
+
     await onSaveProgress(buildPayload())
-    await onRegisterEvidence({
-      checklist_execucao_id: current.id,
-      tipo: 'FOTO',
-      nome_arquivo: evidenceName.trim(),
-      url: evidenceUrl.trim(),
-      observacao: evidenceObservation.trim(),
-    })
+    const prepared: EvidencePhotoUploadInput[] = []
+    for (const selected of selectedEvidence) {
+      prepared.push(
+        await prepareEvidencePhoto(
+          selected.file,
+          current.id,
+          evidenceObservation.trim(),
+        ),
+      )
+    }
+
+    await onRegisterEvidence(prepared)
+    selectedEvidence.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    setSelectedEvidence([])
     setShowEvidence(false)
-    setEvidenceName('')
-    setEvidenceUrl('')
     setEvidenceObservation('')
-    setMessage('Evidência registrada.')
+    const total = currentCount + prepared.length
+    const minimum = evidenceMinimum(current)
+    setMessage(
+      total >= minimum
+        ? 'Quantidade mínima de evidências atendida.'
+        : `Evidências registradas: ${total} de ${minimum}.`,
+    )
   }
 
   if (!items.length || !current || !currentDraft) {
@@ -413,6 +497,11 @@ export function ChecklistExecutionPage({
   const min = current.input?.limite_min ?? current.limite_min
   const max = current.input?.limite_max ?? current.limite_max
   const unit = current.input?.unidade ?? current.unidade ?? ''
+  const hourMeter = isHourMeterItem(current)
+  const currentHourMeter = Number(detail.horimetro?.total_horas ?? detail.ativo?.horimetro_atual ?? 0)
+  const serviceHours = detail.horimetro?.contador_servico_horas
+  const evidenceMin = evidenceMinimum(current)
+  const evidenceCount = current.evidencias_count ?? 0
 
   return (
     <section className="screen checklist-screen">
@@ -478,16 +567,39 @@ export function ChecklistExecutionPage({
           <div className="numeric-answer">
             <input
               type="number"
-              step="any"
+              step={hourMeter ? '0.1' : 'any'}
+              min={hourMeter ? currentHourMeter : undefined}
+              readOnly={hourMeter && Boolean(detail.horimetro?.automatico)}
               value={currentDraft.answer}
               onChange={(event) => updateDraft({ answer: event.target.value })}
               placeholder="Digite o valor"
             />
             {unit && <span>{unit}</span>}
-            {(min !== undefined || max !== undefined) && (
+            {(min !== undefined || max !== undefined) && !hourMeter && (
               <small>
                 Faixa: {min ?? '—'} a {max ?? '—'} {unit}
               </small>
+            )}
+            {hourMeter && (
+              <div className="horimeter-guidance">
+                <strong>Horímetro total acumulado</strong>
+                <span>Último valor: {currentHourMeter} h · não pode ser zerado ou reduzido.</span>
+                <span>
+                  {detail.horimetro?.automatico
+                    ? 'Leitura automática por telemetria. Confirme o valor exibido.'
+                    : 'Leitura manual: informe o valor mostrado no equipamento.'}
+                </span>
+                <span>
+                  {serviceHours === null || serviceHours === undefined
+                    ? 'Contador desde o último serviço ainda não foi reiniciado.'
+                    : `${serviceHours} h desde o último serviço.`}
+                </span>
+                {!detail.horimetro?.automatico && !currentDraft.answer && (
+                  <button type="button" onClick={() => updateDraft({ answer: String(currentHourMeter) })}>
+                    Usar {currentHourMeter} h
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -542,20 +654,39 @@ export function ChecklistExecutionPage({
           <div className="evidence-answer">
             <div
               className={
-                (current.evidencias_count ?? 0) > 0
+                evidenceCount >= evidenceMin
                   ? 'evidence-status evidence-status--done'
                   : 'evidence-status'
               }
             >
               <strong>
-                {(current.evidencias_count ?? 0) > 0
-                  ? 'Evidência anexada'
+                {evidenceCount >= evidenceMin
+                  ? 'Evidência validada'
                   : 'Evidência necessária'}
               </strong>
-              <span>{current.evidencias_count ?? 0} arquivo(s) registrado(s)</span>
+              <span>{evidenceCount} de {evidenceMin} foto(s) obrigatória(s)</span>
             </div>
+            {(current.evidencias?.length ?? 0) > 0 && (
+              <div className="evidence-gallery">
+                {current.evidencias?.map((photo, photoIndex) => (
+                  <a
+                    href={photo.url || '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    key={photo.id || `${photo.nome_arquivo}-${photoIndex}`}
+                    className="evidence-thumbnail"
+                  >
+                    {photo.thumbnail_url ? (
+                      <img src={photo.thumbnail_url} alt={photo.nome_arquivo || `Evidência ${photoIndex + 1}`} />
+                    ) : (
+                      <span>Foto {photoIndex + 1}</span>
+                    )}
+                  </a>
+                ))}
+              </div>
+            )}
             <button type="button" onClick={() => setShowEvidence(true)}>
-              Anexar evidência
+              {evidenceCount ? 'Adicionar fotos' : 'Tirar foto'}
             </button>
           </div>
         )}
@@ -587,40 +718,69 @@ export function ChecklistExecutionPage({
               <span>Evidência do checklist</span>
               <h2>{current.titulo}</h2>
             </div>
-            <label>
-              <span>Nome do arquivo</span>
+            <label className="evidence-file-picker">
+              <span>Fotos da evidência</span>
               <input
-                value={evidenceName}
-                onChange={(event) => setEvidenceName(event.target.value)}
-                placeholder="foto-equipamento.jpg"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                onChange={(event) => {
+                  const files = Array.from(event.currentTarget.files ?? [])
+                  setSelectedEvidence((currentFiles) => {
+                    const remaining = Math.max(0, 10 - evidenceCount - currentFiles.length)
+                    const additions = files.slice(0, remaining).map((file) => ({
+                      file,
+                      previewUrl: URL.createObjectURL(file),
+                    }))
+                    return [...currentFiles, ...additions]
+                  })
+                  event.currentTarget.value = ''
+                }}
               />
+              <b>Abrir câmera ou galeria</b>
             </label>
-            <label>
-              <span>Link do arquivo</span>
-              <input
-                type="url"
-                value={evidenceUrl}
-                onChange={(event) => setEvidenceUrl(event.target.value)}
-                placeholder="https://drive.google.com/..."
-              />
-            </label>
+            {selectedEvidence.length > 0 && (
+              <div className="evidence-preview-grid">
+                {selectedEvidence.map((selected, photoIndex) => (
+                  <figure key={`${selected.file.name}-${photoIndex}`}>
+                    <img src={selected.previewUrl} alt={`Prévia ${photoIndex + 1}`} />
+                    <figcaption>
+                      <span>{selected.file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          URL.revokeObjectURL(selected.previewUrl)
+                          setSelectedEvidence((itemsValue) => itemsValue.filter((_, indexValue) => indexValue !== photoIndex))
+                        }}
+                      >
+                        Remover
+                      </button>
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
             <label>
               <span>Observação</span>
               <textarea
                 value={evidenceObservation}
                 onChange={(event) => setEvidenceObservation(event.target.value)}
-                placeholder="Descreva o que a evidência comprova."
+                placeholder="Descreva o que as fotos comprovam."
               />
             </label>
             <small>
-              Nesta versão, o back-end atual registra uma URL. O upload direto da
-              câmera será implementado quando o serviço de arquivos for criado.
+              Exigência configurada pelo administrador: {evidenceMin} foto(s). Já registradas: {evidenceCount}.
             </small>
             <div className="evidence-modal__actions">
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setShowEvidence(false)}
+                onClick={() => {
+                  selectedEvidence.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+                  setSelectedEvidence([])
+                  setShowEvidence(false)
+                }}
               >
                 Cancelar
               </button>
@@ -629,7 +789,7 @@ export function ChecklistExecutionPage({
                 className="primary-button"
                 disabled={evidenceSaving}
               >
-                {evidenceSaving ? 'Enviando…' : 'Registrar evidência'}
+                {evidenceSaving ? 'Enviando…' : `Enviar ${selectedEvidence.length || ''} foto(s)`}
               </button>
             </div>
           </form>

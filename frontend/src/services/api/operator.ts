@@ -1,4 +1,4 @@
-import type { ActiveStopResponseData, FinishStopInput, FinishStopResponseData, ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, MaintenanceStartDecision, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterOccurrenceInput, RegisterOccurrenceResponseData, RegisterParameterData, RegisterParameterInput, StartActionData, StartStopInput, StartStopResponseData } from '../../types/api'
+import type { ActiveStopResponseData, FinishStopInput, FinishStopResponseData, ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidencePhotoUploadInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, MaintenanceStartDecision, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterOccurrenceInput, RegisterOccurrenceResponseData, RegisterParameterData, RegisterParameterInput, StartActionData, StartStopInput, StartStopResponseData } from '../../types/api'
 import type {
   ActionGroup,
   ActionPriority,
@@ -243,6 +243,33 @@ export async function registerOperatorEvidence(
   )
 
   if (!response.data) throw new Error('A API não confirmou a evidência.')
+  return response.data
+}
+
+export async function uploadOperatorEvidencePhoto(
+  actionId: string,
+  executionId: string,
+  input: EvidencePhotoUploadInput,
+): Promise<EvidenceSaveData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<EvidenceSaveData>(
+    'operador.upload_evidencia_foto',
+    {
+      token,
+      acao_id: actionId,
+      execucao_id: executionId,
+      checklist_execucao_id: input.checklist_execucao_id,
+      nome_arquivo: input.nome_arquivo,
+      mime_type: input.mime_type,
+      tamanho_bytes: input.tamanho_bytes,
+      base64_data: input.base64_data,
+      observacao: input.observacao ?? '',
+    },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou o upload da foto.')
   return response.data
 }
 

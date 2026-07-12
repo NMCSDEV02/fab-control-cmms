@@ -9,16 +9,31 @@ import { QrPage } from '../pages/QrPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { hasApiConfiguration } from '../services/api/config'
 import {
-  getOperatorActionDetail,
-  getOperatorActiveStop,
   finalizeOperatorAction,
+  getOperatorActionDetail,
   getOperatorActions,
+  getOperatorActiveStop,
   getSystemHealth,
-  registerOperatorEvidence,
   saveOperatorChecklistBatch,
   startOperatorAction,
+  uploadOperatorEvidencePhoto,
 } from '../services/api/operator'
-import type { ChecklistBatchItemInput, EvidenceInput, MaintenanceStartDecision, OperatorActionDetailData, OperatorStopData } from '../types/api'
+import {
+  clearOperatorCache,
+  readActionDetailCache,
+  readActionsCache,
+  removeActionDetailCache,
+  writeActionDetailCache,
+  writeActionsCache,
+} from '../services/storage/operatorCache'
+import type {
+  ChecklistBatchItemInput,
+  EvidencePhotoUploadInput,
+  EvidenceSaveData,
+  MaintenanceStartDecision,
+  OperatorActionDetailData,
+  OperatorStopData,
+} from '../types/api'
 import type { OperatorAction } from '../types/operator'
 
 type AppView = 'navigation' | 'action-detail' | 'checklist'
@@ -38,6 +53,7 @@ export function App() {
   const [selectedActionId, setSelectedActionId] = useState('')
   const [actionDetail, setActionDetail] = useState<OperatorActionDetailData | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [detailRefreshing, setDetailRefreshing] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [starting, setStarting] = useState(false)
   const [savingChecklist, setSavingChecklist] = useState(false)
@@ -60,7 +76,13 @@ export function App() {
       return
     }
 
-    setLoading(true)
+    const cached = await readActionsCache()
+    if (cached !== null) {
+      setActions(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setError('')
     setConnectionState('checking')
 
@@ -69,13 +91,9 @@ export function App() {
       setApiVersion(health.version)
       setConnectionState('online')
 
-      try {
-        const operatorActions = await getOperatorActions()
-        setActions(operatorActions)
-      } catch (cause) {
-        const message = cause instanceof Error ? cause.message : 'Falha ao carregar ações.'
-        setError(message)
-      }
+      const operatorActions = await getOperatorActions()
+      setActions(operatorActions)
+      await writeActionsCache(operatorActions)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Erro desconhecido na integração.'
       setError(message)
@@ -89,12 +107,23 @@ export function App() {
     void refresh()
   }, [refresh, configurationRevision])
 
-  const loadActionDetail = useCallback(async (actionId: string) => {
-    setDetailLoading(true)
+  const loadActionDetail = useCallback(async (actionId: string, forceBlocking = false) => {
     setDetailError('')
+    const cached = forceBlocking ? null : await readActionDetailCache(actionId)
+
+    if (cached) {
+      setActionDetail(cached)
+      setDetailLoading(false)
+      setDetailRefreshing(true)
+    } else {
+      setDetailLoading(true)
+      setDetailRefreshing(false)
+    }
+
     try {
       const detail = await getOperatorActionDetail(actionId)
       setActionDetail(detail)
+      await writeActionDetailCache(actionId, detail)
       try {
         const stop = await getOperatorActiveStop({
           ativo_id: detail.ativo?.id || detail.acao.ativo_id,
@@ -105,15 +134,19 @@ export function App() {
         setActiveStop(null)
       }
     } catch (cause) {
-      setDetailError(cause instanceof Error ? cause.message : 'Falha ao abrir a ação.')
+      const message = cause instanceof Error ? cause.message : 'Falha ao abrir a ação.'
+      if (!cached) setDetailError(message)
+      else notify('Exibindo dados salvos. Atualização online indisponível.')
     } finally {
       setDetailLoading(false)
+      setDetailRefreshing(false)
     }
   }, [])
 
   function openActionById(actionId: string) {
     setSelectedActionId(actionId)
     setActionDetail(null)
+    setDetailLoading(true)
     setView('action-detail')
     void loadActionDetail(actionId)
   }
@@ -138,14 +171,15 @@ export function App() {
     try {
       const result = await startOperatorAction(selectedActionId, decision)
       setActiveStop(result.parada_operacional ?? result.parada ?? activeStop)
+      await removeActionDetailCache(selectedActionId)
 
-      if (result.modo_execucao_manutencao === 'SEM_PARADA') {
-        notify('Execução iniciada sem parada do equipamento.')
-      } else {
-        notify('Execução iniciada com parada técnica da manutenção.')
-      }
+      notify(
+        result.modo_execucao_manutencao === 'SEM_PARADA'
+          ? 'Execução iniciada sem parada do equipamento.'
+          : 'Execução iniciada com parada técnica da manutenção.',
+      )
 
-      await Promise.all([loadActionDetail(selectedActionId), refresh()])
+      await Promise.all([loadActionDetail(selectedActionId, true), refresh()])
       setView('checklist')
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao iniciar execução.'
@@ -156,11 +190,9 @@ export function App() {
     }
   }
 
-
-
   async function refreshCurrentDetail() {
     if (!selectedActionId) return
-    await loadActionDetail(selectedActionId)
+    await loadActionDetail(selectedActionId, true)
   }
 
   async function saveChecklistProgress(items: ChecklistBatchItemInput[]) {
@@ -170,8 +202,7 @@ export function App() {
     try {
       const result = await saveOperatorChecklistBatch(selectedActionId, items)
       if (result.error_count > 0) {
-        const first = result.erros?.[0]?.message || 'Alguns itens não foram salvos.'
-        throw new Error(first)
+        throw new Error(result.erros?.[0]?.message || 'Alguns itens não foram salvos.')
       }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao salvar o progresso.'
@@ -183,16 +214,29 @@ export function App() {
     }
   }
 
-  async function saveEvidence(input: EvidenceInput) {
+  async function saveEvidencePhotos(inputs: EvidencePhotoUploadInput[]): Promise<EvidenceSaveData[]> {
     if (!selectedActionId || !actionDetail?.execucao?.id) {
       throw new Error('Execução não identificada para registrar evidência.')
     }
+    if (!inputs.length) return []
+
     setSavingEvidence(true)
     setDetailError('')
     try {
-      await registerOperatorEvidence(selectedActionId, actionDetail.execucao.id, input)
-      notify('Evidência registrada')
+      const saved: EvidenceSaveData[] = []
+      for (const input of inputs) {
+        saved.push(
+          await uploadOperatorEvidencePhoto(
+            selectedActionId,
+            actionDetail.execucao.id,
+            input,
+          ),
+        )
+      }
+      await removeActionDetailCache(selectedActionId)
       await refreshCurrentDetail()
+      notify(`${saved.length} foto(s) registrada(s)`)
+      return saved
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao registrar evidência.'
       setDetailError(message)
@@ -209,22 +253,16 @@ export function App() {
     observacao: string,
     durationSeconds: number,
   ) {
-    if (!selectedActionId) {
-      throw new Error('Ação não identificada para finalização.')
-    }
+    if (!selectedActionId) throw new Error('Ação não identificada para finalização.')
 
     setFinalizing(true)
     setDetailError('')
-
     try {
       const saved = await saveOperatorChecklistBatch(selectedActionId, items)
       if (saved.error_count > 0) {
-        const first = saved.erros?.[0]?.message || 'Alguns itens não foram salvos.'
-        throw new Error(first)
+        throw new Error(saved.erros?.[0]?.message || 'Alguns itens não foram salvos.')
       }
 
-      // O endpoint final já verifica respostas, evidências e bloqueios.
-      // A aprovação continua sendo responsabilidade da gestão.
       const result = await finalizeOperatorAction(selectedActionId, {
         resultado,
         observacao,
@@ -232,11 +270,9 @@ export function App() {
       })
 
       setActiveStop(result.parada_operacional ?? result.parada ?? activeStop)
+      await removeActionDetailCache(selectedActionId)
     } catch (cause) {
-      const message =
-        cause instanceof Error
-          ? cause.message
-          : 'Falha ao finalizar a execução.'
+      const message = cause instanceof Error ? cause.message : 'Falha ao finalizar a execução.'
       setDetailError(message)
       throw cause
     } finally {
@@ -269,6 +305,7 @@ export function App() {
   }
 
   function configurationSaved() {
+    void clearOperatorCache()
     setConfigurationRevision((value) => value + 1)
     setSection('home')
     setView('navigation')
@@ -280,11 +317,11 @@ export function App() {
     setSection(next)
   }
 
-  const operationOverlay = detailLoading
+  const operationOverlay = detailLoading && !actionDetail
     ? {
         visible: true,
         title: 'Carregando ação',
-        description: 'Consultando análise técnica e checklist.',
+        description: 'Primeiro acesso: consultando análise técnica e checklist.',
       }
     : starting
       ? {
@@ -301,8 +338,8 @@ export function App() {
         : savingEvidence
           ? {
               visible: true,
-              title: 'Registrando evidência',
-              description: 'Sincronizando o arquivo com a execução.',
+              title: 'Enviando evidências',
+              description: 'Compactando e sincronizando as fotos com a execução.',
             }
           : {
               visible: false,
@@ -313,21 +350,17 @@ export function App() {
   return (
     <div className="app-stage">
       <section className="app-frame">
-        <AppHeader
-          operatorName="Carlos"
-          shift="Turno A"
-          connectionState={connectionState}
-        />
+        <AppHeader operatorName="Carlos" shift="Turno A" connectionState={connectionState} />
 
         <main className="app-content">
           {view === 'action-detail' ? (
             <ActionDetailPage
               detail={actionDetail}
-              loading={detailLoading}
+              loading={detailLoading && !actionDetail}
               error={detailError}
               starting={starting}
               onBack={closeAction}
-              onRetry={() => void loadActionDetail(selectedActionId)}
+              onRetry={() => void loadActionDetail(selectedActionId, true)}
               onStart={startAction}
               activeStop={activeStop}
               onContinue={() => setView('checklist')}
@@ -342,7 +375,7 @@ export function App() {
               onBack={() => setView('action-detail')}
               onRefresh={refreshCurrentDetail}
               onSaveProgress={saveChecklistProgress}
-              onRegisterEvidence={saveEvidence}
+              onRegisterEvidence={saveEvidencePhotos}
               onFinish={finishOperatorExecution}
               onReturnHome={returnHomeAfterCompletion}
             />
@@ -373,8 +406,10 @@ export function App() {
           )}
         </main>
 
-        {view === 'navigation' && (
-          <BottomNavigation active={section} onChange={changeSection} />
+        {view === 'navigation' && <BottomNavigation active={section} onChange={changeSection} />}
+
+        {detailRefreshing && actionDetail && (
+          <div className="background-refresh" role="status">Atualizando dados…</div>
         )}
 
         <OperationOverlay

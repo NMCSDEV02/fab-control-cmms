@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { QrIcon, ScanIcon } from '../components/Icons'
-import { finishOperatorStop, getOperatorQrContext, registerOperatorOccurrence, registerOperatorParameter, startOperatorStop } from '../services/api/operator'
-import type { FinishStopResponseData, OperatorQrContextData, QrParameterData } from '../types/api'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
+import { QrIcon, ScanIcon } from '../components/Icons'
+import {
+  finishOperatorStop,
+  getOperatorQrContext,
+  registerOperatorOccurrence,
+  registerOperatorParameter,
+  startOperatorStop,
+} from '../services/api/operator'
+import { readQrContextCache, writeQrContextCache } from '../services/storage/operatorCache'
+import type {
+  FinishStopResponseData,
+  OperatorQrContextData,
+  QrParameterData,
+} from '../types/api'
 
 type BarcodeDetectorResult = { rawValue?: string }
-type BarcodeDetectorInstance = {
-  detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]>
-}
+type BarcodeDetectorInstance = { detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]> }
 type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorInstance
 
 export interface QrPageProps {
@@ -19,19 +28,12 @@ function formatDate(value?: string): string {
   if (!value) return 'Data não informada'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date)
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date)
 }
 
-function displayParameterName(value?: string): string {
+function displayName(value?: string): string {
   if (!value) return 'Parâmetro'
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
+  return value.toLowerCase().split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
 }
 
 function latestParameters(context: OperatorQrContextData): QrParameterData[] {
@@ -45,18 +47,17 @@ function latestParameters(context: OperatorQrContextData): QrParameterData[] {
       return true
     })
   }
-
-  if (context.ativo?.horimetro_atual !== undefined && context.ativo?.horimetro_atual !== '') {
+  if (context.ativo?.horimetro_atual !== undefined && context.ativo.horimetro_atual !== '') {
     return [{
       id: 'HORIMETRO-ATIVO',
       ativo_id: context.ativo.id,
       parametro: 'HORIMETRO',
       valor: context.ativo.horimetro_atual,
       unidade: 'h',
-      origem: 'ATIVO',
+      origem: context.horimetro?.automatico ? 'TELEMETRIA' : 'ATIVO',
+      registrado_em: context.horimetro?.atualizado_em,
     }]
   }
-
   return []
 }
 
@@ -74,7 +75,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [parameterUnit, setParameterUnit] = useState('h')
   const [componentId, setComponentId] = useState('')
   const [savingParameter, setSavingParameter] = useState(false)
-  const [stopModalOpen, setStopModalOpen] = useState(false)
+  const [stopOpen, setStopOpen] = useState(false)
   const [stopReason, setStopReason] = useState('')
   const [savingStop, setSavingStop] = useState(false)
   const [returnCategory, setReturnCategory] = useState('')
@@ -89,8 +90,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const detectorTimerRef = useRef<number | null>(null)
-
+  const scanTimerRef = useRef<number | null>(null)
   const parameters = useMemo(() => context ? latestParameters(context) : [], [context])
 
   async function lookup(payload = query) {
@@ -100,27 +100,38 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
       return
     }
 
-    setLoading(true)
+    const cached = await readQrContextCache(normalized)
+    if (cached?.found) {
+      setContext(cached)
+      setLastQuery(normalized)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setError('')
+
     try {
       const result = await getOperatorQrContext(normalized)
-      setLastQuery(normalized)
       setContext(result)
+      setLastQuery(normalized)
+      await writeQrContextCache(normalized, result)
       if (!result.found) setError(result.mensagem_operador || 'Equipamento não encontrado.')
       else onNotify(result.mensagem_operador || 'Equipamento identificado')
     } catch (cause) {
-      setContext(null)
-      setError(cause instanceof Error ? cause.message : 'Falha ao consultar o QR Code.')
+      if (!cached) {
+        setContext(null)
+        setError(cause instanceof Error ? cause.message : 'Falha ao consultar o QR Code.')
+      } else {
+        onNotify('Exibindo consulta salva. Atualização online indisponível.')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   function stopCamera() {
-    if (detectorTimerRef.current !== null) {
-      window.clearTimeout(detectorTimerRef.current)
-      detectorTimerRef.current = null
-    }
+    if (scanTimerRef.current !== null) window.clearTimeout(scanTimerRef.current)
+    scanTimerRef.current = null
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
@@ -131,32 +142,23 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
   useEffect(() => {
     if (!cameraActive) return
-
     let cancelled = false
-    const run = async () => {
+
+    const start = async () => {
       const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector
       if (!Detector) {
         setCameraError('Este navegador não possui leitura nativa de QR. Use o campo de código abaixo.')
         setCameraActive(false)
         return
       }
-
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        })
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop())
-          return
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+        if (cancelled) return stream.getTracks().forEach((track) => track.stop())
         streamRef.current = stream
-        const video = videoRef.current
-        if (!video) return
-        video.srcObject = stream
-        await video.play()
+        if (!videoRef.current) return
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
         const detector = new Detector({ formats: ['qr_code'] })
-
         const scan = async () => {
           if (cancelled || !videoRef.current) return
           try {
@@ -169,22 +171,18 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
               return
             }
           } catch {
-            // Quadros sem leitura são esperados durante a varredura.
+            // Quadro sem QR é esperado durante a leitura.
           }
-          detectorTimerRef.current = window.setTimeout(() => void scan(), 350)
+          scanTimerRef.current = window.setTimeout(() => void scan(), 350)
         }
         void scan()
       } catch (cause) {
-        setCameraError(
-          cause instanceof Error
-            ? `Não foi possível abrir a câmera: ${cause.message}`
-            : 'Não foi possível abrir a câmera.',
-        )
+        setCameraError(cause instanceof Error ? `Não foi possível abrir a câmera: ${cause.message}` : 'Não foi possível abrir a câmera.')
         setCameraActive(false)
       }
     }
 
-    void run()
+    void start()
     return () => {
       cancelled = true
       stopCamera()
@@ -194,11 +192,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   async function saveParameter() {
     if (!context?.ativo?.id) return
     const value = Number(parameterValue.replace(',', '.'))
-    if (!parameterName.trim() || !Number.isFinite(value)) {
-      onNotify('Informe o parâmetro e um valor numérico válido')
-      return
-    }
-
+    if (!Number.isFinite(value)) return onNotify('Informe um valor numérico válido')
     setSavingParameter(true)
     try {
       await registerOperatorParameter({
@@ -206,7 +200,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         componente_id: componentId || context.componente?.id || '',
         parametro: parameterName,
         valor: value,
-        unidade: parameterUnit,
+        unidade: parameterName === 'HORIMETRO' ? 'h' : parameterUnit,
       })
       setParameterOpen(false)
       setParameterValue('')
@@ -223,14 +217,10 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     if (!context?.ativo?.id) return
     setSavingStop(true)
     try {
-      await startOperatorStop({
-        ativo_id: context.ativo.id,
-        componente_id: context.componente?.id || '',
-        motivo_parada: stopReason.trim() || 'Parada operacional iniciada pelo operador.',
-      })
-      setStopModalOpen(false)
+      await startOperatorStop({ ativo_id: context.ativo.id, componente_id: context.componente?.id || '', motivo_parada: stopReason.trim() || 'Parada operacional iniciada pelo operador.' })
+      setStopOpen(false)
       setStopReason('')
-      onNotify('Parada iniciada')
+      onNotify('Parada operacional iniciada')
       await lookup(lastQuery || context.ativo.tag || context.ativo.id)
     } catch (cause) {
       onNotify(cause instanceof Error ? cause.message : 'Falha ao iniciar a parada')
@@ -250,14 +240,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         justificativa_divergencia: returnJustification.trim(),
       })
       setReturnValidation(result)
-
-      if (result.requires_justification) {
-        setStopModalOpen(true)
-        onNotify('Justifique o intervalo antes do retorno')
-        return
-      }
-
-      setStopModalOpen(false)
+      if (result.requires_justification) return onNotify('Justifique o intervalo antes do retorno')
+      setStopOpen(false)
       setReturnValidation(null)
       setReturnCategory('')
       setReturnJustification('')
@@ -272,11 +256,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
   async function saveOccurrence() {
     if (!context?.ativo?.id) return
-    if (!occurrenceTitle.trim() || occurrenceDescription.trim().length < 5) {
-      onNotify('Informe o título e uma descrição da ocorrência')
-      return
-    }
-
+    if (!occurrenceTitle.trim() || occurrenceDescription.trim().length < 5) return onNotify('Informe título e descrição da ocorrência')
     setSavingOccurrence(true)
     try {
       await registerOperatorOccurrence({
@@ -289,9 +269,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
       setOccurrenceOpen(false)
       setOccurrenceTitle('')
       setOccurrenceDescription('')
-      setOccurrenceSeverity('MEDIA')
-      setOccurrenceComponentId('')
-      onNotify('Ocorrência registrada e enviada para análise')
+      onNotify('Ocorrência enviada para análise')
       await lookup(lastQuery || context.ativo.tag || context.ativo.id)
     } catch (cause) {
       onNotify(cause instanceof Error ? cause.message : 'Falha ao registrar ocorrência')
@@ -304,9 +282,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     stopCamera()
     setContext(null)
     setError('')
-    setLastQuery('')
     setQuery('')
-    setParameterOpen(false)
+    setLastQuery('')
   }
 
   if (!context?.found) {
@@ -317,66 +294,20 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
           <h1>Equipamento por QR Code</h1>
           <p>Leia o código ou informe a TAG para consultar ações, parâmetros e histórico.</p>
         </header>
-
         <article className="qr-reader-card">
           <div className={cameraActive ? 'qr-camera qr-camera--active' : 'qr-camera'}>
-            {cameraActive ? (
-              <>
-                <video ref={videoRef} muted playsInline aria-label="Câmera para leitura de QR Code" />
-                <div className="qr-camera__frame" aria-hidden="true" />
-                <button type="button" onClick={stopCamera}>Cancelar câmera</button>
-              </>
-            ) : (
-              <span className="qr-reader-card__icon"><QrIcon /></span>
-            )}
+            {cameraActive ? <><video ref={videoRef} muted playsInline /><div className="qr-camera__frame" /><button type="button" onClick={stopCamera}>Cancelar câmera</button></> : <span className="qr-reader-card__icon"><QrIcon /></span>}
           </div>
-
           <h2>{cameraActive ? 'Aponte para o QR Code' : 'Identificar equipamento'}</h2>
-          <p>A câmera é usada somente durante a leitura. Também é possível digitar a TAG ou o ID.</p>
-
-          {!cameraActive && (
-            <button
-              className="qr-camera-button"
-              type="button"
-              onClick={() => {
-                setCameraError('')
-                setCameraActive(true)
-              }}
-            >
-              <ScanIcon /> Abrir câmera
-            </button>
-          )}
-
+          <p>A câmera é usada apenas durante a leitura. Também é possível digitar a TAG ou o ID.</p>
+          {!cameraActive && <button className="qr-camera-button" type="button" onClick={() => { setCameraError(''); setCameraActive(true) }}><ScanIcon /> Abrir câmera</button>}
           {cameraError && <div className="inline-warning"><span>{cameraError}</span></div>}
-
-          <form
-            className="qr-manual-form"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void lookup()
-            }}
-          >
-            <label>
-              <span>QR, TAG ou ID</span>
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Ex.: TMP-001 ou ATV-TMP-001"
-                autoCapitalize="characters"
-                autoComplete="off"
-              />
-            </label>
+          <form className="qr-manual-form" onSubmit={(event) => { event.preventDefault(); void lookup() }}>
+            <label><span>QR, TAG ou ID</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: TMP-001" autoCapitalize="characters" /></label>
             <button type="submit" disabled={loading}>{loading ? 'Consultando…' : 'Consultar'}</button>
           </form>
         </article>
-
-        {error && (
-          <article className="state-panel state-panel--error qr-error-panel">
-            <span className="state-panel__kicker">Consulta não concluída</span>
-            <h2>{error}</h2>
-            <button type="button" onClick={() => void lookup(lastQuery || query)}>Tentar novamente</button>
-          </article>
-        )}
+        {error && <article className="state-panel state-panel--error qr-error-panel"><h2>{error}</h2><button type="button" onClick={() => void lookup(lastQuery || query)}>Tentar novamente</button></article>}
       </section>
     )
   }
@@ -387,269 +318,110 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
   return (
     <section className="screen qr-asset-page">
-      {action?.id && (
-        <button className="qr-action-available" type="button" onClick={() => onOpenAction(action.id)}>
-          <div>
-            <span>Ação disponível</span>
-            <strong>{action.titulo || action.plano?.nome || 'Ação de manutenção'}</strong>
-            <small>{action.componente_nome || action.componente_id || asset?.nome}</small>
-          </div>
-          <b>Abrir agora →</b>
-        </button>
-      )}
+      {action?.id && <button className="qr-action-available" type="button" onClick={() => onOpenAction(action.id)}><div><span>Ação disponível</span><strong>{action.titulo || action.plano?.nome || 'Ação de manutenção'}</strong><small>{action.componente_nome || action.componente_id || asset?.nome}</small></div><b>Abrir agora →</b></button>}
 
       <article className="asset-hero asset-hero--real">
-        <div className="asset-hero__status-line">
-          <span className="status-chip status-chip--online">Equipamento identificado</span>
-          <button type="button" onClick={reset}>Ler outro</button>
-        </div>
+        <div className="asset-hero__status-line"><span className="status-chip status-chip--online">Equipamento identificado</span><button type="button" onClick={reset}>Ler outro</button></div>
         <h1>{asset?.tag || asset?.id} — {asset?.nome || 'Equipamento'}</h1>
         <p>{asset?.localizacao_tecnica || asset?.tipo || 'Localização não informada'}</p>
         <div className="asset-data-grid">
           <div><span>Status</span><strong>{context.parada_ativa ? 'PARADO' : (asset?.status || 'Não informado')}</strong></div>
           <div><span>Saúde</span><strong>{health !== undefined && health !== '' ? `${health}%` : 'Não informada'}</strong></div>
           <div><span>Criticidade</span><strong>{asset?.criticidade || 'Não informada'}</strong></div>
-          <div><span>Horímetro</span><strong>{asset?.horimetro_atual !== undefined && asset?.horimetro_atual !== '' ? `${asset.horimetro_atual} h` : 'Não informado'}</strong></div>
+          <div><span>Horímetro total</span><strong>{asset?.horimetro_atual !== undefined && asset?.horimetro_atual !== '' ? `${asset.horimetro_atual} h` : 'Não informado'}</strong></div>
+          <div><span>Desde último serviço</span><strong>{context.horimetro?.contador_servico_horas === null || context.horimetro?.contador_servico_horas === undefined ? 'Não iniciado' : `${context.horimetro.contador_servico_horas} h`}</strong></div>
+          <div><span>Leitura</span><strong>{context.horimetro?.automatico ? 'Automática' : 'Manual'}</strong></div>
         </div>
       </article>
 
       {context.parada_ativa && <ActiveStopBanner stop={context.parada_ativa} />}
 
       <section className="content-section">
-        <div className="section-heading section-heading--button">
-          <div>
-            <h2>Parâmetros do equipamento</h2>
-            <p>Últimas leituras registradas para o ativo e seus componentes.</p>
+        <div className="section-heading section-heading--button"><div><h2>Parâmetros do equipamento</h2><p>Últimas leituras registradas.</p></div><button type="button" onClick={() => setParameterOpen((value) => !value)}>{parameterOpen ? 'Fechar' : 'Registrar leitura'}</button></div>
+        {parameterOpen && <article className="parameter-entry-card">
+          {parameterName === 'HORIMETRO' && <div className="horimeter-qr-note"><strong>Horímetro acumulativo</strong><span>O total não pode diminuir nem ser zerado. A administração reinicia somente o contador desde o último serviço.</span></div>}
+          <div className="parameter-form-grid">
+            <label><span>Parâmetro</span><select value={parameterName} onChange={(event) => { setParameterName(event.target.value); if (event.target.value === 'HORIMETRO') setParameterUnit('h') }}><option value="HORIMETRO">Horímetro</option><option value="TEMPERATURA">Temperatura</option><option value="VIBRACAO">Vibração</option><option value="PRESSAO">Pressão</option><option value="CORRENTE">Corrente</option><option value="TENSAO">Tensão</option></select></label>
+            <label><span>Valor</span><input inputMode="decimal" value={parameterName === 'HORIMETRO' && context.horimetro?.automatico ? String(context.horimetro.total_horas ?? asset?.horimetro_atual ?? '') : parameterValue} readOnly={parameterName === 'HORIMETRO' && Boolean(context.horimetro?.automatico)} onChange={(event) => setParameterValue(event.target.value)} placeholder={parameterName === 'HORIMETRO' ? String(asset?.horimetro_atual ?? '0') : '0,00'} /></label>
+            <label><span>Unidade</span><input value={parameterName === 'HORIMETRO' ? 'h' : parameterUnit} disabled={parameterName === 'HORIMETRO'} onChange={(event) => setParameterUnit(event.target.value)} /></label>
+            <label><span>Componente</span><select value={componentId} onChange={(event) => setComponentId(event.target.value)}><option value="">Equipamento geral</option>{(context.componentes ?? []).map((component) => <option key={component.id} value={component.id}>{component.tag || component.id} — {component.nome}</option>)}</select></label>
           </div>
-          <button type="button" onClick={() => setParameterOpen((value) => !value)}>
-            {parameterOpen ? 'Fechar' : 'Registrar leitura'}
-          </button>
-        </div>
-
-        {parameterOpen && (
-          <article className="parameter-entry-card">
-            <div className="parameter-form-grid">
-              <label>
-                <span>Parâmetro</span>
-                <select value={parameterName} onChange={(event) => setParameterName(event.target.value)}>
-                  <option value="HORIMETRO">Horímetro</option>
-                  <option value="TEMPERATURA">Temperatura</option>
-                  <option value="VIBRACAO">Vibração</option>
-                  <option value="PRESSAO">Pressão</option>
-                  <option value="CORRENTE">Corrente</option>
-                  <option value="TENSAO">Tensão</option>
-                  <option value="OUTRO">Outro</option>
-                </select>
-              </label>
-              <label>
-                <span>Valor</span>
-                <input
-                  inputMode="decimal"
-                  value={parameterValue}
-                  onChange={(event) => setParameterValue(event.target.value)}
-                  placeholder="0,00"
-                />
-              </label>
-              <label>
-                <span>Unidade</span>
-                <input value={parameterUnit} onChange={(event) => setParameterUnit(event.target.value)} placeholder="h, °C, bar…" />
-              </label>
-              <label>
-                <span>Componente</span>
-                <select value={componentId} onChange={(event) => setComponentId(event.target.value)}>
-                  <option value="">Equipamento geral</option>
-                  {(context.componentes ?? []).map((component) => (
-                    <option key={component.id} value={component.id}>
-                      {component.tag || component.id} — {component.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button type="button" onClick={() => void saveParameter()} disabled={savingParameter}>
-              {savingParameter ? 'Registrando…' : 'Confirmar leitura'}
-            </button>
-          </article>
-        )}
-
+          <button type="button" onClick={() => void saveParameter()} disabled={savingParameter || (parameterName === 'HORIMETRO' && Boolean(context.horimetro?.automatico))}>{parameterName === 'HORIMETRO' && context.horimetro?.automatico ? 'Atualizado pela telemetria' : savingParameter ? 'Registrando…' : 'Confirmar leitura'}</button>
+        </article>}
         {parameters.length > 0 ? (
-          <div className="parameter-grid parameter-grid--real">
-            {parameters.map((parameter) => (
-              <article className="parameter-card parameter-card--real" key={parameter.id}>
-                <div>
-                  <strong>{displayParameterName(parameter.parametro)}</strong>
-                  <span>{parameter.componente_id ? `Componente: ${parameter.componente_id}` : 'Equipamento geral'}</span>
-                  <small>{formatDate(parameter.registrado_em || parameter.criado_em)}</small>
-                </div>
-                <div className="parameter-value">
-                  {parameter.valor ?? '—'} {parameter.unidade || ''}
-                </div>
-              </article>
-            ))}
-          </div>
+          <div className="parameter-grid parameter-grid--real">{parameters.map((parameter) => <article className="parameter-card parameter-card--real" key={parameter.id}><div><strong>{displayName(parameter.parametro)}</strong><span>{parameter.componente_id ? `Componente: ${parameter.componente_id}` : 'Equipamento geral'}</span><small>{formatDate(parameter.registrado_em || parameter.criado_em)}</small></div><div className="parameter-value">{parameter.valor ?? '—'} {parameter.unidade || ''}</div></article>)}</div>
         ) : (
-          <article className="empty-panel qr-empty-panel">
-            <strong>Nenhuma leitura registrada</strong>
-            <p>Use “Registrar leitura” para incluir o primeiro parâmetro operacional.</p>
-          </article>
+          <article className="empty-panel qr-empty-panel"><strong>Nenhuma leitura registrada</strong><p>Use “Registrar leitura” para incluir o primeiro parâmetro operacional.</p></article>
         )}
       </section>
 
       {(context.ocorrencias_abertas?.length ?? 0) > 0 && (
         <section className="content-section">
-          <div className="section-heading">
-            <div>
-              <h2>Ocorrências aguardando análise</h2>
-              <p>Registros enviados para gestão e administração.</p>
-            </div>
-            <span>{context.ocorrencias_abertas?.length ?? 0}</span>
-          </div>
-          <div className="history-list">
-            {context.ocorrencias_abertas?.map((item) => (
-              <article className="history-card occurrence-card" key={item.id}>
-                <div>
-                  <strong>{item.titulo}</strong>
-                  <p>{item.descricao}</p>
-                  <small>{formatDate(item.criado_em)}</small>
-                </div>
-                <span className="history-status">{item.severidade}</span>
-              </article>
-            ))}
-          </div>
+          <div className="section-heading"><div><h2>Ocorrências aguardando análise</h2><p>Registros enviados para gestão e administração.</p></div><span>{context.ocorrencias_abertas?.length ?? 0}</span></div>
+          <div className="history-list">{context.ocorrencias_abertas?.map((item) => <article className="history-card occurrence-card" key={item.id}><div><strong>{item.titulo}</strong><p>{item.descricao}</p><small>{formatDate(item.criado_em)}</small></div><span className="history-status">{item.severidade}</span></article>)}</div>
         </section>
       )}
 
       <section className="content-section">
-        <div className="section-heading">
-          <div>
-            <h2>Histórico do equipamento</h2>
-            <p>Manutenções, componentes, lubrificações e demais eventos técnicos.</p>
-          </div>
-          <span>{context.historico_recente?.length ?? 0}</span>
-        </div>
-
-        {context.historico_recente?.length ? (
-          <div className="history-list">
-            {context.historico_recente.map((item) => (
-              <article className="history-card" key={item.id}>
-                <div>
-                  <strong>{displayParameterName(item.evento || 'Evento técnico')}</strong>
-                  <p>{item.descricao || 'Sem descrição.'}</p>
-                  <small>{formatDate(item.criado_em)}</small>
-                </div>
-                <span className="history-status">{item.perfil || 'SISTEMA'}</span>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <article className="empty-panel qr-empty-panel">
-            <strong>Histórico ainda vazio</strong>
-            <p>Eventos de manutenção aparecerão aqui após os registros operacionais.</p>
-          </article>
-        )}
+        <div className="section-heading"><div><h2>Histórico do equipamento</h2><p>Manutenções, componentes, lubrificações e eventos técnicos.</p></div><span>{context.historico_recente?.length ?? 0}</span></div>
+        <div className="history-list">{(context.historico_recente ?? []).map((item) => <article className="history-card" key={item.id}><div><strong>{displayName(item.evento || 'Evento técnico')}</strong><p>{item.descricao || 'Sem descrição.'}</p><small>{formatDate(item.criado_em)}</small></div><span className="history-status">{item.perfil || 'SISTEMA'}</span></article>)}</div>
       </section>
 
-      <div className="qr-next-actions">
-        <button type="button" className="secondary-action" onClick={() => setOccurrenceOpen(true)}>Informar ocorrência</button>
-        <button
-          type="button"
-          className={context.parada_ativa ? 'danger-action danger-action--finish' : 'danger-action'}
-          onClick={() => {
-            setReturnValidation(null)
-            setStopModalOpen(true)
-          }}
-        >
-          {context.parada_ativa ? 'Finalizar parada' : 'Registrar parada'}
-        </button>
-      </div>
+      <div className="qr-next-actions"><button type="button" className="secondary-action" onClick={() => setOccurrenceOpen(true)}>Informar ocorrência</button><button type="button" className={context.parada_ativa ? 'danger-action danger-action--finish' : 'danger-action'} onClick={() => { setReturnValidation(null); setStopOpen(true) }}>{context.parada_ativa ? 'Finalizar parada' : 'Registrar parada'}</button></div>
 
-      {occurrenceOpen && (
-        <div className="evidence-modal-backdrop">
-          <form className="evidence-modal operational-modal" onSubmit={(event) => { event.preventDefault(); void saveOccurrence() }}>
-            <div><span>Ocorrência operacional</span><h2>Informar condição do equipamento</h2></div>
-            <label><span>Título</span><input value={occurrenceTitle} onChange={(event) => setOccurrenceTitle(event.target.value)} placeholder="Ex.: Ruído anormal no fechamento" /></label>
-            <label><span>Descrição</span><textarea value={occurrenceDescription} onChange={(event) => setOccurrenceDescription(event.target.value)} placeholder="Descreva objetivamente o que foi observado." /></label>
-            <label><span>Severidade</span>
-              <select value={occurrenceSeverity} onChange={(event) => setOccurrenceSeverity(event.target.value)}>
-                <option value="BAIXA">Baixa</option>
-                <option value="MEDIA">Média</option>
-                <option value="ALTA">Alta</option>
-                <option value="CRITICA">Crítica</option>
-              </select>
-            </label>
-            <label><span>Componente</span>
-              <select value={occurrenceComponentId} onChange={(event) => setOccurrenceComponentId(event.target.value)}>
-                <option value="">Equipamento geral</option>
-                {(context.componentes ?? []).map((component) => (
-                  <option key={component.id} value={component.id}>{component.tag || component.id} — {component.nome}</option>
-                ))}
-              </select>
-            </label>
-            <div className="evidence-modal__actions">
-              <button type="button" className="secondary-button" onClick={() => setOccurrenceOpen(false)}>Cancelar</button>
-              <button type="submit" className="primary-button" disabled={savingOccurrence}>{savingOccurrence ? 'Enviando…' : 'Registrar ocorrência'}</button>
-            </div>
-          </form>
-        </div>
-      )}
+      {occurrenceOpen && <div className="evidence-modal-backdrop"><form className="evidence-modal operational-modal" onSubmit={(event) => { event.preventDefault(); void saveOccurrence() }}><div><span>Ocorrência operacional</span><h2>Informar condição do equipamento</h2></div><label><span>Título</span><input value={occurrenceTitle} onChange={(event) => setOccurrenceTitle(event.target.value)} /></label><label><span>Descrição</span><textarea value={occurrenceDescription} onChange={(event) => setOccurrenceDescription(event.target.value)} /></label><label><span>Severidade</span><select value={occurrenceSeverity} onChange={(event) => setOccurrenceSeverity(event.target.value)}><option value="BAIXA">Baixa</option><option value="MEDIA">Média</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select></label><label><span>Componente</span><select value={occurrenceComponentId} onChange={(event) => setOccurrenceComponentId(event.target.value)}><option value="">Equipamento geral</option>{(context.componentes ?? []).map((component) => <option key={component.id} value={component.id}>{component.tag || component.id} — {component.nome}</option>)}</select></label><div className="evidence-modal__actions"><button type="button" className="secondary-button" onClick={() => setOccurrenceOpen(false)}>Cancelar</button><button type="submit" disabled={savingOccurrence}>{savingOccurrence ? 'Enviando…' : 'Registrar ocorrência'}</button></div></form></div>}
 
-      {stopModalOpen && (
+      {stopOpen && (
         <div className="evidence-modal-backdrop">
-          <form className="evidence-modal operational-modal" onSubmit={(event) => {
-            event.preventDefault()
-            if (context.parada_ativa) void finishStop()
-            else void startStop()
-          }}>
+          <form
+            className="evidence-modal operational-modal"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (context.parada_ativa) void finishStop()
+              else void startStop()
+            }}
+          >
             <div>
-              <span>Controle de parada</span>
+              <span>Controle de parada operacional</span>
               <h2>{context.parada_ativa ? 'Confirmar retorno à operação' : 'Iniciar parada agora'}</h2>
             </div>
 
             {!context.parada_ativa ? (
               <label>
                 <span>Motivo resumido</span>
-                <textarea value={stopReason} onChange={(event) => setStopReason(event.target.value)} placeholder="Opcional. Ex.: Falha no ciclo de fechamento." />
+                <textarea value={stopReason} onChange={(event) => setStopReason(event.target.value)} />
               </label>
             ) : (
               <>
                 <ActiveStopBanner stop={context.parada_ativa} compact />
                 {returnValidation?.requires_justification && (
-                  <div className="return-justification-alert">
-                    O retorno ocorreu após a tolerância de {returnValidation.tolerance_minutes} minuto(s).
-                    Informe a causa do intervalo.
-                  </div>
-                )}
-                {returnValidation?.requires_justification && (
                   <>
-                    <label><span>Motivo do intervalo</span>
+                    <label>
+                      <span>Motivo do intervalo</span>
                       <select value={returnCategory} onChange={(event) => setReturnCategory(event.target.value)}>
                         <option value="">Selecione</option>
-                        <option value="LIMPEZA_AREA">Limpeza da área</option>
-                        <option value="TESTE_PRODUCAO">Teste de produção</option>
-                        <option value="AJUSTE_PROCESSO">Ajuste de processo</option>
-                        <option value="FALTA_MATERIA_PRIMA">Falta de matéria-prima</option>
-                        <option value="AGUARDANDO_QUALIDADE">Aguardando qualidade</option>
-                        <option value="AGUARDANDO_OPERADOR">Aguardando operador</option>
-                        <option value="OUTRO">Outro</option>
+                        {(returnValidation.categories ?? []).map((category) => (
+                          <option key={category} value={category}>{displayName(category)}</option>
+                        ))}
                       </select>
                     </label>
-                    <label><span>Justificativa</span><textarea value={returnJustification} onChange={(event) => setReturnJustification(event.target.value)} placeholder="Explique o motivo do tempo adicional." /></label>
+                    <label>
+                      <span>Justificativa</span>
+                      <textarea value={returnJustification} onChange={(event) => setReturnJustification(event.target.value)} />
+                    </label>
                   </>
-                )}
-                {!returnValidation?.requires_justification && (
-                  <p className="operational-modal__note">Confirme somente quando a máquina estiver efetivamente produzindo novamente.</p>
                 )}
               </>
             )}
 
             <div className="evidence-modal__actions">
-              <button type="button" className="secondary-button" onClick={() => setStopModalOpen(false)}>Cancelar</button>
+              <button type="button" className="secondary-button" onClick={() => setStopOpen(false)}>Cancelar</button>
               <button
                 type="submit"
-                className={context.parada_ativa ? 'primary-button return-button' : 'primary-button danger-confirm-button'}
-                disabled={savingStop || Boolean(returnValidation?.requires_justification && (!returnCategory || returnJustification.trim().length < 5))}
+                className={context.parada_ativa ? 'primary-button' : 'primary-button danger-confirm-button'}
+                disabled={savingStop}
               >
-                {savingStop ? 'Salvando…' : context.parada_ativa ? 'Máquina voltou a operar' : 'Iniciar parada'}
+                {savingStop ? 'Processando…' : context.parada_ativa ? 'Confirmar retorno' : 'Iniciar parada'}
               </button>
             </div>
           </form>
