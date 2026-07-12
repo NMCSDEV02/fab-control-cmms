@@ -132,6 +132,23 @@ export function OperatorHome({
         </article>
       )}
 
+      {running.length > 0 && (
+        <section className="content-section">
+          <div className="section-heading">
+            <div>
+              <h2>Em execução</h2>
+              <p>Atividades já iniciadas neste turno.</p>
+            </div>
+            <span>{running.length} ativa{running.length > 1 ? 's' : ''}</span>
+          </div>
+          <div className="scheduled-grid">
+            {running.map((action) => (
+              <ActionCard key={action.id} action={action} onOpen={onOpenAction} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {emergency.length > 0 && (
         <section className="content-section">
           <div className="section-heading">

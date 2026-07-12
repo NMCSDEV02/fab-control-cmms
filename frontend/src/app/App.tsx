@@ -2,15 +2,25 @@ import { useCallback, useEffect, useState } from 'react'
 import { AppHeader, type ConnectionState } from '../components/AppHeader'
 import { BottomNavigation, type AppSection } from '../components/BottomNavigation'
 import { mockAsset } from '../mocks/operator'
+import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { OperatorHome } from '../pages/OperatorHome'
 import { QrPage } from '../pages/QrPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { hasApiConfiguration } from '../services/api/config'
-import { getOperatorActions, getSystemHealth } from '../services/api/operator'
+import {
+  getOperatorActionDetail,
+  getOperatorActions,
+  getSystemHealth,
+  startOperatorAction,
+} from '../services/api/operator'
+import type { OperatorActionDetailData } from '../types/api'
 import type { OperatorAction } from '../types/operator'
+
+type AppView = 'navigation' | 'action-detail'
 
 export function App() {
   const [section, setSection] = useState<AppSection>('home')
+  const [view, setView] = useState<AppView>('navigation')
   const [toast, setToast] = useState('')
   const [actions, setActions] = useState<OperatorAction[]>([])
   const [loading, setLoading] = useState(false)
@@ -20,11 +30,17 @@ export function App() {
   const [apiVersion, setApiVersion] = useState('')
   const [configurationRevision, setConfigurationRevision] = useState(0)
 
+  const [selectedActionId, setSelectedActionId] = useState('')
+  const [actionDetail, setActionDetail] = useState<OperatorActionDetailData | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState('')
+  const [starting, setStarting] = useState(false)
+
   const configured = hasApiConfiguration()
 
   function notify(message: string) {
     setToast(message)
-    window.setTimeout(() => setToast(''), 2600)
+    window.setTimeout(() => setToast(''), 2800)
   }
 
   const refresh = useCallback(async () => {
@@ -35,19 +51,22 @@ export function App() {
       return
     }
 
-    const controller = new AbortController()
     setLoading(true)
     setError('')
     setConnectionState('checking')
 
     try {
-      const [health, operatorActions] = await Promise.all([
-        getSystemHealth(controller.signal),
-        getOperatorActions(controller.signal),
-      ])
+      const health = await getSystemHealth()
       setApiVersion(health.version)
-      setActions(operatorActions)
       setConnectionState('online')
+
+      try {
+        const operatorActions = await getOperatorActions()
+        setActions(operatorActions)
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : 'Falha ao carregar ações.'
+        setError(message)
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Erro desconhecido na integração.'
       setError(message)
@@ -55,16 +74,54 @@ export function App() {
     } finally {
       setLoading(false)
     }
-
-    return () => controller.abort()
   }, [])
 
   useEffect(() => {
     void refresh()
   }, [refresh, configurationRevision])
 
+  const loadActionDetail = useCallback(async (actionId: string) => {
+    setDetailLoading(true)
+    setDetailError('')
+    try {
+      const detail = await getOperatorActionDetail(actionId)
+      setActionDetail(detail)
+    } catch (cause) {
+      setDetailError(cause instanceof Error ? cause.message : 'Falha ao abrir a ação.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
   function openAction(action: OperatorAction) {
-    notify(`Ação ${action.id} carregada. A tela técnica será integrada na próxima fase.`)
+    setSelectedActionId(action.id)
+    setActionDetail(null)
+    setView('action-detail')
+    void loadActionDetail(action.id)
+  }
+
+  function closeAction() {
+    setView('navigation')
+    setSelectedActionId('')
+    setActionDetail(null)
+    setDetailError('')
+    void refresh()
+  }
+
+  async function startAction() {
+    if (!selectedActionId) return
+    setStarting(true)
+    try {
+      await startOperatorAction(selectedActionId)
+      notify('Execução iniciada')
+      await Promise.all([loadActionDetail(selectedActionId), refresh()])
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Falha ao iniciar execução.'
+      setDetailError(message)
+      notify(message)
+    } finally {
+      setStarting(false)
+    }
   }
 
   async function testConnection() {
@@ -84,7 +141,13 @@ export function App() {
   function configurationSaved() {
     setConfigurationRevision((value) => value + 1)
     setSection('home')
+    setView('navigation')
     notify('Configuração salva')
+  }
+
+  function changeSection(next: AppSection) {
+    setView('navigation')
+    setSection(next)
   }
 
   return (
@@ -97,30 +160,48 @@ export function App() {
         />
 
         <main className="app-content">
-          {section === 'home' && (
-            <OperatorHome
-              actions={actions}
-              loading={loading}
-              error={error}
-              configured={configured}
-              onRetry={() => void refresh()}
-              onOpenSettings={() => setSection('settings')}
-              onOpenAction={openAction}
-              onOpenQr={() => setSection('qr')}
+          {view === 'action-detail' ? (
+            <ActionDetailPage
+              detail={actionDetail}
+              loading={detailLoading}
+              error={detailError}
+              starting={starting}
+              onBack={closeAction}
+              onRetry={() => void loadActionDetail(selectedActionId)}
+              onStart={startAction}
+              onContinue={() => notify('Checklist será conectado na próxima fase.')}
             />
-          )}
-          {section === 'qr' && <QrPage asset={mockAsset} onNotify={notify} />}
-          {section === 'settings' && (
-            <SettingsPage
-              apiOnline={connectionState === 'online'}
-              apiVersion={apiVersion}
-              onConfigurationSaved={configurationSaved}
-              onTestConnection={testConnection}
-            />
+          ) : (
+            <>
+              {section === 'home' && (
+                <OperatorHome
+                  actions={actions}
+                  loading={loading}
+                  error={error}
+                  configured={configured}
+                  onRetry={() => void refresh()}
+                  onOpenSettings={() => setSection('settings')}
+                  onOpenAction={openAction}
+                  onOpenQr={() => setSection('qr')}
+                />
+              )}
+              {section === 'qr' && <QrPage asset={mockAsset} onNotify={notify} />}
+              {section === 'settings' && (
+                <SettingsPage
+                  apiOnline={connectionState === 'online'}
+                  apiVersion={apiVersion}
+                  onConfigurationSaved={configurationSaved}
+                  onTestConnection={testConnection}
+                />
+              )}
+            </>
           )}
         </main>
 
-        <BottomNavigation active={section} onChange={setSection} />
+        {view === 'navigation' && (
+          <BottomNavigation active={section} onChange={changeSection} />
+        )}
+
         <div className={toast ? 'toast toast--visible' : 'toast'} role="status" aria-live="polite">
           {toast}
         </div>

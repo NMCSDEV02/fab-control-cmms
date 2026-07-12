@@ -1,4 +1,4 @@
-import type { HealthData, OperatorActionsData, RawOperatorCard } from '../../types/api'
+import type { HealthData, OperatorActionDetailData, OperatorActionsData, RawOperatorCard, StartActionData } from '../../types/api'
 import type {
   ActionGroup,
   ActionPriority,
@@ -105,4 +105,43 @@ export async function getOperatorActions(signal?: AbortSignal): Promise<Operator
     []
 
   return cards.map(mapOperatorCard).filter((action) => Boolean(action.id))
+}
+
+
+export async function getOperatorActionDetail(
+  actionId: string,
+  signal?: AbortSignal,
+): Promise<OperatorActionDetailData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<OperatorActionDetailData>(
+    'operador.tela_acao',
+    { token, acao_id: actionId },
+    signal,
+  )
+
+  if (!response.data) {
+    throw new Error('A API não retornou os detalhes da ação.')
+  }
+
+  return response.data
+}
+
+export async function startOperatorAction(
+  actionId: string,
+): Promise<StartActionData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<StartActionData>(
+    'operador.iniciar_acao',
+    { token, acao_id: actionId },
+  )
+
+  if (!response.data) {
+    throw new Error('A API não retornou a confirmação de início.')
+  }
+
+  return response.data
 }

@@ -91,3 +91,198 @@ export interface OperatorActionsData {
   acoes?: RawOperatorCard[]
   visual_cards?: RawOperatorCard[]
 }
+
+export interface RawChecklistItem {
+  id: string
+  ui_key?: string
+  execucao_id?: string
+  acao_id?: string
+  plano_item_id?: string
+  ordem: number
+  titulo: string
+  instrucao?: string
+  tipo_resposta?: string
+  categoria?: string
+  obrigatorio?: boolean
+  evidencia_obrigatoria?: boolean
+  bloqueia_finalizacao?: boolean
+  parametro_nome?: string
+  valor_esperado?: string | number
+  opcoes?: string[]
+  limite_min?: string | number
+  limite_max?: string | number
+  unidade?: string
+  resposta?: string
+  valor_numero?: string | number
+  observacao?: string
+  status?: string
+  respondido?: boolean
+  evidencias_count?: number
+  input?: {
+    tipo_resposta?: string
+    componente?: string
+    requer_resposta?: boolean
+    requer_valor?: boolean
+    requer_opcoes?: boolean
+    suporta_evidencia?: boolean
+    placeholder?: string
+    opcoes?: string[]
+    unidade?: string
+    limite_min?: string | number
+    limite_max?: string | number
+  }
+}
+
+export interface OperatorActionDetailData {
+  ok: boolean
+  version: string
+  contract_version?: string
+  perfil?: string
+  acao: {
+    id: string
+    os_id?: string
+    ativo_id?: string
+    componente_id?: string
+    plano_id?: string
+    origem?: string
+    tipo?: string
+    titulo?: string
+    descricao?: string
+    prioridade?: string
+    status: string
+    responsavel_id?: string
+    gerado_em?: string
+    iniciado_em?: string
+    finalizado_em?: string
+  }
+  os?: {
+    id?: string
+    codigo?: string
+    titulo?: string
+    descricao?: string
+    prioridade?: string
+    status?: string
+    aberta_em?: string
+    iniciada_em?: string
+    finalizada_em?: string
+  }
+  ativo?: {
+    id?: string
+    tag?: string
+    nome?: string
+    tipo?: string
+    criticidade?: string
+    status?: string
+    saude_pct?: number
+    horimetro_atual?: number
+  }
+  componente?: {
+    id?: string
+    tag?: string
+    nome?: string
+    tipo?: string
+    criticidade?: string
+    status?: string
+    vida_util_horas?: number
+    horas_acumuladas?: number
+  }
+  plano?: {
+    id?: string
+    nome?: string
+    tipo?: string
+    criticidade?: string
+    gatilho_tipo?: string
+    gatilho_valor?: number
+    unidade?: string
+    tempo_estimado_min?: number
+    requer_bloqueio?: string
+    requer_evidencia?: string
+    status?: string
+    workflow_status?: string
+    revisao?: number
+  }
+  execucao?: {
+    id?: string
+    acao_id?: string
+    operador_id?: string
+    resultado?: string
+    observacao?: string
+    duracao_segundos?: number
+    abriu_em?: string
+    iniciou_em?: string
+    finalizou_em?: string
+    status?: string
+  } | null
+  checklist?: {
+    modelo?: boolean
+    execucao_id?: string
+    total?: number
+    respondidos?: number
+    pending_count?: number
+    evidence_missing_count?: number
+    blockers_count?: number
+    itens?: RawChecklistItem[]
+  }
+  ui?: {
+    state?: string
+    can_start?: boolean
+    can_answer?: boolean
+    can_save_batch?: boolean
+    can_finalize?: boolean
+    can_register_evidence?: boolean
+    can_validate?: boolean
+    message?: string
+  }
+  operator_screen?: {
+    header?: {
+      acao_id?: string
+      execucao_id?: string
+      os_id?: string
+      os_codigo?: string
+      title?: string
+      subtitle?: string
+      description?: string
+      status?: string
+      responsavel_id?: string
+    }
+    progress?: {
+      total?: number
+      respondidos?: number
+      pendentes?: number
+      percentual?: number
+      evidencias_pendentes?: number
+      bloqueios?: number
+      completo?: boolean
+      label?: string
+    }
+    action_bar?: {
+      buttons?: Array<{
+        id?: string
+        label?: string
+        endpoint?: string
+        enabled?: boolean
+        tone?: string
+        payload?: Record<string, unknown>
+        disabled_reason?: string
+      }>
+    }
+  }
+  analise_tecnica?: {
+    situacao?: string
+    causa_provavel?: string
+    resultado_esperado?: string
+    riscos?: Array<{ tipo?: string; titulo?: string; descricao?: string }>
+    ferramentas?: Array<{ tipo?: string; nome?: string }>
+    nrs?: string[]
+    etapas?: Array<{ ordem?: number; titulo?: string; descricao?: string }>
+  }
+}
+
+export interface StartActionData {
+  ok?: boolean
+  started?: boolean
+  acao_id?: string
+  execucao_id?: string
+  status?: string
+  version?: string
+}
