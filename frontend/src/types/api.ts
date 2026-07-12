@@ -286,3 +286,99 @@ export interface StartActionData {
   status?: string
   version?: string
 }
+
+
+export interface ChecklistBatchItemInput {
+  id?: string
+  checklist_execucao_id?: string
+  ordem: number
+  resposta?: string
+  valor?: number
+  observacao?: string
+}
+
+export interface ChecklistBatchSaveData {
+  ok: boolean
+  version?: string
+  acao_id: string
+  execucao_id: string
+  saved_count: number
+  error_count: number
+  salvos?: Array<{
+    index?: number
+    checklist_execucao_id?: string
+    tipo_resposta?: string
+    conforme?: string
+    validacao_msg?: string
+  }>
+  erros?: Array<{
+    index?: number
+    ordem?: number
+    checklist_execucao_id?: string
+    code?: string
+    message?: string
+  }>
+  can_finalize?: boolean
+  message?: string
+}
+
+export interface EvidenceInput {
+  checklist_execucao_id: string
+  tipo: string
+  nome_arquivo: string
+  url: string
+  observacao?: string
+}
+
+export interface EvidenceSaveData {
+  saved: boolean
+  checklist_execucao_id?: string
+  evidencias_count?: number
+  evidencia?: {
+    id?: string
+    execucao_id?: string
+    acao_id?: string
+    checklist_execucao_id?: string
+    tipo?: string
+    nome_arquivo?: string
+    url?: string
+    observacao?: string
+    criado_em?: string
+  }
+}
+
+export interface FinalizationValidationData {
+  ok: boolean
+  version?: string
+  contract_version?: string
+  acao_id: string
+  execucao_id: string
+  operador_id?: string
+  can_finalize: boolean
+  finalizacao?: {
+    ok?: boolean
+    can_finalize?: boolean
+    total?: number
+    respondidos?: number
+    pending_count?: number
+    evidence_missing_count?: number
+    blockers_count?: number
+    pendentes?: unknown[]
+    evidencias_pendentes?: unknown[]
+    bloqueios?: unknown[]
+  }
+  message?: string
+}
+
+export interface FinalizeActionInput {
+  resultado: 'OK' | 'NOK'
+  observacao: string
+  duracao_segundos?: number
+}
+
+export interface FinalizeActionData {
+  finalized: boolean
+  acao_id: string
+  execucao_id: string
+  status_acao: string
+}

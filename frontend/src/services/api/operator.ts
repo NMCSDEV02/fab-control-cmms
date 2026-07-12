@@ -1,4 +1,4 @@
-import type { HealthData, OperatorActionDetailData, OperatorActionsData, RawOperatorCard, StartActionData } from '../../types/api'
+import type { ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, OperatorActionDetailData, OperatorActionsData, RawOperatorCard, StartActionData } from '../../types/api'
 import type {
   ActionGroup,
   ActionPriority,
@@ -143,5 +143,85 @@ export async function startOperatorAction(
     throw new Error('A API não retornou a confirmação de início.')
   }
 
+  return response.data
+}
+
+
+export async function saveOperatorChecklistBatch(
+  actionId: string,
+  items: ChecklistBatchItemInput[],
+): Promise<ChecklistBatchSaveData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<ChecklistBatchSaveData>(
+    'operador.salvar_checklist_lote',
+    { token, acao_id: actionId, itens: items },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou o salvamento do checklist.')
+  return response.data
+}
+
+export async function registerOperatorEvidence(
+  actionId: string,
+  executionId: string,
+  input: EvidenceInput,
+): Promise<EvidenceSaveData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<EvidenceSaveData>(
+    'operador.registrar_evidencia',
+    {
+      token,
+      acao_id: actionId,
+      execucao_id: executionId,
+      checklist_execucao_id: input.checklist_execucao_id,
+      tipo: input.tipo,
+      nome_arquivo: input.nome_arquivo,
+      url: input.url,
+      observacao: input.observacao ?? '',
+    },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou a evidência.')
+  return response.data
+}
+
+export async function validateOperatorFinalization(
+  actionId: string,
+): Promise<FinalizationValidationData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<FinalizationValidationData>(
+    'operador.validar_finalizacao_acao',
+    { token, acao_id: actionId },
+  )
+
+  if (!response.data) throw new Error('A API não retornou a validação da finalização.')
+  return response.data
+}
+
+export async function finalizeOperatorAction(
+  actionId: string,
+  input: FinalizeActionInput,
+): Promise<FinalizeActionData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<FinalizeActionData>(
+    'operador.finalizar_acao',
+    {
+      token,
+      acao_id: actionId,
+      resultado: input.resultado,
+      observacao: input.observacao,
+      duracao_segundos: input.duracao_segundos ?? 0,
+    },
+  )
+
+  if (!response.data) throw new Error('A API não confirmou a finalização.')
   return response.data
 }
