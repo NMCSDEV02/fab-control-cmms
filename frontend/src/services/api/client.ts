@@ -1,3 +1,76 @@
-export interface ApiEnvelope<T>{ok:boolean;action:string;elapsed_ms?:number;data?:T;error?:{code:string;message:string;details?:unknown}}
-const apiBaseUrl=import.meta.env.VITE_API_BASE_URL as string|undefined
-export async function callApi<T>(action:string,payload:Record<string,unknown>):Promise<ApiEnvelope<T>>{if(!apiBaseUrl)throw new Error('VITE_API_BASE_URL não configurada.');const response=await fetch(apiBaseUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload})});if(!response.ok)throw new Error(`Falha HTTP ${response.status}.`);return response.json() as Promise<ApiEnvelope<T>>}
+import type { ApiEnvelope } from '../../types/api'
+import { getApiUrl } from './config'
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly code = 'API_REQUEST_FAILED',
+    public readonly details?: unknown,
+  ) {
+    super(message)
+    this.name = 'ApiRequestError'
+  }
+}
+
+export async function callApi<T>(
+  action: string,
+  payload: Record<string, unknown> = {},
+  signal?: AbortSignal,
+): Promise<ApiEnvelope<T>> {
+  const apiUrl = getApiUrl()
+
+  if (!apiUrl) {
+    throw new ApiRequestError(
+      'URL da API não configurada. Abra Configurações e informe o endpoint.',
+      'API_URL_MISSING',
+    )
+  }
+
+  let response: Response
+  try {
+    response = await fetch(apiUrl, {
+      method: 'POST',
+      // text/plain evita preflight desnecessário com Google Apps Script.
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ action, payload }),
+      signal,
+      redirect: 'follow',
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    throw new ApiRequestError(
+      'Não foi possível alcançar a API. Verifique internet, URL e publicação do Apps Script.',
+      'NETWORK_ERROR',
+      error,
+    )
+  }
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      `A API respondeu com HTTP ${response.status}.`,
+      'HTTP_ERROR',
+      { status: response.status },
+    )
+  }
+
+  let envelope: ApiEnvelope<T>
+  try {
+    envelope = (await response.json()) as ApiEnvelope<T>
+  } catch (error) {
+    throw new ApiRequestError(
+      'A API não retornou JSON válido.',
+      'INVALID_JSON',
+      error,
+    )
+  }
+
+  if (!envelope.ok) {
+    throw new ApiRequestError(
+      envelope.error?.message ?? 'A API rejeitou a operação.',
+      envelope.error?.code ?? 'API_ERROR',
+      envelope.error?.details,
+    )
+  }
+
+  return envelope
+}
