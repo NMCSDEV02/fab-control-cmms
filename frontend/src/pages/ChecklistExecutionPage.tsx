@@ -133,6 +133,7 @@ export function ChecklistExecutionPage({
   const [showEvidence, setShowEvidence] = useState(false)
   const [selectedEvidence, setSelectedEvidence] = useState<SelectedEvidence[]>([])
   const [evidenceObservation, setEvidenceObservation] = useState('')
+  const [evidenceSelectionWarning, setEvidenceSelectionWarning] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const [completionPhase, setCompletionPhase] = useState<CompletionPhase>('idle')
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null)
@@ -438,8 +439,18 @@ export function ChecklistExecutionPage({
     }
 
     const currentCount = current.evidencias_count ?? 0
-    if (currentCount + selectedEvidence.length > 10) {
-      setMessage('O limite é de 10 fotos por item.')
+    const configuredQuantity = evidenceMinimum(current)
+    const remainingQuantity = Math.max(0, configuredQuantity - currentCount)
+
+    if (remainingQuantity <= 0) {
+      setMessage('A quantidade de fotos configurada para este item já foi atendida.')
+      return
+    }
+
+    if (selectedEvidence.length > remainingQuantity) {
+      setMessage(
+        `Este item aceita somente mais ${remainingQuantity} foto(s). Remova o excesso antes de enviar.`,
+      )
       return
     }
 
@@ -458,14 +469,14 @@ export function ChecklistExecutionPage({
     await onRegisterEvidence(prepared)
     selectedEvidence.forEach((item) => URL.revokeObjectURL(item.previewUrl))
     setSelectedEvidence([])
+    setEvidenceSelectionWarning('')
     setShowEvidence(false)
     setEvidenceObservation('')
     const total = currentCount + prepared.length
-    const minimum = evidenceMinimum(current)
     setMessage(
-      total >= minimum
-        ? 'Quantidade mínima de evidências atendida.'
-        : `Evidências registradas: ${total} de ${minimum}.`,
+      total >= configuredQuantity
+        ? 'Quantidade de evidências configurada foi atendida.'
+        : `Evidências registradas: ${total} de ${configuredQuantity}.`,
     )
   }
 
@@ -502,6 +513,7 @@ export function ChecklistExecutionPage({
   const serviceHours = detail.horimetro?.contador_servico_horas
   const evidenceMin = evidenceMinimum(current)
   const evidenceCount = current.evidencias_count ?? 0
+  const evidenceRemaining = Math.max(0, evidenceMin - evidenceCount)
 
   return (
     <section className="screen checklist-screen">
@@ -685,8 +697,18 @@ export function ChecklistExecutionPage({
                 ))}
               </div>
             )}
-            <button type="button" onClick={() => setShowEvidence(true)}>
-              {evidenceCount ? 'Adicionar fotos' : 'Tirar foto'}
+            <button
+              type="button"
+              disabled={evidenceRemaining <= 0}
+              onClick={() => setShowEvidence(true)}
+            >
+              {evidenceRemaining <= 0
+                ? 'Quantidade atendida'
+                : evidenceCount
+                  ? `Adicionar ${evidenceRemaining} foto(s)`
+                  : evidenceRemaining > 1
+                    ? `Tirar ${evidenceRemaining} fotos`
+                    : 'Tirar foto'}
             </button>
           </div>
         )}
@@ -724,22 +746,36 @@ export function ChecklistExecutionPage({
                 type="file"
                 accept="image/*"
                 capture="environment"
-                multiple
+                multiple={evidenceRemaining > 1}
                 onChange={(event) => {
                   const files = Array.from(event.currentTarget.files ?? [])
-                  setSelectedEvidence((currentFiles) => {
-                    const remaining = Math.max(0, 10 - evidenceCount - currentFiles.length)
-                    const additions = files.slice(0, remaining).map((file) => ({
+                  const available = Math.max(
+                    0,
+                    evidenceRemaining - selectedEvidence.length,
+                  )
+                  const accepted = files.slice(0, available)
+                  if (files.length > accepted.length) {
+                    setEvidenceSelectionWarning(
+                      `Quantidade limitada pelo administrador: ${evidenceMin} foto(s). Apenas ${available} nova(s) foto(s) foram aceita(s).`,
+                    )
+                  } else {
+                    setEvidenceSelectionWarning('')
+                  }
+                  setSelectedEvidence((currentFiles) => [
+                    ...currentFiles,
+                    ...accepted.map((file) => ({
                       file,
                       previewUrl: URL.createObjectURL(file),
-                    }))
-                    return [...currentFiles, ...additions]
-                  })
+                    })),
+                  ])
                   event.currentTarget.value = ''
                 }}
               />
               <b>Abrir câmera ou galeria</b>
             </label>
+            {evidenceSelectionWarning && (
+              <div className="evidence-selection-warning">{evidenceSelectionWarning}</div>
+            )}
             {selectedEvidence.length > 0 && (
               <div className="evidence-preview-grid">
                 {selectedEvidence.map((selected, photoIndex) => (
@@ -770,7 +806,7 @@ export function ChecklistExecutionPage({
               />
             </label>
             <small>
-              Exigência configurada pelo administrador: {evidenceMin} foto(s). Já registradas: {evidenceCount}.
+              Quantidade configurada pelo administrador: {evidenceMin} foto(s). Já registradas: {evidenceCount}. Restantes: {evidenceRemaining}.
             </small>
             <div className="evidence-modal__actions">
               <button
@@ -779,6 +815,7 @@ export function ChecklistExecutionPage({
                 onClick={() => {
                   selectedEvidence.forEach((item) => URL.revokeObjectURL(item.previewUrl))
                   setSelectedEvidence([])
+                  setEvidenceSelectionWarning('')
                   setShowEvidence(false)
                 }}
               >
@@ -787,9 +824,13 @@ export function ChecklistExecutionPage({
               <button
                 type="submit"
                 className="primary-button"
-                disabled={evidenceSaving}
+                disabled={evidenceSaving || selectedEvidence.length === 0}
               >
-                {evidenceSaving ? 'Enviando…' : `Enviar ${selectedEvidence.length || ''} foto(s)`}
+                {evidenceSaving
+                  ? 'Enviando…'
+                  : selectedEvidence.length === 1
+                    ? 'Enviar 1 foto'
+                    : `Enviar ${selectedEvidence.length} fotos`}
               </button>
             </div>
           </form>

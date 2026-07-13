@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppHeader, type ConnectionState } from '../components/AppHeader'
 import { BottomNavigation, type AppSection } from '../components/BottomNavigation'
 import { OperationOverlay } from '../components/OperationOverlay'
@@ -60,6 +60,8 @@ export function App() {
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
   const [activeStop, setActiveStop] = useState<OperatorStopData | null>(null)
+  const [showDetailOverlay, setShowDetailOverlay] = useState(false)
+  const refreshInFlightRef = useRef<Promise<void> | null>(null)
 
   const configured = hasApiConfiguration()
 
@@ -69,43 +71,95 @@ export function App() {
   }
 
   const refresh = useCallback(async () => {
-    if (!hasApiConfiguration()) {
-      setConnectionState('unconfigured')
-      setActions([])
-      setError('')
+    if (refreshInFlightRef.current) {
+      await refreshInFlightRef.current
       return
     }
 
-    const cached = await readActionsCache()
-    if (cached !== null) {
-      setActions(cached)
-      setLoading(false)
-    } else {
+    const run = (async () => {
+      if (!hasApiConfiguration()) {
+        setConnectionState('unconfigured')
+        setActions([])
+        setError('')
+        setLoading(false)
+        return
+      }
+
+      const cached = await readActionsCache()
+      const hasCached = cached !== null
+      if (hasCached) setActions(cached)
       setLoading(true)
-    }
-    setError('')
-    setConnectionState('checking')
 
-    try {
-      const health = await getSystemHealth()
-      setApiVersion(health.version)
-      setConnectionState('online')
+      setError('')
+      setConnectionState('checking')
 
-      const operatorActions = await getOperatorActions()
-      setActions(operatorActions)
-      await writeActionsCache(operatorActions)
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Erro desconhecido na integração.'
-      setError(message)
-      setConnectionState('offline')
-    } finally {
+      const [actionsResult, healthResult] = await Promise.allSettled([
+        getOperatorActions(),
+        getSystemHealth(),
+      ])
+
+      if (actionsResult.status === 'fulfilled') {
+        setActions(actionsResult.value)
+        await writeActionsCache(actionsResult.value)
+        setConnectionState('online')
+      } else {
+        const message =
+          actionsResult.reason instanceof Error
+            ? actionsResult.reason.message
+            : 'Falha ao carregar a fila do operador.'
+        setError(message)
+        if (!hasCached) setActions([])
+      }
+
+      if (healthResult.status === 'fulfilled') {
+        setApiVersion(healthResult.value.version)
+        setConnectionState('online')
+      } else if (actionsResult.status === 'rejected') {
+        setConnectionState('offline')
+      }
+
       setLoading(false)
+    })()
+
+    refreshInFlightRef.current = run
+    try {
+      await run
+    } finally {
+      refreshInFlightRef.current = null
     }
   }, [])
-
   useEffect(() => {
     void refresh()
   }, [refresh, configurationRevision])
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    const refreshOnFocus = () => void refresh()
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
+    }, 45_000)
+
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refreshOnFocus)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refreshOnFocus)
+    }
+  }, [refresh])
+
+  useEffect(() => {
+    const blocking = detailLoading && !actionDetail
+    if (!blocking) {
+      setShowDetailOverlay(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => setShowDetailOverlay(true), 320)
+    return () => window.clearTimeout(timer)
+  }, [detailLoading, actionDetail])
 
   const loadActionDetail = useCallback(async (actionId: string, forceBlocking = false) => {
     setDetailError('')
@@ -315,9 +369,10 @@ export function App() {
   function changeSection(next: AppSection) {
     setView('navigation')
     setSection(next)
+    if (next === 'home') void refresh()
   }
 
-  const operationOverlay = detailLoading && !actionDetail
+  const operationOverlay = showDetailOverlay
     ? {
         visible: true,
         title: 'Carregando ação',

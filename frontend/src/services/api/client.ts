@@ -26,23 +26,37 @@ export async function callApi<T>(
     )
   }
 
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), 25_000)
+  const abortFromCaller = () => controller.abort()
+  signal?.addEventListener('abort', abortFromCaller, { once: true })
+
   let response: Response
   try {
     response = await fetch(apiUrl, {
       method: 'POST',
-      // text/plain evita preflight desnecessário com Google Apps Script.
       headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
       body: JSON.stringify({ action, payload }),
-      signal,
+      signal: controller.signal,
       redirect: 'follow',
     })
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      if (signal?.aborted) throw error
+      throw new ApiRequestError(
+        'A API excedeu 25 segundos. Os dados salvos permanecem disponíveis; tente atualizar novamente.',
+        'API_TIMEOUT',
+        error,
+      )
+    }
     throw new ApiRequestError(
       'Não foi possível alcançar a API. Verifique internet, URL e publicação do Apps Script.',
       'NETWORK_ERROR',
       error,
     )
+  } finally {
+    window.clearTimeout(timeoutId)
+    signal?.removeEventListener('abort', abortFromCaller)
   }
 
   if (!response.ok) {

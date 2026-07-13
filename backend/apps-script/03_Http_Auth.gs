@@ -51,6 +51,7 @@ function route_(action, p, req){
     case "cmms.execucao_checklist_schema_upgrade": return cmmsExecucaoChecklistSchemaUpgrade1083_(p, p.__auth);
     case "cmms.auditoria_operador_schema_upgrade": return cmmsAuditoriaOperadorSchemaUpgrade1081_(p, p.__auth);
     case "cmms.paradas_operacionais_schema_upgrade": return cmmsParadasOperacionaisSchemaUpgrade114_(p, p.__auth);
+    case "cmms.horimetro_evidencias_schema_upgrade": return cmmsHorimetroEvidenciasSchemaUpgrade116_(p, p.__auth);
     case "auth.login": return authLogin_(p, req);
 
     case "admin.resumo": return adminResumo_();
@@ -70,6 +71,8 @@ function route_(action, p, req){
     case "admin.criar_revisao_modelo_checklist": return adminCriarRevisaoModeloChecklist_(p);
     case "admin.gerar_acao_teste_checklist": return adminGerarAcaoTesteChecklist108_(p, p.__auth);
     case "admin.corrigir_auditoria_execucao_operador": return adminCorrigirAuditoriaExecucaoOperador1081_(p, p.__auth);
+    case "admin.registrar_horimetro_telemetria": return adminRegistrarHorimetroTelemetria116_(p, p.__auth);
+    case "admin.reiniciar_contador_servico": return adminReiniciarContadorServico116_(p, p.__auth);
 
     case "operador.contexto_qr": return operadorContextoQr_(p);
     case "operador.contexto_qr_fast": return operadorContextoQrFast_(p);
@@ -77,6 +80,7 @@ function route_(action, p, req){
     case "operador.salvar_checklist_item": return operadorSalvarChecklistItem_(p);
     case "operador.finalizar_acao": return operadorFinalizarAcao_(p);
     case "operador.registrar_evidencia": return operadorRegistrarEvidencia_(p);
+    case "operador.upload_evidencia_foto": return operadorUploadEvidenciaFoto116_(p, p.__auth);
     case "operador.registrar_material": return operadorRegistrarMaterial_(p);
     case "operador.registrar_parametro": return operadorRegistrarParametro_(p);
     case "operador.parada_ativa": return operadorParadaAtiva114_(p, p.__auth);
@@ -86,11 +90,13 @@ function route_(action, p, req){
     case "operador.listar_checklist_execucao": return operadorListarChecklistExecucao_(p);
     case "operador.home": return operadorHome112_(p, p.__auth);
     case "operador.painel": return operadorHome112_(p, p.__auth);
-    case "operador.minhas_acoes": return operadorMinhasAcoes112_(p, p.__auth);
+    case "operador.minhas_acoes": return operadorMinhasAcoes117_(p, p.__auth);
     case "operador.tela_acao": return operadorTelaAcao112_(p, p.__auth);
     case "operador.salvar_checklist_lote": return operadorSalvarChecklistLote112_(p, p.__auth);
     case "operador.detalhar_checklist_execucao": return operadorDetalharChecklistExecucao112_(p, p.__auth);
     case "operador.validar_finalizacao_acao": return operadorValidarFinalizacaoAcao112_(p, p.__auth);
+
+    case "admin.verificar_drive_evidencias": return adminVerificarDriveEvidencias117_(p, p.__auth);
 
     case "gestor.listar_paradas": return gestorListarParadas114_(p, p.__auth);
     case "gestor.listar_ocorrencias": return gestorListarOcorrencias114_(p, p.__auth);
@@ -111,8 +117,6 @@ function route_(action, p, req){
     case "lock.adquirir": return lockAdquirir_(p);
     case "lock.heartbeat": return lockHeartbeat_(p);
     case "lock.liberar": return lockLiberar_(p);
-
-
 
     case "catalogo.checklist_tipos": return adminListarTiposItemChecklist107_(p, p.__auth);
     case "admin.listar_tipos_item_checklist": return adminListarTiposItemChecklist107_(p, p.__auth);
@@ -158,9 +162,9 @@ function sistemaBootstrap_(){
     serverTime:now_(),
     sheets:Object.keys(SH),
     endpoints:[
-      "auth.login","sistema.warmup","cmms.schema_upgrade","cmms.paradas_operacionais_schema_upgrade","cmms.catalogo_checklist_schema_upgrade","cmms.operador_visual_schema_upgrade","cmms.tela_operador_schema_upgrade","cmms.operador_ui_schema_upgrade","cmms.operacional_ui_schema_upgrade","cmms.contrato_frontend_schema_upgrade","cmms.frontend_contract_schema_upgrade","cmms.execucao_checklist_schema_upgrade","cmms.auditoria_operador_schema_upgrade","admin.resumo","admin.resumo_cache","admin.listar","admin.salvar","admin.gerar_qr","admin.criar_demo","admin.recalcular_ativo",
-      "admin.salvar_modelo_checklist","admin.gerar_acao_teste_checklist","admin.corrigir_auditoria_execucao_operador","admin.enviar_modelo_checklist_validacao","admin.detalhe_modelo_checklist","admin.listar_modelos_checklist","admin.modelos_devolvidos","admin.corrigir_modelo_checklist","admin.criar_revisao_modelo_checklist",
-      "operador.home","operador.painel","operador.minhas_acoes","operador.tela_acao","operador.salvar_checklist_lote","operador.contexto_qr_fast","operador.contexto_qr","operador.parada_ativa","operador.iniciar_parada","operador.finalizar_parada","operador.registrar_ocorrencia","operador.iniciar_acao","operador.listar_checklist_execucao","operador.detalhar_checklist_execucao","operador.validar_finalizacao_acao","operador.salvar_checklist_item","operador.registrar_evidencia","operador.finalizar_acao",
+      "auth.login","sistema.warmup","cmms.schema_upgrade","cmms.paradas_operacionais_schema_upgrade","cmms.horimetro_evidencias_schema_upgrade","cmms.catalogo_checklist_schema_upgrade","cmms.operador_visual_schema_upgrade","cmms.tela_operador_schema_upgrade","cmms.operador_ui_schema_upgrade","cmms.operacional_ui_schema_upgrade","cmms.contrato_frontend_schema_upgrade","cmms.frontend_contract_schema_upgrade","cmms.execucao_checklist_schema_upgrade","cmms.auditoria_operador_schema_upgrade","admin.resumo","admin.resumo_cache","admin.listar","admin.salvar","admin.gerar_qr","admin.criar_demo","admin.recalcular_ativo",
+      "admin.salvar_modelo_checklist","admin.registrar_horimetro_telemetria","admin.reiniciar_contador_servico","admin.verificar_drive_evidencias","admin.gerar_acao_teste_checklist","admin.corrigir_auditoria_execucao_operador","admin.enviar_modelo_checklist_validacao","admin.detalhe_modelo_checklist","admin.listar_modelos_checklist","admin.modelos_devolvidos","admin.corrigir_modelo_checklist","admin.criar_revisao_modelo_checklist",
+      "operador.home","operador.painel","operador.minhas_acoes","operador.tela_acao","operador.salvar_checklist_lote","operador.contexto_qr_fast","operador.contexto_qr","operador.parada_ativa","operador.iniciar_parada","operador.finalizar_parada","operador.registrar_ocorrencia","operador.iniciar_acao","operador.listar_checklist_execucao","operador.detalhar_checklist_execucao","operador.validar_finalizacao_acao","operador.salvar_checklist_item","operador.registrar_evidencia","operador.upload_evidencia_foto","operador.finalizar_acao",
       "gestor.auditoria_execucao_checklist","gestor.listar_paradas","gestor.listar_ocorrencias","gestor.modelos_em_validacao","gestor.listar_modelos_checklist","gestor.detalhe_modelo_checklist","gestor.validar_modelo_checklist","gestor.listar_acoes","gestor.detalhe_acao_fast","gestor.detalhe_acao","gestor.validar_acao",
       "cmms.higiene_diagnosticar","cmms.higienizar_status","cmms.higienizar_duplicidades","cmms.higienizar_base","cmms.kpis_base","perf.cache_status","perf.cache_clear"
     ]

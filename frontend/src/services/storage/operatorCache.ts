@@ -13,37 +13,63 @@ const STORE = 'records'
 const ACTIONS_KEY = 'operator-actions'
 const MAX_AGE_MS = 24 * 60 * 60 * 1000
 
+const memoryCache = new Map<string, CacheRecord<unknown>>()
+let databasePromise: Promise<IDBDatabase> | null = null
+
 function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (databasePromise) return databasePromise
+
+  databasePromise = new Promise((resolve, reject) => {
     const request = window.indexedDB.open(DB_NAME, DB_VERSION)
-    request.onerror = () => reject(request.error)
+    request.onerror = () => {
+      databasePromise = null
+      reject(request.error)
+    }
     request.onupgradeneeded = () => {
       const database = request.result
       if (!database.objectStoreNames.contains(STORE)) {
         database.createObjectStore(STORE, { keyPath: 'key' })
       }
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      const database = request.result
+      database.onversionchange = () => {
+        database.close()
+        databasePromise = null
+      }
+      resolve(database)
+    }
   })
+
+  return databasePromise
 }
 
 async function writeRecord<T>(key: string, value: T): Promise<void> {
+  const record: CacheRecord<T> = { key, value, savedAt: Date.now() }
+  memoryCache.set(key, record as CacheRecord<unknown>)
   if (!('indexedDB' in window)) return
+
   try {
     const database = await openDatabase()
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(STORE, 'readwrite')
-      transaction.objectStore(STORE).put({ key, value, savedAt: Date.now() } satisfies CacheRecord<T>)
+      transaction.objectStore(STORE).put(record)
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error)
     })
-    database.close()
   } catch {
-    // Cache é uma otimização. A operação online continua normalmente.
+    // Cache é uma otimização.
   }
 }
 
 async function readRecord<T>(key: string): Promise<T | null> {
+  const memory = memoryCache.get(key) as CacheRecord<T> | undefined
+  if (memory) {
+    if (Date.now() - memory.savedAt <= MAX_AGE_MS) return memory.value
+    memoryCache.delete(key)
+  }
+
   if (!('indexedDB' in window)) return null
   try {
     const database = await openDatabase()
@@ -53,8 +79,9 @@ async function readRecord<T>(key: string): Promise<T | null> {
       request.onsuccess = () => resolve(request.result as CacheRecord<T> | undefined)
       request.onerror = () => reject(request.error)
     })
-    database.close()
+
     if (!record || Date.now() - record.savedAt > MAX_AGE_MS) return null
+    memoryCache.set(key, record as CacheRecord<unknown>)
     return record.value
   } catch {
     return null
@@ -62,6 +89,7 @@ async function readRecord<T>(key: string): Promise<T | null> {
 }
 
 async function deleteRecord(key: string): Promise<void> {
+  memoryCache.delete(key)
   if (!('indexedDB' in window)) return
   try {
     const database = await openDatabase()
@@ -70,8 +98,8 @@ async function deleteRecord(key: string): Promise<void> {
       transaction.objectStore(STORE).delete(key)
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error)
     })
-    database.close()
   } catch {
     // Sem impacto operacional.
   }
@@ -106,7 +134,19 @@ export function writeQrContextCache(qrPayload: string, context: OperatorQrContex
 }
 
 export async function clearOperatorCache(): Promise<void> {
+  memoryCache.clear()
   if (!('indexedDB' in window)) return
+
+  if (databasePromise) {
+    try {
+      const database = await databasePromise
+      database.close()
+    } catch {
+      // O banco pode já estar indisponível.
+    }
+    databasePromise = null
+  }
+
   await new Promise<void>((resolve) => {
     const request = window.indexedDB.deleteDatabase(DB_NAME)
     request.onsuccess = () => resolve()

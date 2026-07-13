@@ -213,13 +213,11 @@ export function ActionDetailPage({
 
   if (loading) {
     return (
-      <section className="screen">
-        <div className="loading-panel">
-          <span className="loading-spinner" aria-hidden="true" />
-          <strong>Carregando análise técnica</strong>
-          <p>Consultando a ação e o checklist no back-end.</p>
-        </div>
-      </section>
+      <section
+        className="screen action-detail-loading-placeholder"
+        aria-busy="true"
+        aria-label="Carregando análise técnica"
+      />
     )
   }
 

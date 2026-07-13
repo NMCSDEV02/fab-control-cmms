@@ -237,6 +237,7 @@ function operadorContextoQr_(p){
     found:true,
     tipo_contexto:ctx.tipo,
     ativo:strip_(ctx.ativo),
+    horimetro:typeof horimetroResumo116_ === "function" ? horimetroResumo116_(ctx.ativo) : null,
     componente:ctx.componente ? strip_(ctx.componente) : null,
     componentes:comps,
     acoes_pendentes:acoes.map(enrichAction_),
@@ -459,6 +460,7 @@ function criarChecklistExec_(acao, ex){
   }).sort(function(a,b){ return num_(a.ordem,0)-num_(b.ordem,0); });
 
   if(!itens.length) err_("CHECKLIST_MODELO_VAZIO","Plano validado não possui itens de checklist.",400);
+  var ativoChecklist = find_("ativos","id",acao.ativo_id);
 
   itens.forEach(function(i){
     var exists = rows_("checklist_execucao").some(function(c){ return String(c.execucao_id)===String(ex.id) && String(c.plano_item_id)===String(i.id); });
@@ -476,6 +478,7 @@ function criarChecklistExec_(acao, ex){
       resposta:"",
       observacao:"",
       evidencia_obrigatoria:i.evidencia_obrigatoria,
+      evidencia_min_fotos:typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(i) : (bool_(i.evidencia_obrigatoria) ? 1 : 0),
       status:ST.PENDENTE,
       responsavel_id:ex.operador_id,
       data_hora:"",
@@ -484,7 +487,7 @@ function criarChecklistExec_(acao, ex){
       parametro_nome:i.parametro_nome || "",
       valor_esperado:i.valor_esperado || "",
       opcoes_json:i.opcoes_json || "",
-      limite_min:keepZero_(i.limite_min),
+      limite_min:(typeof itemEhHorimetro116_ === "function" && itemEhHorimetro116_(i)) ? Math.max(num_(i.limite_min,0), num_(ativoChecklist && ativoChecklist.horimetro_atual,0)) : keepZero_(i.limite_min),
       limite_max:keepZero_(i.limite_max),
       unidade:i.unidade || "",
       valor_numero:"",
@@ -576,6 +579,10 @@ function operadorFinalizarAcao_(p){
     err_("OBS_REQUIRED","Resultado crítico exige observação.",400);
   }
 
+  var horimetroFinal = typeof sincronizarHorimetroChecklist116_ === "function"
+    ? sincronizarHorimetroChecklist116_(ex, auth)
+    : null;
+
   var novo = upper_(p.resultado) === "OK"
     ? ST.AGUARDANDO_VALIDACAO
     : ST.BLOQUEADA;
@@ -623,7 +630,8 @@ function operadorFinalizarAcao_(p){
     parada_operacional:operationalStop
       ? paradaSerializada114_(operationalStop)
       : null,
-    parada_manutencao:maintenanceStop
+    parada_manutencao:maintenanceStop,
+    horimetro:horimetroFinal
   };
 }
 
@@ -658,8 +666,10 @@ function validateChecklist_(execId){
 
   var evs = rows_("evidencias");
   var evPend = itens.filter(function(i){
-    if(!bool_(i.evidencia_obrigatoria)) return false;
-    return !evs.some(function(e){ return String(e.checklist_execucao_id) === String(i.id); });
+    var minimo = typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(i) : (bool_(i.evidencia_obrigatoria) ? 1 : 0);
+    if(minimo <= 0) return false;
+    var count = evs.filter(function(e){ return String(e.checklist_execucao_id) === String(i.id); }).length;
+    return count < minimo;
   });
   if(evPend.length) err_("EVIDENCIA_OBRIGATORIA","Item obrigatório exige evidência antes da finalização: "+evPend.map(function(i){return i.titulo;}).join("; "),400);
 
@@ -707,25 +717,34 @@ function operadorRegistrarEvidencia_(p){
     url:clean_(p.url),
     observacao:clean_(p.observacao),
     usuario_id:auth.usuario_id||"",
-    criado_em:now_()
+    criado_em:now_(),
+    arquivo_id:clean_(p.arquivo_id),
+    mime_type:clean_(p.mime_type),
+    tamanho_bytes:num_(p.tamanho_bytes,0),
+    thumbnail_url:clean_(p.thumbnail_url)
   });
   append_("evidencias", row);
 
   if(item){
     var totalEvs = rows_("evidencias", true).filter(function(e){ return String(e.checklist_execucao_id) === String(item.id); }).length;
-    var patch = {evidencias_count:totalEvs, atualizado_em:now_()};
-    if(upper_(item.tipo_resposta) === "EVIDENCIA" && !clean_(item.resposta)){
-      patch.resposta = "EVIDENCIA_ANEXADA";
-      patch.status = ST.RESPONDIDO;
-      patch.conforme = "SIM";
-      patch.validacao_msg = "Evidência anexada.";
+    var minimoEvs = typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(item) : 1;
+    var completoEvs = totalEvs >= minimoEvs;
+    var patch = {
+      evidencias_count:totalEvs,
+      atualizado_em:now_(),
+      validacao_msg:completoEvs ? "Quantidade mínima de evidências atendida." : "Evidências: "+totalEvs+" de "+minimoEvs+"."
+    };
+    if(upper_(item.tipo_resposta) === "EVIDENCIA"){
+      patch.resposta = completoEvs ? "EVIDENCIA_ANEXADA" : "";
+      patch.status = completoEvs ? ST.RESPONDIDO : ST.PENDENTE;
+      patch.conforme = completoEvs ? "SIM" : "";
       patch.responsavel_id = auth.usuario_id || item.responsavel_id || "";
-      patch.data_hora = now_();
+      patch.data_hora = completoEvs ? now_() : "";
     }
     update_("checklist_execucao", item.__rowIndex, patch);
   }
 
-  return {saved:true, evidencia:row, checklist_execucao_id:checklistId, evidencias_count:item ? totalEvs : ""};
+  return {saved:true, evidencia:row, checklist_execucao_id:checklistId, evidencias_count:item ? totalEvs : "", minimo_fotos:item && typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(item) : 0};
 }
 
 function operadorRegistrarMaterial_(p){
@@ -756,20 +775,40 @@ function operadorRegistrarParametro_(p){
     }
   }
 
-  var row = fit_("parametros", {id:uuid_("PAR"), ativo_id:ativoParametro.id, componente_id:componenteParametro ? componenteParametro.id : "", parametro:upper_(p.parametro), valor:num_(p.valor,0), unidade:clean_(p.unidade), origem:clean_(p.origem||"OPERADOR"), registrado_por:auth.usuario_id||"", registrado_em:now_(), criado_em:now_()});
-  append_("parametros", row);
+  var parametroNome = upper_(p.parametro);
+  var valor = Number(String(p.valor).replace(",", "."));
+  if(!isFinite(valor)) err_("PARAMETER_VALUE_INVALID", "Valor do parâmetro deve ser numérico.", 400);
 
-  if(row.parametro === "HORIMETRO"){
-    var a = find_("ativos","id",row.ativo_id);
-    if(a) update_("ativos", a.__rowIndex, {horimetro_atual:row.valor, atualizado_em:now_()});
-    if(row.componente_id){
-      var c = find_("componentes","id",row.componente_id);
-      if(c) update_("componentes", c.__rowIndex, {horas_acumuladas:row.valor, atualizado_em:now_()});
-    }
+  var row;
+  var horimetro = null;
+  if(parametroNome === "HORIMETRO" && typeof registrarParametroHorimetro116_ === "function"){
+    var resultHorimetro = registrarParametroHorimetro116_(
+      ativoParametro,
+      valor,
+      p.origem || "OPERADOR",
+      auth,
+      componenteParametro ? componenteParametro.id : ""
+    );
+    row = resultHorimetro.parametro;
+    horimetro = resultHorimetro.horimetro;
+  } else {
+    row = fit_("parametros", {
+      id:uuid_("PAR"),
+      ativo_id:ativoParametro.id,
+      componente_id:componenteParametro ? componenteParametro.id : "",
+      parametro:parametroNome,
+      valor:valor,
+      unidade:clean_(p.unidade),
+      origem:clean_(p.origem||"OPERADOR"),
+      registrado_por:auth.usuario_id||"",
+      registrado_em:now_(),
+      criado_em:now_()
+    });
+    append_("parametros", row);
   }
 
   var recalc = cmmsMotorRecalcular_({ativo_id:row.ativo_id, __auth:auth});
-  return {saved:true, parametro:row, recalculo:recalc};
+  return {saved:true, parametro:row, horimetro:horimetro, recalculo:recalc};
 }
 
 function calcularSaudeAtivoCMMS_(ativoId){

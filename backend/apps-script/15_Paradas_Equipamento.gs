@@ -53,6 +53,7 @@ function cmmsParadasOperacionaisSchemaUpgrade114_(p, auth){
   }
 
   ensureParadasOperacionaisSchema114_();
+  if(typeof ensureHorimetroEvidenciasSchema116_ === "function") ensureHorimetroEvidenciasSchema116_();
   backfillModoParadaManutencao115_();
 
   return {

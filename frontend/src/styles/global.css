@@ -2708,3 +2708,37 @@ p {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+
+/* Operador 7.8 — carregamento único e quantidade exata de evidências */
+.action-detail-loading-placeholder {
+  min-height: calc(100dvh - 170px);
+}
+
+.evidence-answer > button:disabled {
+  cursor: default;
+  border-color: #b9ddc8;
+  background: #effaf3;
+  color: var(--green);
+  opacity: 1;
+}
+
+.operation-overlay {
+  isolation: isolate;
+}
+
+.operation-overlay__card {
+  position: relative;
+  z-index: 1;
+}
+
+.evidence-selection-warning {
+  padding: 10px 12px;
+  border: 1px solid #efd29f;
+  border-radius: 13px;
+  background: #fff8eb;
+  color: #7a5215;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1.4;
+}

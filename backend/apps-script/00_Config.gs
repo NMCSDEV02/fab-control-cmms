@@ -1,6 +1,6 @@
 const FAB = {
   APP_NAME: "FAB Control",
-  VERSION: "1.1.5-operador-parada-tecnica",
+  VERSION: "1.1.7-fila-cache-evidencias",
   TZ: "America/Sao_Paulo",
   TOKEN_HOURS: 12,
   LOCK_TTL_SECONDS: 120,
@@ -54,7 +54,7 @@ const SH = {
   setores: ["id", "planta_id", "tag", "nome", "status", "criado_em", "atualizado_em"],
   linhas: ["id", "setor_id", "tag", "nome", "status", "criado_em", "atualizado_em"],
 
-  ativos: ["id", "linha_id", "tag", "qr_payload", "nome", "tipo", "criticidade", "status", "saude_pct", "horimetro_atual", "fabricante", "modelo", "numero_serie", "localizacao_tecnica", "criado_em", "atualizado_em"],
+  ativos: ["id", "linha_id", "tag", "qr_payload", "nome", "tipo", "criticidade", "status", "saude_pct", "horimetro_atual", "fabricante", "modelo", "numero_serie", "localizacao_tecnica", "criado_em", "atualizado_em", "horimetro_modo", "horimetro_atualizado_em", "horimetro_base_servico", "horimetro_base_servico_em"],
 
   componentes: ["id", "ativo_id", "tag", "qr_payload", "nome", "tipo", "criticidade", "status", "vida_util_horas", "vida_util_dias", "horas_acumuladas", "instalado_em", "fabricante", "modelo", "numero_serie", "localizacao_tecnica", "criado_em", "atualizado_em"],
 
@@ -62,7 +62,7 @@ const SH = {
 
   planos_manutencao: ["id", "ativo_id", "componente_id", "nome", "tipo", "criticidade", "gatilho_tipo", "gatilho_valor", "unidade", "recorrencia_dias", "tempo_estimado_min", "requer_bloqueio", "requer_evidencia", "max_sessoes", "status", "ultimo_disparo_em", "criado_em", "atualizado_em", "workflow_status", "validado_gestao", "validado_por", "validado_em", "devolvido_por", "devolvido_em", "devolvido_motivo", "enviado_validacao_em", "revisao", "setor_id", "modelo_base_id", "revisao_origem_id", "substitui_plano_id", "substituido_por", "substituido_em", "modo_parada_manutencao"],
 
-  plano_itens: ["id", "plano_id", "ordem", "titulo", "instrucao", "tipo_resposta", "obrigatorio", "evidencia_obrigatoria", "foto_referencia_url", "limite_min", "limite_max", "unidade", "criado_em", "atualizado_em", "parametro_nome", "valor_esperado", "opcoes_json", "bloqueia_finalizacao", "categoria", "peso", "status", "validacao_regra"],
+  plano_itens: ["id", "plano_id", "ordem", "titulo", "instrucao", "tipo_resposta", "obrigatorio", "evidencia_obrigatoria", "foto_referencia_url", "limite_min", "limite_max", "unidade", "criado_em", "atualizado_em", "parametro_nome", "valor_esperado", "opcoes_json", "bloqueia_finalizacao", "categoria", "peso", "status", "validacao_regra", "evidencia_min_fotos"],
 
   plano_controle: ["plano_id", "ativo_id", "componente_id", "gatilho_tipo", "gatilho_valor", "ultimo_valor_processado", "proximo_valor_gatilho", "ultima_acao_id", "ultima_acao_status", "atualizado_em"],
 
@@ -72,9 +72,9 @@ const SH = {
 
   execucoes: ["id", "acao_id", "os_id", "ativo_id", "componente_id", "operador_id", "resultado", "observacao", "duracao_segundos", "abriu_em", "iniciou_em", "finalizou_em", "status", "criado_em", "atualizado_em", "modo_execucao_manutencao"],
 
-  checklist_execucao: ["id", "execucao_id", "acao_id", "plano_item_id", "ordem", "titulo", "instrucao", "tipo_resposta", "obrigatorio", "resposta", "observacao", "evidencia_obrigatoria", "status", "responsavel_id", "data_hora", "criado_em", "atualizado_em", "parametro_nome", "valor_esperado", "opcoes_json", "limite_min", "limite_max", "unidade", "valor_numero", "conforme", "bloqueia_finalizacao", "validacao_msg", "evidencias_count", "categoria"],
+  checklist_execucao: ["id", "execucao_id", "acao_id", "plano_item_id", "ordem", "titulo", "instrucao", "tipo_resposta", "obrigatorio", "resposta", "observacao", "evidencia_obrigatoria", "status", "responsavel_id", "data_hora", "criado_em", "atualizado_em", "parametro_nome", "valor_esperado", "opcoes_json", "limite_min", "limite_max", "unidade", "valor_numero", "conforme", "bloqueia_finalizacao", "validacao_msg", "evidencias_count", "categoria", "evidencia_min_fotos"],
 
-  evidencias: ["id", "execucao_id", "acao_id", "checklist_execucao_id", "ativo_id", "componente_id", "tipo", "nome_arquivo", "url", "observacao", "usuario_id", "criado_em"],
+  evidencias: ["id", "execucao_id", "acao_id", "checklist_execucao_id", "ativo_id", "componente_id", "tipo", "nome_arquivo", "url", "observacao", "usuario_id", "criado_em", "arquivo_id", "mime_type", "tamanho_bytes", "thumbnail_url"],
 
   materiais_uso: ["id", "execucao_id", "acao_id", "material_id", "quantidade", "unidade", "observacao", "usuario_id", "criado_em"],
   parametros: ["id", "ativo_id", "componente_id", "parametro", "valor", "unidade", "origem", "registrado_por", "registrado_em", "criado_em"],
@@ -100,11 +100,11 @@ const PUBLIC_ACTIONS = ["sistema.health", "sistema.bootstrap", "auth.login"];
 
 const PERM = {
   ADMIN: [
-    "cmms.paradas_operacionais_schema_upgrade", "cmms.operador_visual_schema_upgrade", "cmms.tela_operador_schema_upgrade", "operador.home", "operador.painel", "cmms.operador_ui_schema_upgrade", "cmms.operacional_ui_schema_upgrade", "cmms.contrato_frontend_schema_upgrade", "cmms.frontend_contract_schema_upgrade", "cmms.execucao_checklist_schema_upgrade", "cmms.auditoria_operador_schema_upgrade", "admin.corrigir_auditoria_execucao_operador", "admin.gerar_acao_teste_checklist", "operador.minhas_acoes", "operador.tela_acao", "operador.salvar_checklist_lote", "operador.detalhar_checklist_execucao", "operador.validar_finalizacao_acao",
+    "cmms.horimetro_evidencias_schema_upgrade", "cmms.paradas_operacionais_schema_upgrade", "cmms.operador_visual_schema_upgrade", "cmms.tela_operador_schema_upgrade", "operador.home", "operador.painel", "cmms.operador_ui_schema_upgrade", "cmms.operacional_ui_schema_upgrade", "cmms.contrato_frontend_schema_upgrade", "cmms.frontend_contract_schema_upgrade", "cmms.execucao_checklist_schema_upgrade", "cmms.auditoria_operador_schema_upgrade", "admin.corrigir_auditoria_execucao_operador", "admin.gerar_acao_teste_checklist", "operador.minhas_acoes", "operador.tela_acao", "operador.salvar_checklist_lote", "operador.detalhar_checklist_execucao", "operador.validar_finalizacao_acao",
     "admin.listar_tipos_item_checklist", "admin.listar_regras_checklist", "admin.validar_catalogo_item_checklist", "admin.salvar_item_modelo_checklist", "admin.remover_item_modelo_checklist", "admin.reordenar_itens_modelo_checklist", "admin.clonar_item_modelo_checklist", "admin.listar_itens_modelo_checklist", "admin.detalhar_modelo_checklist_catalogo", "cmms.catalogo_checklist_schema_upgrade",
     "cmms.schema_upgrade", "admin.salvar_modelo_checklist", "admin.enviar_modelo_checklist_validacao", "admin.detalhe_modelo_checklist", "admin.listar_modelos_checklist", "admin.modelos_devolvidos", "admin.corrigir_modelo_checklist", "admin.criar_revisao_modelo_checklist", "gestor.modelos_em_validacao", "gestor.listar_modelos_checklist", "gestor.detalhe_modelo_checklist", "gestor.validar_modelo_checklist", "operador.listar_checklist_execucao",
     "sistema.warmup", "admin.resumo", "perf.cache_clear", "perf.cache_status", "admin.resumo_cache", "admin.listar", "admin.obter", "admin.salvar", "admin.gerar_qr", "admin.criar_demo", "admin.recalcular_ativo",
-    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "admin.registrar_horimetro_telemetria", "admin.reiniciar_contador_servico", "admin.verificar_drive_evidencias", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "gestor.listar_paradas", "gestor.listar_ocorrencias", "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "cmms.kpis_base", "cmms.diagnostico", "perf.cache_status", "perf.cache_clear", "cmms.higiene_diagnosticar", "cmms.higienizar_status", "cmms.higienizar_duplicidades", "cmms.higienizar_base",
@@ -128,7 +128,7 @@ const PERM = {
     "operador.validar_resposta_checklist_item",
     "operador.listar_checklist_execucao",
     "sistema.warmup",
-    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
   ]
