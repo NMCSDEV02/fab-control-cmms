@@ -25,6 +25,29 @@ type BarcodeDetectorResult = { rawValue?: string }
 type BarcodeDetectorInstance = { detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]> }
 type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorInstance
 type OccurrenceTarget = '' | 'EQUIPAMENTO' | 'COMPONENTE'
+type StopReasonCode =
+  | ''
+  | 'FALHA_MECANICA'
+  | 'FALHA_ELETRICA_AUTOMACAO'
+  | 'FALHA_PNEUMATICA_HIDRAULICA'
+  | 'SEGURANCA'
+  | 'QUALIDADE'
+  | 'AJUSTE_SETUP'
+  | 'FALTA_MATERIAL'
+  | 'LIMPEZA_INSPECAO'
+  | 'OUTRO'
+
+const STOP_REASON_OPTIONS: Array<{ value: Exclude<StopReasonCode, ''>; label: string }> = [
+  { value: 'FALHA_MECANICA', label: 'Falha mecânica' },
+  { value: 'FALHA_ELETRICA_AUTOMACAO', label: 'Falha elétrica ou automação' },
+  { value: 'FALHA_PNEUMATICA_HIDRAULICA', label: 'Falha pneumática ou hidráulica' },
+  { value: 'SEGURANCA', label: 'Condição de segurança' },
+  { value: 'QUALIDADE', label: 'Desvio de qualidade' },
+  { value: 'AJUSTE_SETUP', label: 'Ajuste ou setup' },
+  { value: 'FALTA_MATERIAL', label: 'Falta de material ou insumo' },
+  { value: 'LIMPEZA_INSPECAO', label: 'Limpeza ou inspeção' },
+  { value: 'OUTRO', label: 'Outro' },
+]
 
 export interface QrPageProps {
   onNotify: (message: string) => void
@@ -109,7 +132,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [savingParameter, setSavingParameter] = useState(false)
 
   const [stopOpen, setStopOpen] = useState(false)
-  const [stopReason, setStopReason] = useState('')
+  const [stopReason, setStopReason] = useState<StopReasonCode>('')
+  const [stopReasonDetails, setStopReasonDetails] = useState('')
   const [savingStop, setSavingStop] = useState(false)
   const [returnCategory, setReturnCategory] = useState('')
   const [returnJustification, setReturnJustification] = useState('')
@@ -344,6 +368,15 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
   async function startStop() {
     if (!context?.ativo?.id) return
+    const selectedReason = STOP_REASON_OPTIONS.find((option) => option.value === stopReason)
+    if (!selectedReason) return onNotify('Selecione o motivo da parada')
+    if (stopReason === 'OUTRO' && stopReasonDetails.trim().length < 5) {
+      return onNotify('Descreva o motivo da parada')
+    }
+
+    const reasonText = stopReason === 'OUTRO'
+      ? `${selectedReason.label}: ${stopReasonDetails.trim()}`
+      : selectedReason.label
     const ativoId = context.ativo.id
     const cacheKey = lastQuery || context.ativo.tag || ativoId
     setSavingStop(true)
@@ -353,7 +386,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         result = await startOperatorStop({
           ativo_id: ativoId,
           componente_id: context.componente?.id || '',
-          motivo_parada: stopReason.trim() || 'Parada do equipamento iniciada pelo operador.',
+          motivo_parada: reasonText,
         })
       } catch (cause) {
         if (!(cause instanceof ApiRequestError) || cause.code !== 'API_TIMEOUT') throw cause
@@ -374,6 +407,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
       setStopOpen(false)
       void writeQrContextCache(cacheKey, nextContext)
       setStopReason('')
+      setStopReasonDetails('')
       onNotify(result.already_open ? 'A parada do equipamento já estava ativa' : 'Equipamento parado. Gestão e administração podem acompanhar o evento.')
       window.setTimeout(() => void refreshContextInBackground(cacheKey), 500)
     } catch (cause) {
@@ -776,7 +810,18 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
       <div className="qr-next-actions">
         <button type="button" className="secondary-action" onClick={() => { closeOccurrence(); setOccurrenceOpen(true) }}>Registrar ocorrência</button>
-        <button type="button" className={context.parada_ativa ? 'danger-action danger-action--finish' : 'danger-action'} onClick={() => { setReturnValidation(null); setStopOpen(true) }}>{context.parada_ativa ? 'Finalizar parada' : 'Iniciar parada do equipamento'}</button>
+        <button
+          type="button"
+          className={context.parada_ativa ? 'danger-action danger-action--finish' : 'danger-action'}
+          onClick={() => {
+            setReturnValidation(null)
+            setStopReason('')
+            setStopReasonDetails('')
+            setStopOpen(true)
+          }}
+        >
+          {context.parada_ativa ? 'Finalizar parada' : 'Iniciar parada do equipamento'}
+        </button>
       </div>
 
       {occurrenceOpen && (
@@ -815,7 +860,35 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
           <form className="evidence-modal operational-modal" onSubmit={(event) => { event.preventDefault(); if (context.parada_ativa) void finishStop(); else void startStop() }}>
             <div><span>Parada do equipamento</span><h2>{context.parada_ativa ? 'Confirmar retorno à operação' : 'Parar equipamento agora'}</h2><p>{context.parada_ativa ? 'A produção voltará a considerar o equipamento disponível.' : 'A gestão e a administração poderão acompanhar esta parada e suas ocorrências.'}</p></div>
             {!context.parada_ativa ? (
-              <label><span>Motivo resumido</span><textarea value={stopReason} onChange={(event) => setStopReason(event.target.value)} /></label>
+              <>
+                <label>
+                  <span>Motivo da parada</span>
+                  <select
+                    value={stopReason}
+                    onChange={(event) => {
+                      const value = event.target.value as StopReasonCode
+                      setStopReason(value)
+                      if (value !== 'OUTRO') setStopReasonDetails('')
+                    }}
+                  >
+                    <option value="">Selecione o motivo</option>
+                    {STOP_REASON_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                {stopReason === 'OUTRO' && (
+                  <label>
+                    <span>Descreva o motivo</span>
+                    <textarea
+                      value={stopReasonDetails}
+                      onChange={(event) => setStopReasonDetails(event.target.value)}
+                      placeholder="Informe o motivo observado"
+                    />
+                    <small>Mínimo de 5 caracteres.</small>
+                  </label>
+                )}
+              </>
             ) : (
               <>
                 <ActiveStopBanner stop={context.parada_ativa} compact />
@@ -827,7 +900,32 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
                 )}
               </>
             )}
-            <div className="evidence-modal__actions"><button type="button" className="secondary-button" onClick={() => setStopOpen(false)}>Cancelar</button><button type="submit" className={context.parada_ativa ? 'primary-button' : 'primary-button danger-confirm-button'} disabled={savingStop}>{savingStop ? 'Processando…' : context.parada_ativa ? 'Confirmar retorno' : 'Parar equipamento'}</button></div>
+            <div className="evidence-modal__actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setStopOpen(false)
+                  setStopReason('')
+                  setStopReasonDetails('')
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className={context.parada_ativa ? 'primary-button' : 'primary-button danger-confirm-button'}
+                disabled={
+                  savingStop ||
+                  (!context.parada_ativa && (
+                    !stopReason ||
+                    (stopReason === 'OUTRO' && stopReasonDetails.trim().length < 5)
+                  ))
+                }
+              >
+                {savingStop ? 'Processando…' : context.parada_ativa ? 'Confirmar retorno' : 'Parar equipamento'}
+              </button>
+            </div>
           </form>
         </div>
       )}
