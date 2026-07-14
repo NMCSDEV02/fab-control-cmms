@@ -188,29 +188,141 @@ function ensureDefaultPlanoItem_(plano){
   }));
 }
 
+function acaoDisponivelInicioQr119_(acao){
+  return [
+    ST.PENDENTE,
+    ST.ABERTA,
+    "AGUARDANDO_INICIO",
+    "LIBERADA"
+  ].indexOf(upper_(acao && acao.status)) >= 0;
+}
+
+function operadorHistoricoQr119_(p){
+  req_(p,["ativo_id"]);
+
+  var limit = Math.max(1, Math.min(20, num_(p.limite || p.limit, FAB.QR_HISTORY_PAGE_SIZE || 4)));
+  var componentId = clean_(p.componente_id);
+  var sh = sheet_("historico");
+  var lastRow = sh.getLastRow();
+  var lastColumn = sh.getLastColumn();
+  var headers = headers_("historico");
+
+  if(lastRow < 2 || lastColumn < 1){
+    return {
+      items:[],
+      next_cursor:"",
+      has_more:false,
+      limit:limit,
+      ativo_id:p.ativo_id,
+      componente_id:componentId
+    };
+  }
+
+  var cursor = Math.min(Math.max(1, num_(p.cursor, lastRow)), lastRow);
+  var blockSize = Math.max(40, Math.min(300, num_(FAB.QR_HISTORY_SCAN_BLOCK, 120)));
+  var maxScanRows = Math.max(blockSize, Math.min(1200, num_(FAB.QR_HISTORY_MAX_SCAN_ROWS, 480)));
+  var matches = [];
+  var scanEnd = cursor;
+  var scannedRows = 0;
+
+  // A leitura é limitada por página. Mesmo em históricos muito grandes, uma
+  // consulta nunca percorre a aba inteira. O cursor continua do ponto exato.
+  while(scanEnd >= 2 && matches.length < limit && scannedRows < maxScanRows){
+    var allowed = Math.min(blockSize, maxScanRows - scannedRows);
+    var scanStart = Math.max(2, scanEnd - allowed + 1);
+    var rowCount = scanEnd - scanStart + 1;
+    var values = sh.getRange(scanStart, 1, rowCount, lastColumn).getValues();
+    scannedRows += rowCount;
+
+    for(var index = values.length - 1; index >= 0; index--){
+      var rowIndex = scanStart + index;
+      var row = {};
+      headers.forEach(function(header, column){ row[header] = normCell_(values[index][column]); });
+
+      if(String(row.ativo_id) !== String(p.ativo_id)) continue;
+      if(componentId && String(row.componente_id) !== String(componentId)) continue;
+
+      row.__rowIndex = rowIndex;
+      matches.push(row);
+      if(matches.length >= limit){
+        scanEnd = rowIndex - 1;
+        break;
+      }
+    }
+
+    if(matches.length < limit) scanEnd = scanStart - 1;
+  }
+
+  var hasMore = scanEnd >= 2;
+  return {
+    items:matches.slice(0, limit).map(strip_),
+    next_cursor:hasMore ? String(scanEnd) : "",
+    has_more:hasMore,
+    limit:limit,
+    scanned_rows:scannedRows,
+    ativo_id:p.ativo_id,
+    componente_id:componentId
+  };
+}
+
 function operadorContextoQr_(p){
   req_(p,["qr_payload"]);
   var qr = clean_(p.qr_payload);
 
   var ctx = resolveQr_(qr);
   if(!ctx.found){
-    return {found:false, tipo_contexto:"NAO_ENCONTRADO", mensagem_operador:"QR/TAG não encontrado.", ativo:null, componente:null, componentes:[], acoes_pendentes:[], proxima_acao:null, historico_recente:[], parametros_recentes:[], parametros_atuais:[], parada_ativa:null, ocorrencias_abertas:[], saude:null};
+    return {
+      found:false,
+      tipo_contexto:"NAO_ENCONTRADO",
+      mensagem_operador:"QR/TAG não encontrado.",
+      ativo:null,
+      componente:null,
+      componentes:[],
+      acoes_pendentes:[],
+      proxima_acao:null,
+      historico_recente:[],
+      historico_paginacao:{next_cursor:"",has_more:false,limit:FAB.QR_HISTORY_PAGE_SIZE || 4},
+      parametros_recentes:[],
+      parametros_atuais:[],
+      parada_ativa:null,
+      ocorrencias_abertas:[],
+      saude:null
+    };
   }
 
-  cmmsMotorRecalcular_({ativo_id:ctx.ativo.id, __auth:p.__auth});
+  function availableActions(){
+    return rows_("os_acoes").filter(function(a){
+      return String(a.ativo_id) === String(ctx.ativo.id) &&
+        (!ctx.componente || String(a.componente_id) === String(ctx.componente.id)) &&
+        acaoDisponivelInicioQr119_(a);
+    }).sort(function(a,b){
+      return priorityScore_(b.prioridade)-priorityScore_(a.prioridade) ||
+        String(a.gerado_em).localeCompare(String(b.gerado_em));
+    });
+  }
 
-  // Releitura após motor.
-  DB_CACHE["os_acoes"] = null;
-  var acoes = rows_("os_acoes").filter(function(a){
-    return String(a.ativo_id) === String(ctx.ativo.id) &&
-      (!ctx.componente || String(a.componente_id) === String(ctx.componente.id)) &&
-      acaoAberta_(a);
-  }).sort(function(a,b){ return priorityScore_(b.prioridade)-priorityScore_(a.prioridade) || String(a.gerado_em).localeCompare(String(b.gerado_em)); });
+  var acoes = availableActions();
+  if(
+    !acoes.length &&
+    p.motor !== false &&
+    typeof fastNeedsMotorForContext_ === "function" &&
+    fastNeedsMotorForContext_(ctx)
+  ){
+    cmmsMotorRecalcular_({ativo_id:ctx.ativo.id, __auth:p.__auth});
+    DB_CACHE["os_acoes"] = null;
+    safeCacheRemove_(tableCacheKey_("os_acoes"));
+    acoes = availableActions();
+  }
 
-  var comps = rows_("componentes").filter(function(c){ return String(c.ativo_id) === String(ctx.ativo.id) && isValidComponent_(c); }).map(strip_);
-  var hist = rows_("historico").filter(function(h){
-    return String(h.ativo_id) === String(ctx.ativo.id) && (!ctx.componente || String(h.componente_id) === String(ctx.componente.id));
-  }).sort(sortByDateDesc_("criado_em")).slice(0,20).map(strip_);
+  var comps = rows_("componentes").filter(function(c){
+    return String(c.ativo_id) === String(ctx.ativo.id) && isValidComponent_(c);
+  }).map(strip_);
+
+  var historyPage = operadorHistoricoQr119_({
+    ativo_id:ctx.ativo.id,
+    componente_id:ctx.componente ? ctx.componente.id : "",
+    limite:FAB.QR_HISTORY_PAGE_SIZE || 4
+  });
 
   var parametrosRecentes = rows_("parametros").filter(function(r){
     return String(r.ativo_id) === String(ctx.ativo.id) &&
@@ -226,12 +338,10 @@ function operadorContextoQr_(p){
 
   var saude = saudeAtivo_(ctx.ativo.id);
   var paradaAtiva = typeof paradaAtivaPorAtivo114_ === "function" ? paradaAtivaPorAtivo114_(ctx.ativo.id) : null;
-  var ocorrenciasAbertas = (typeof ensureParadasOperacionaisSchema114_ === "function")
-    ? rows_("ocorrencias_operacionais", true).filter(function(o){
-        return String(o.ativo_id) === String(ctx.ativo.id) &&
-          ["FINALIZADA","CANCELADA"].indexOf(upper_(o.status)) < 0;
-      }).sort(sortByDateDesc_("criado_em")).slice(0,20).map(strip_)
-    : [];
+  var ocorrenciasAbertas = rows_("ocorrencias_operacionais").filter(function(o){
+    return String(o.ativo_id) === String(ctx.ativo.id) &&
+      ["FINALIZADA","CANCELADA"].indexOf(upper_(o.status)) < 0;
+  }).sort(sortByDateDesc_("criado_em")).slice(0,20).map(strip_);
 
   return {
     found:true,
@@ -242,13 +352,20 @@ function operadorContextoQr_(p){
     componentes:comps,
     acoes_pendentes:acoes.map(enrichAction_),
     proxima_acao:acoes.length ? enrichAction_(acoes[0]) : null,
-    historico_recente:hist,
+    historico_recente:historyPage.items,
+    historico_paginacao:{
+      next_cursor:historyPage.next_cursor,
+      has_more:historyPage.has_more,
+      limit:historyPage.limit
+    },
     parametros_recentes:parametrosRecentes,
     parametros_atuais:parametrosAtuais,
     parada_ativa:paradaAtiva ? paradaSerializada114_(paradaAtiva) : null,
     ocorrencias_abertas:ocorrenciasAbertas,
     saude:saude,
-    mensagem_operador:acoes.length ? "Existem ações pendentes para este equipamento." : "Equipamento sem ações pendentes."
+    mensagem_operador:acoes.length
+      ? "Existem ações disponíveis para iniciar neste equipamento."
+      : "Equipamento sem ações disponíveis para início."
   };
 }
 
@@ -314,23 +431,105 @@ function latestExecucaoAcao1081_(acaoId){
   return execs.length ? execs[0] : null;
 }
 
+/**
+ * Operador 1.1.8 - helpers de escrita usados somente nos fluxos críticos.
+ * Reduz chamadas ao Sheets sem regravar a linha inteira como texto.
+ */
+function patchRowFast118_(name, row, patch){
+  if(!row || !row.__rowIndex){
+    if(row && row.__rowIndex) update_(name, row.__rowIndex, patch);
+    return Object.assign({}, row || {}, patch || {});
+  }
+
+  var headers = SH[name] || headers_(name);
+  var indexes = Object.keys(patch || {}).map(function(key){ return headers.indexOf(key); })
+    .filter(function(index){ return index >= 0; });
+  if(!indexes.length) return Object.assign({}, row, patch || {});
+
+  var minIndex = Math.min.apply(null, indexes);
+  var maxIndex = Math.max.apply(null, indexes);
+  var range = sheet_(name).getRange(row.__rowIndex, minIndex + 1, 1, maxIndex - minIndex + 1);
+  var values = range.getValues()[0];
+
+  Object.keys(patch).forEach(function(key){
+    var column = headers.indexOf(key);
+    if(column >= minIndex && column <= maxIndex){
+      values[column - minIndex] = patch[key];
+    }
+  });
+
+  range.setValues([values]);
+  invalidateSheetCache_(name);
+  return Object.assign({}, row, patch);
+}
+
+function appendRowsFast118_(name, objects){
+  objects = Array.isArray(objects) ? objects : [];
+  if(!objects.length) return [];
+
+  var sh = sheet_(name);
+  var headers = SH[name] || headers_(name);
+  var startRow = sh.getLastRow() + 1;
+  var values = objects.map(function(object){
+    return headers.map(function(key){
+      return object[key] === undefined ? "" : object[key];
+    });
+  });
+
+  sh.getRange(startRow, 1, values.length, headers.length).setValues(values);
+  invalidateSheetCache_(name);
+
+  return objects.map(function(object, index){
+    return Object.assign({}, object, {__rowIndex:startRow + index});
+  });
+}
+
+function checklistExecucaoResumo118_(execucaoId, rows){
+  var itens = (rows || rows_("checklist_execucao").filter(function(item){
+    return String(item.execucao_id) === String(execucaoId);
+  })).slice().sort(function(a,b){ return num_(a.ordem,0)-num_(b.ordem,0); });
+
+  var respondidos = itens.filter(function(item){
+    return upper_(item.status) === ST.RESPONDIDO || clean_(item.resposta) !== "" || clean_(item.valor_numero) !== "";
+  }).length;
+
+  return {
+    modelo:false,
+    execucao_id:execucaoId,
+    total:itens.length,
+    respondidos:respondidos,
+    pending_count:Math.max(0, itens.length - respondidos),
+    itens:itens.map(strip_)
+  };
+}
+
+function validarChecklistParaInicio119_(acao){
+  var plano = acao.plano_id ? find_("planos_manutencao", "id", acao.plano_id) : null;
+  if(!plano) err_("PLAN_NOT_FOUND", "Ação sem plano técnico vinculado.", 404);
+  if(!isPlanoOperacional_(plano)) err_("PLANO_NAO_VALIDADO", "Plano/checklist ainda não validado pela gestão.", 400);
+  var itens = rows_("plano_itens").filter(function(item){
+    return String(item.plano_id) === String(acao.plano_id) &&
+      upper_(item.status || ST.ATIVO) === ST.ATIVO;
+  });
+  if(!itens.length) err_("CHECKLIST_MODELO_VAZIO", "Plano validado não possui itens de checklist.", 400);
+}
+
 function operadorIniciarAcao_(p){
   req_(p,["acao_id"]);
   var auth = requireOperadorAuth1081_(p.__auth || {}, "operador.iniciar_acao");
   var acao = find_("os_acoes","id",p.acao_id);
   if(!acao) err_("ACTION_NOT_FOUND","Ação não encontrada.",404);
-  if([ST.PENDENTE,ST.EM_EXECUCAO].indexOf(upper_(acao.status)) < 0){
+  if(!acaoDisponivelInicioQr119_(acao) && upper_(acao.status) !== ST.EM_EXECUCAO){
     err_("ACTION_INVALID_STATUS","Ação não pode iniciar. Status atual: "+acao.status,400);
   }
+  validarChecklistParaInicio119_(acao);
 
   var open = rows_("execucoes").find(function(e){
-    return String(e.acao_id)===String(acao.id) &&
-      upper_(e.status) !== ST.FINALIZADA;
+    return String(e.acao_id)===String(acao.id) && upper_(e.status) !== ST.FINALIZADA;
   });
 
   if(open){
     requireExecucaoDoOperador1081_(open, auth);
-    criarChecklistExec_(acao, open);
 
     var existingPolicy = clean_(open.modo_execucao_manutencao)
       ? {
@@ -342,12 +541,18 @@ function operadorIniciarAcao_(p){
         }
       : resolverDecisaoInicioManutencao115_(acao, p);
 
-    var existingMaintenanceStop = iniciarCondicaoManutencao115_(
+    var existingUnifiedStop = iniciarCondicaoManutencao115_(
       acao,
       open,
       auth,
       existingPolicy
     );
+    var existingOperationalStop = existingUnifiedStop || (
+      existingPolicy.parada_operacional
+        ? paradaSerializada114_(existingPolicy.parada_operacional)
+        : null
+    );
+    var existingChecklist = criarChecklistExec_(acao, open);
 
     return {
       started:true,
@@ -355,19 +560,22 @@ function operadorIniciarAcao_(p){
       acao_id:acao.id,
       execucao_id:open.id,
       status:ST.EM_EXECUCAO,
+      execucao:strip_(Object.assign({}, open, {
+        modo_execucao_manutencao:existingPolicy.decisao === "SEM_PARADA" ? "SEM_PARADA" : "COM_PARADA"
+      })),
+      checklist:existingChecklist,
       modo_parada_manutencao:existingPolicy.modo_configurado,
       decisao_parada_manutencao:existingPolicy.decisao,
       modo_execucao_manutencao:existingPolicy.decisao === "SEM_PARADA"
         ? "SEM_PARADA"
         : "COM_PARADA",
-      parada_operacional:existingPolicy.parada_operacional
-        ? paradaSerializada114_(existingPolicy.parada_operacional)
-        : null,
-      parada_manutencao:existingMaintenanceStop
+      parada_operacional:existingOperationalStop,
+      parada_manutencao:null
     };
   }
 
   var policy = resolverDecisaoInicioManutencao115_(acao, p);
+  var startedAt = now_();
 
   var ex = fit_("execucoes", {
     id:uuid_("EXE"),
@@ -379,44 +587,46 @@ function operadorIniciarAcao_(p){
     resultado:"",
     observacao:"",
     duracao_segundos:0,
-    modo_execucao_manutencao:policy.decisao === "SEM_PARADA"
-      ? "SEM_PARADA"
-      : "COM_PARADA",
-    abriu_em:now_(),
-    iniciou_em:now_(),
+    modo_execucao_manutencao:policy.decisao === "SEM_PARADA" ? "SEM_PARADA" : "COM_PARADA",
+    abriu_em:startedAt,
+    iniciou_em:startedAt,
     finalizou_em:"",
     status:ST.EM_EXECUCAO,
-    criado_em:now_(),
-    atualizado_em:now_()
+    criado_em:startedAt,
+    atualizado_em:startedAt
   });
-  append_("execucoes", ex);
+  ex = appendRowsFast118_("execucoes", [ex])[0];
 
-  update_("os_acoes", acao.__rowIndex, {
+  // A parada física é criada ou reutilizada imediatamente após abrir a
+  // execução. Isso atualiza o status do equipamento antes das atualizações
+  // secundárias da ação, da OS e da preparação do checklist.
+  var unifiedStop = iniciarCondicaoManutencao115_(acao, ex, auth, policy);
+  var operationalStop = unifiedStop || (
+    policy.parada_operacional
+      ? paradaSerializada114_(policy.parada_operacional)
+      : null
+  );
+
+  acao = patchRowFast118_("os_acoes", acao, {
     status:ST.EM_EXECUCAO,
     responsavel_id:auth.usuario_id||"",
-    iniciado_em:acao.iniciado_em||now_(),
+    iniciado_em:acao.iniciado_em||startedAt,
     modo_parada_manutencao:policy.modo_configurado,
-    atualizado_em:now_()
+    atualizado_em:startedAt
   });
 
   var os = acao.os_id ? find_("ordens_servico","id",acao.os_id) : null;
   if(os && upper_(os.status) === ST.ABERTA){
-    update_("ordens_servico", os.__rowIndex, {
+    patchRowFast118_("ordens_servico", os, {
       status:ST.EM_EXECUCAO,
-      iniciada_em:now_(),
-      atualizado_em:now_()
+      iniciada_em:startedAt,
+      atualizado_em:startedAt
     });
   }
 
-  criarChecklistExec_(acao, ex);
-  var maintenanceStop = iniciarCondicaoManutencao115_(
-    acao,
-    ex,
-    auth,
-    policy
-  );
+  var checklist = criarChecklistExec_(acao, ex);
 
-  hist_({
+  (typeof histFast119_ === "function" ? histFast119_ : hist_)({
     ativo_id:acao.ativo_id,
     componente_id:acao.componente_id,
     os_id:acao.os_id,
@@ -431,18 +641,46 @@ function operadorIniciarAcao_(p){
 
   return {
     started:true,
+    already_started:false,
     acao_id:acao.id,
     execucao_id:ex.id,
     status:ST.EM_EXECUCAO,
+    execucao:strip_(ex),
+    checklist:checklist,
     modo_parada_manutencao:policy.modo_configurado,
     decisao_parada_manutencao:policy.decisao,
-    modo_execucao_manutencao:policy.decisao === "SEM_PARADA"
-      ? "SEM_PARADA"
-      : "COM_PARADA",
-    parada_operacional:policy.parada_operacional
-      ? paradaSerializada114_(policy.parada_operacional)
-      : null,
-    parada_manutencao:maintenanceStop
+    modo_execucao_manutencao:policy.decisao === "SEM_PARADA" ? "SEM_PARADA" : "COM_PARADA",
+    parada_operacional:operationalStop,
+    parada_manutencao:null
+  };
+}
+
+function operadorEstadoAcao118_(p){
+  req_(p,["acao_id"]);
+  var auth = requireOperadorAuth1081_(p.__auth || {}, "operador.estado_acao");
+  var acao = find_("os_acoes","id",p.acao_id);
+  if(!acao) err_("ACTION_NOT_FOUND","Ação não encontrada.",404);
+
+  var ex = latestExecucaoAcao1081_(acao.id);
+  if(ex) requireExecucaoDoOperador1081_(ex, auth);
+
+  var started = !!ex && upper_(ex.status) !== ST.FINALIZADA && upper_(acao.status) === ST.EM_EXECUCAO;
+  var operationalStop = paradaAtivaPorAtivo114_(acao.ativo_id);
+
+  return {
+    ok:true,
+    started:started,
+    acao_id:acao.id,
+    status:acao.status,
+    execucao_id:ex ? ex.id : "",
+    execucao:ex ? strip_(ex) : null,
+    checklist:ex ? checklistExecucaoResumo118_(ex.id) : null,
+    modo_execucao_manutencao:ex ? upper_(ex.modo_execucao_manutencao || "") : "",
+    parada_operacional:operationalStop ? paradaSerializada114_(operationalStop) : null,
+    // Mantido no contrato somente por compatibilidade. Novas execuções usam
+    // exclusivamente parada_operacional/paradas_equipamento.
+    parada_manutencao:null,
+    server_time:now_()
   };
 }
 
@@ -460,12 +698,19 @@ function criarChecklistExec_(acao, ex){
   }).sort(function(a,b){ return num_(a.ordem,0)-num_(b.ordem,0); });
 
   if(!itens.length) err_("CHECKLIST_MODELO_VAZIO","Plano validado não possui itens de checklist.",400);
+
+  var existentes = rows_("checklist_execucao").filter(function(item){
+    return String(item.execucao_id) === String(ex.id);
+  });
+  var porPlanoItem = {};
+  existentes.forEach(function(item){ porPlanoItem[String(item.plano_item_id)] = item; });
+
   var ativoChecklist = find_("ativos","id",acao.ativo_id);
+  var novos = [];
 
   itens.forEach(function(i){
-    var exists = rows_("checklist_execucao").some(function(c){ return String(c.execucao_id)===String(ex.id) && String(c.plano_item_id)===String(i.id); });
-    if(exists) return;
-    append_("checklist_execucao", fit_("checklist_execucao", {
+    if(porPlanoItem[String(i.id)]) return;
+    novos.push(fit_("checklist_execucao", {
       id:uuid_("CHK"),
       execucao_id:ex.id,
       acao_id:acao.id,
@@ -478,7 +723,6 @@ function criarChecklistExec_(acao, ex){
       resposta:"",
       observacao:"",
       evidencia_obrigatoria:i.evidencia_obrigatoria,
-      evidencia_min_fotos:typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(i) : (bool_(i.evidencia_obrigatoria) ? 1 : 0),
       status:ST.PENDENTE,
       responsavel_id:ex.operador_id,
       data_hora:"",
@@ -487,7 +731,9 @@ function criarChecklistExec_(acao, ex){
       parametro_nome:i.parametro_nome || "",
       valor_esperado:i.valor_esperado || "",
       opcoes_json:i.opcoes_json || "",
-      limite_min:(typeof itemEhHorimetro116_ === "function" && itemEhHorimetro116_(i)) ? Math.max(num_(i.limite_min,0), num_(ativoChecklist && ativoChecklist.horimetro_atual,0)) : keepZero_(i.limite_min),
+      limite_min:(typeof itemEhHorimetro116_ === "function" && itemEhHorimetro116_(i))
+        ? Math.max(num_(i.limite_min,0), num_(ativoChecklist && ativoChecklist.horimetro_atual,0))
+        : keepZero_(i.limite_min),
       limite_max:keepZero_(i.limite_max),
       unidade:i.unidade || "",
       valor_numero:"",
@@ -495,9 +741,15 @@ function criarChecklistExec_(acao, ex){
       bloqueia_finalizacao:bool_(i.bloqueia_finalizacao) ? "SIM" : "NAO",
       validacao_msg:"",
       evidencias_count:0,
-      categoria:i.categoria || ""
+      categoria:i.categoria || "",
+      evidencia_min_fotos:typeof evidenciaMinFotos116_ === "function"
+        ? evidenciaMinFotos116_(i)
+        : (bool_(i.evidencia_obrigatoria) ? 1 : 0)
     }));
   });
+
+  var inseridos = appendRowsFast118_("checklist_execucao", novos);
+  return checklistExecucaoResumo118_(ex.id, existentes.concat(inseridos));
 }
 
 function operadorSalvarChecklistItem_(p){
@@ -513,7 +765,7 @@ function operadorSalvarChecklistItem_(p){
 
   var val = validarRespostaChecklistItem_(item, p);
 
-  update_("checklist_execucao", item.__rowIndex, {
+  patchRowFast118_("checklist_execucao", item, {
     resposta:val.resposta,
     observacao:clean_(p.observacao),
     status:ST.RESPONDIDO,
@@ -550,7 +802,7 @@ function operadorFinalizarAcao_(p){
       upper_(acao.status)
     ) >= 0
   ){
-    var repairedMaintenanceStop = finalizarCondicaoManutencao115_(
+    finalizarCondicaoManutencao115_(
       acao,
       ex,
       auth
@@ -565,7 +817,7 @@ function operadorFinalizarAcao_(p){
       parada_operacional:existingOperationalStop
         ? paradaSerializada114_(existingOperationalStop)
         : null,
-      parada_manutencao:repairedMaintenanceStop
+      parada_manutencao:null
     };
   }
 
@@ -587,29 +839,30 @@ function operadorFinalizarAcao_(p){
     ? ST.AGUARDANDO_VALIDACAO
     : ST.BLOQUEADA;
 
-  update_("execucoes", ex.__rowIndex, {
+  var finalizedAt = now_();
+  patchRowFast118_("execucoes", ex, {
     resultado:upper_(p.resultado),
     observacao:clean_(p.observacao),
     duracao_segundos:num_(p.duracao_segundos,0),
-    finalizou_em:now_(),
+    finalizou_em:finalizedAt,
     status:ST.FINALIZADA,
-    atualizado_em:now_()
+    atualizado_em:finalizedAt
   });
-  update_("os_acoes", acao.__rowIndex, {
+  patchRowFast118_("os_acoes", acao, {
     status:novo,
-    finalizado_em:now_(),
-    atualizado_em:now_()
+    finalizado_em:finalizedAt,
+    atualizado_em:finalizedAt
   });
   releaseLocksForAction_(acao.id, "ACAO_FINALIZADA");
 
-  var maintenanceStop = finalizarCondicaoManutencao115_(
+  finalizarCondicaoManutencao115_(
     acao,
     ex,
     auth
   );
   var operationalStop = paradaAtivaPorAtivo114_(acao.ativo_id);
 
-  hist_({
+  (typeof histFast119_ === "function" ? histFast119_ : hist_)({
     ativo_id:acao.ativo_id,
     componente_id:acao.componente_id,
     os_id:acao.os_id,
@@ -630,7 +883,7 @@ function operadorFinalizarAcao_(p){
     parada_operacional:operationalStop
       ? paradaSerializada114_(operationalStop)
       : null,
-    parada_manutencao:maintenanceStop,
+    parada_manutencao:null,
     horimetro:horimetroFinal
   };
 }
@@ -723,10 +976,13 @@ function operadorRegistrarEvidencia_(p){
     tamanho_bytes:num_(p.tamanho_bytes,0),
     thumbnail_url:clean_(p.thumbnail_url)
   });
-  append_("evidencias", row);
+  row = appendRowsFast118_("evidencias", [row])[0];
 
   if(item){
-    var totalEvs = rows_("evidencias", true).filter(function(e){ return String(e.checklist_execucao_id) === String(item.id); }).length;
+    var previousCount = p.__quantidade_anterior;
+    var totalEvs = previousCount !== undefined && previousCount !== null && previousCount !== ""
+      ? Math.max(0, num_(previousCount, 0)) + 1
+      : rows_("evidencias").filter(function(e){ return String(e.checklist_execucao_id) === String(item.id); }).length;
     var minimoEvs = typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(item) : 1;
     var completoEvs = totalEvs >= minimoEvs;
     var patch = {
@@ -741,10 +997,10 @@ function operadorRegistrarEvidencia_(p){
       patch.responsavel_id = auth.usuario_id || item.responsavel_id || "";
       patch.data_hora = completoEvs ? now_() : "";
     }
-    update_("checklist_execucao", item.__rowIndex, patch);
+    patchRowFast118_("checklist_execucao", item, patch);
   }
 
-  return {saved:true, evidencia:row, checklist_execucao_id:checklistId, evidencias_count:item ? totalEvs : "", minimo_fotos:item && typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(item) : 0};
+  return {saved:true, evidencia:strip_(row), checklist_execucao_id:checklistId, evidencias_count:item ? totalEvs : "", minimo_fotos:item && typeof evidenciaMinFotos116_ === "function" ? evidenciaMinFotos116_(item) : 0};
 }
 
 function operadorRegistrarMaterial_(p){

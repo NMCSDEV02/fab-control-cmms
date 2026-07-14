@@ -76,7 +76,9 @@ function route_(action, p, req){
 
     case "operador.contexto_qr": return operadorContextoQr_(p);
     case "operador.contexto_qr_fast": return operadorContextoQrFast_(p);
+    case "operador.historico_qr": return operadorHistoricoQr119_(p);
     case "operador.iniciar_acao": return operadorIniciarAcao_(p);
+    case "operador.estado_acao": return operadorEstadoAcao118_(p);
     case "operador.salvar_checklist_item": return operadorSalvarChecklistItem_(p);
     case "operador.finalizar_acao": return operadorFinalizarAcao_(p);
     case "operador.registrar_evidencia": return operadorRegistrarEvidencia_(p);
@@ -164,7 +166,7 @@ function sistemaBootstrap_(){
     endpoints:[
       "auth.login","sistema.warmup","cmms.schema_upgrade","cmms.paradas_operacionais_schema_upgrade","cmms.horimetro_evidencias_schema_upgrade","cmms.catalogo_checklist_schema_upgrade","cmms.operador_visual_schema_upgrade","cmms.tela_operador_schema_upgrade","cmms.operador_ui_schema_upgrade","cmms.operacional_ui_schema_upgrade","cmms.contrato_frontend_schema_upgrade","cmms.frontend_contract_schema_upgrade","cmms.execucao_checklist_schema_upgrade","cmms.auditoria_operador_schema_upgrade","admin.resumo","admin.resumo_cache","admin.listar","admin.salvar","admin.gerar_qr","admin.criar_demo","admin.recalcular_ativo",
       "admin.salvar_modelo_checklist","admin.registrar_horimetro_telemetria","admin.reiniciar_contador_servico","admin.verificar_drive_evidencias","admin.gerar_acao_teste_checklist","admin.corrigir_auditoria_execucao_operador","admin.enviar_modelo_checklist_validacao","admin.detalhe_modelo_checklist","admin.listar_modelos_checklist","admin.modelos_devolvidos","admin.corrigir_modelo_checklist","admin.criar_revisao_modelo_checklist",
-      "operador.home","operador.painel","operador.minhas_acoes","operador.tela_acao","operador.salvar_checklist_lote","operador.contexto_qr_fast","operador.contexto_qr","operador.parada_ativa","operador.iniciar_parada","operador.finalizar_parada","operador.registrar_ocorrencia","operador.iniciar_acao","operador.listar_checklist_execucao","operador.detalhar_checklist_execucao","operador.validar_finalizacao_acao","operador.salvar_checklist_item","operador.registrar_evidencia","operador.upload_evidencia_foto","operador.finalizar_acao",
+      "operador.home","operador.painel","operador.minhas_acoes","operador.tela_acao","operador.estado_acao","operador.salvar_checklist_lote","operador.contexto_qr_fast","operador.contexto_qr","operador.historico_qr","operador.parada_ativa","operador.iniciar_parada","operador.finalizar_parada","operador.registrar_ocorrencia","operador.iniciar_acao","operador.listar_checklist_execucao","operador.detalhar_checklist_execucao","operador.validar_finalizacao_acao","operador.salvar_checklist_item","operador.registrar_evidencia","operador.upload_evidencia_foto","operador.finalizar_acao",
       "gestor.auditoria_execucao_checklist","gestor.listar_paradas","gestor.listar_ocorrencias","gestor.modelos_em_validacao","gestor.listar_modelos_checklist","gestor.detalhe_modelo_checklist","gestor.validar_modelo_checklist","gestor.listar_acoes","gestor.detalhe_acao_fast","gestor.detalhe_acao","gestor.validar_acao",
       "cmms.higiene_diagnosticar","cmms.higienizar_status","cmms.higienizar_duplicidades","cmms.higienizar_base","cmms.kpis_base","perf.cache_status","perf.cache_clear"
     ]

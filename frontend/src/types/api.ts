@@ -115,6 +115,7 @@ export interface RawChecklistItem {
   resposta?: string
   valor_numero?: string | number
   observacao?: string
+  conforme?: string
   status?: string
   respondido?: boolean
   evidencias_count?: number
@@ -166,6 +167,7 @@ export interface OperatorActionDetailData {
     prioridade?: string
     status?: string
     aberta_em?: string
+    planejada_para?: string
     iniciada_em?: string
     finalizada_em?: string
   }
@@ -182,6 +184,10 @@ export interface OperatorActionDetailData {
     horimetro_atualizado_em?: string
     horimetro_base_servico?: number | string
     horimetro_base_servico_em?: string
+    fabricante?: string
+    modelo?: string
+    numero_serie?: string
+    localizacao_tecnica?: string
   }
   horimetro?: HorimeterSummary | null
   componente?: {
@@ -193,6 +199,10 @@ export interface OperatorActionDetailData {
     status?: string
     vida_util_horas?: number
     horas_acumuladas?: number
+    fabricante?: string
+    modelo?: string
+    numero_serie?: string
+    localizacao_tecnica?: string
   }
   plano?: {
     id?: string
@@ -210,6 +220,11 @@ export interface OperatorActionDetailData {
     workflow_status?: string
     revisao?: number
   }
+  executor?: {
+    id?: string
+    nome?: string
+    email?: string
+  } | null
   execucao?: {
     id?: string
     acao_id?: string
@@ -330,8 +345,23 @@ export interface StartActionData {
   parada_operacional?: OperatorStopData | null
   parada_manutencao?: MaintenanceStopData | null
   horimetro?: HorimeterSummary | null
+  execucao?: NonNullable<OperatorActionDetailData['execucao']>
+  checklist?: OperatorActionDetailData['checklist']
 }
 
+export interface OperatorActionStateData {
+  ok?: boolean
+  started: boolean
+  acao_id: string
+  status?: string
+  execucao_id?: string
+  execucao?: OperatorActionDetailData['execucao']
+  checklist?: OperatorActionDetailData['checklist'] | null
+  modo_execucao_manutencao?: 'COM_PARADA' | 'SEM_PARADA' | ''
+  parada_operacional?: OperatorStopData | null
+  parada_manutencao?: MaintenanceStopData | null
+  server_time?: string
+}
 
 export interface ChecklistBatchItemInput {
   id?: string
@@ -412,6 +442,9 @@ export interface EvidenceSaveData {
   mime_type?: string
   tamanho_bytes?: number
   evidencia?: EvidenceRecord
+  quantidade_configurada?: number
+  fotos_registradas?: number
+  fotos_restantes?: number
 }
 
 export interface FinalizationValidationData {
@@ -520,6 +553,7 @@ export interface StartStopResponseData {
   started: boolean
   already_open?: boolean
   parada: OperatorStopData
+  notified_profiles?: string[]
 }
 
 export interface FinishStopInput {
@@ -548,6 +582,7 @@ export interface FinishStopResponseData {
 export interface RegisterOccurrenceInput {
   ativo_id: string
   componente_id?: string
+  alvo_ocorrencia: 'EQUIPAMENTO' | 'COMPONENTE'
   tipo?: string
   titulo: string
   descricao: string
@@ -557,6 +592,7 @@ export interface RegisterOccurrenceInput {
 export interface RegisterOccurrenceResponseData {
   saved: boolean
   occurrence: OperatorOccurrenceData
+  alvo_ocorrencia?: 'EQUIPAMENTO' | 'COMPONENTE'
   notified_profiles?: string[]
 }
 
@@ -603,6 +639,10 @@ export interface QrComponentData {
   criticidade?: string
   status?: string
   horas_acumuladas?: number | string
+  fabricante?: string
+  modelo?: string
+  numero_serie?: string
+  localizacao_tecnica?: string
 }
 
 export interface QrActionData {
@@ -640,6 +680,20 @@ export interface QrHistoryData {
   criado_em?: string
 }
 
+
+export interface QrHistoryPaginationData {
+  next_cursor?: string
+  has_more?: boolean
+  limit?: number
+}
+
+export interface QrHistoryPageData extends QrHistoryPaginationData {
+  items: QrHistoryData[]
+  ativo_id?: string
+  componente_id?: string
+  scanned_rows?: number
+}
+
 export interface QrParameterData {
   id: string
   ativo_id?: string
@@ -664,6 +718,7 @@ export interface OperatorQrContextData {
   acoes_pendentes?: QrActionData[]
   proxima_acao?: QrActionData | null
   historico_recente?: QrHistoryData[]
+  historico_paginacao?: QrHistoryPaginationData
   parametros_recentes?: QrParameterData[]
   parametros_atuais?: QrParameterData[]
   parada_ativa?: OperatorStopData | null

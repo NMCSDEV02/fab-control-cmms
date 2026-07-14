@@ -28,6 +28,118 @@ function formatDate(value?: string): string {
   }).format(date)
 }
 
+function formatDuration(seconds?: number): string {
+  const total = Math.max(0, Number(seconds ?? 0))
+  if (!total) return 'Não informada'
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const remainingSeconds = Math.floor(total % 60)
+  if (hours > 0) return `${hours} h ${minutes} min`
+  if (minutes > 0) return `${minutes} min ${remainingSeconds} s`
+  return `${remainingSeconds} s`
+}
+
+function checklistAnswer(item: RawChecklistItem): string {
+  if (item.valor_numero !== undefined && item.valor_numero !== '') {
+    return `${item.valor_numero}${item.unidade ? ` ${item.unidade}` : ''}`
+  }
+  return item.resposta || item.observacao || (item.respondido ? 'Respondido' : 'Sem resposta')
+}
+
+function modeLabel(value?: string): string {
+  const mode = normalizedStatus(value)
+  if (mode === 'SEM_PARADA') return 'Executado sem parada do equipamento'
+  if (mode === 'COM_PARADA' || mode === 'PARAR_EQUIPAMENTO') return 'Executado com parada do equipamento'
+  return 'Condição de execução não informada'
+}
+
+function CompletedActionSummary({ detail, onBack }: { detail: OperatorActionDetailData; onBack: () => void }) {
+  const items = detail.checklist?.itens ?? []
+  const preview = items.slice(0, 5)
+  const evidences = items.flatMap((item) => item.evidencias ?? [])
+  const finalDate = detail.execucao?.finalizou_em || detail.acao.finalizado_em || detail.os?.finalizada_em
+  const deadline = detail.os?.planejada_para
+  const finalTime = finalDate ? new Date(finalDate).getTime() : Number.NaN
+  const deadlineTime = deadline ? new Date(deadline).getTime() : Number.NaN
+  const hasDeadline = Number.isFinite(deadlineTime)
+  const onTime = hasDeadline && Number.isFinite(finalTime) ? finalTime <= deadlineTime : null
+  const location = detail.componente?.localizacao_tecnica || detail.ativo?.localizacao_tecnica || 'Não informada'
+  const status = normalizedStatus(detail.acao.status)
+
+  return (
+    <section className="screen completed-action-screen">
+      <button type="button" className="back-link" onClick={onBack}>← Voltar para a fila</button>
+
+      <article className="completed-action-hero">
+        <div className="completed-action-hero__top">
+          <span className={status === 'CONCLUIDA' ? 'status-chip status-chip--online' : 'status-chip status-chip--pending'}>
+            {status === 'CONCLUIDA' ? 'Concluída' : status === 'AGUARDANDO_VALIDACAO' ? 'Aguardando validação' : 'Execução finalizada'}
+          </span>
+          <span className="type-chip">Somente leitura</span>
+        </div>
+        <h1>{detail.acao.titulo || detail.os?.titulo || 'Serviço executado'}</h1>
+        <p>{detail.acao.descricao || detail.os?.descricao || 'Sem descrição operacional.'}</p>
+        <div className="technical-identification">
+          <span><strong>{detail.ativo?.tag || detail.ativo?.id}</strong>{detail.ativo?.nome}</span>
+          <span><strong>{detail.componente?.tag || detail.componente?.id || 'GERAL'}</strong>{detail.componente?.nome || 'Equipamento em geral'}</span>
+        </div>
+      </article>
+
+      <article className="completed-action-card">
+        <div className="completed-action-heading"><div><span className="technical-kicker">Dados técnicos</span><h2>Resumo da execução</h2></div></div>
+        <div className="completed-action-data-grid">
+          <div><span>Onde foi executado</span><strong>{location}</strong></div>
+          <div><span>Executado por</span><strong>{detail.executor?.nome || detail.execucao?.operador_id || 'Não informado'}</strong></div>
+          <div><span>Início</span><strong>{formatDate(detail.execucao?.iniciou_em || detail.acao.iniciado_em)}</strong></div>
+          <div><span>Conclusão</span><strong>{formatDate(finalDate)}</strong></div>
+          <div><span>Duração</span><strong>{formatDuration(detail.execucao?.duracao_segundos)}</strong></div>
+          <div><span>Como foi executado</span><strong>{modeLabel(detail.execucao?.modo_execucao_manutencao)}</strong></div>
+          <div><span>Resultado</span><strong>{detail.execucao?.resultado || 'Não informado'}</strong></div>
+          <div><span>OS</span><strong>{detail.os?.codigo || detail.os?.id || 'Não informada'}</strong></div>
+        </div>
+        {detail.execucao?.observacao && <div className="completed-action-observation"><span>Observação técnica</span><p>{detail.execucao.observacao}</p></div>}
+      </article>
+
+      <article className="completed-action-card">
+        <div className="completed-action-heading"><div><span className="technical-kicker">Checklist salvo</span><h2>Prévia das respostas</h2></div><strong>{detail.checklist?.respondidos ?? 0}/{detail.checklist?.total ?? items.length}</strong></div>
+        {preview.length ? (
+          <div className="completed-checklist-preview">
+            {preview.map((item) => (
+              <div key={item.id}>
+                <span>{String(item.ordem).padStart(2, '0')}</span>
+                <div><strong>{item.titulo}</strong><p>{checklistAnswer(item)}</p>{item.observacao && item.observacao !== checklistAnswer(item) && <small>{item.observacao}</small>}</div>
+                <b>{item.conforme || item.status || 'SALVO'}</b>
+              </div>
+            ))}
+            {items.length > preview.length && <p className="completed-more-items">Mais {items.length - preview.length} itens permanecem salvos no checklist.</p>}
+          </div>
+        ) : <p className="completed-empty">Nenhum item de checklist foi retornado.</p>}
+      </article>
+
+      <article className="completed-action-card">
+        <div className="completed-action-heading"><div><span className="technical-kicker">Evidências</span><h2>Arquivos anexados</h2></div><strong>{evidences.length}</strong></div>
+        {evidences.length ? (
+          <div className="completed-evidence-grid">
+            {evidences.slice(0, 4).map((evidence, index) => (
+              <a key={evidence.id || `${evidence.url}-${index}`} href={evidence.url || '#'} target="_blank" rel="noreferrer">
+                {evidence.thumbnail_url || evidence.url ? <img src={evidence.thumbnail_url || evidence.url} alt={evidence.nome_arquivo || `Evidência ${index + 1}`} /> : <span>Arquivo</span>}
+                <strong>{evidence.nome_arquivo || `Evidência ${index + 1}`}</strong>
+              </a>
+            ))}
+          </div>
+        ) : <p className="completed-empty">Nenhuma evidência foi anexada.</p>}
+      </article>
+
+      <article className="completed-action-card completed-deadline-card">
+        <div><span>Prazo previsto</span><strong>{formatDate(deadline)}</strong></div>
+        <div><span>Executado no prazo?</span><strong>{onTime === null ? 'Prazo não informado' : onTime ? 'Sim' : 'Não'}</strong></div>
+      </article>
+
+      <div className="completed-action-footer"><button type="button" className="primary-button" onClick={onBack}>Voltar para a fila</button></div>
+    </section>
+  )
+}
+
 function getRisk(item: RawChecklistItem): { icon: string; title: string; text: string } | null {
   const text = `${item.titulo} ${item.instrucao ?? ''}`.toLowerCase()
   if (text.includes('elétr') || text.includes('energia')) {
@@ -237,6 +349,11 @@ export function ActionDetailPage({
     )
   }
 
+  const completedReadOnly = ['AGUARDANDO_VALIDACAO', 'CONCLUIDA', 'BLOQUEADA'].includes(
+    normalizedStatus(detail.acao.status || detail.ui?.state),
+  )
+  if (completedReadOnly) return <CompletedActionSummary detail={detail} onBack={onBack} />
+
   const technical = detail.analise_tecnica
   const steps =
     technical?.etapas?.length
@@ -391,7 +508,7 @@ export function ActionDetailPage({
             {alreadyStarted && detail.execucao?.modo_execucao_manutencao
               ? detail.execucao.modo_execucao_manutencao === 'SEM_PARADA'
                 ? 'Execução sem parada'
-                : 'Parada técnica ativa'
+                : 'Parada do equipamento ativa'
               : configuredStopMode === 'OBRIGATORIA'
                 ? 'Obrigatória'
                 : configuredStopMode === 'SEM_PARADA'
@@ -432,8 +549,8 @@ export function ActionDetailPage({
               <span>Condição de execução</span>
               <h2>Como esta manutenção será realizada?</h2>
               <p>
-                Esta escolha registra a parada técnica da manutenção. Ela não encerra
-                nem substitui uma parada operacional informada pela produção.
+                Esta escolha define se o equipamento será parado. A parada iniciada aqui usa
+                o mesmo controle operacional disponível pelo QR Code.
               </p>
             </div>
 
@@ -447,7 +564,7 @@ export function ActionDetailPage({
               }}
             >
               <strong>Parar equipamento</strong>
-              <span>A máquina será marcada como parada durante a execução técnica.</span>
+              <span>O status do equipamento mudará para parado e ficará visível para gestão e administração.</span>
             </button>
 
             <button

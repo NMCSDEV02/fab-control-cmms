@@ -454,25 +454,33 @@ export function ChecklistExecutionPage({
       return
     }
 
-    await onSaveProgress(buildPayload())
-    const prepared: EvidencePhotoUploadInput[] = []
-    for (const selected of selectedEvidence) {
-      prepared.push(
-        await prepareEvidencePhoto(
+    const progressPayload = buildPayload()
+    const preparePromise = Promise.all(
+      selectedEvidence.map((selected) =>
+        prepareEvidencePhoto(
           selected.file,
           current.id,
           evidenceObservation.trim(),
         ),
-      )
-    }
+      ),
+    )
+    const savePromise = progressPayload.length
+      ? onSaveProgress(progressPayload)
+      : Promise.resolve()
 
-    await onRegisterEvidence(prepared)
+    const [prepared] = await Promise.all([preparePromise, savePromise])
+    const saved = await onRegisterEvidence(prepared)
     selectedEvidence.forEach((item) => URL.revokeObjectURL(item.previewUrl))
     setSelectedEvidence([])
     setEvidenceSelectionWarning('')
     setShowEvidence(false)
     setEvidenceObservation('')
-    const total = currentCount + prepared.length
+    const confirmedCounts = saved
+      .map((item) => Number(item.evidencias_count ?? item.fotos_registradas ?? 0))
+      .filter((value) => Number.isFinite(value) && value > 0)
+    const total = confirmedCounts.length
+      ? Math.max(...confirmedCounts)
+      : currentCount + prepared.length
     setMessage(
       total >= configuredQuantity
         ? 'Quantidade de evidências configurada foi atendida.'
@@ -530,11 +538,11 @@ export function ChecklistExecutionPage({
         <strong>
           {detail.execucao?.modo_execucao_manutencao === 'SEM_PARADA'
             ? 'Execução sem parada do equipamento'
-            : 'Parada técnica vinculada à execução'}
+            : 'Parada do equipamento vinculada à execução'}
         </strong>
         <small>
           {activeStop
-            ? 'A parada operacional da produção permanece registrada separadamente.'
+            ? 'A produção já registrou a parada operacional; a manutenção foi vinculada sem duplicar o evento.'
             : detail.execucao?.modo_execucao_manutencao === 'SEM_PARADA'
               ? 'A máquina permanece em operação durante o serviço.'
               : 'Esta parada termina junto com a execução técnica.'}
