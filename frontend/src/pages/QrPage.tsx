@@ -25,6 +25,23 @@ type BarcodeDetectorResult = { rawValue?: string }
 type BarcodeDetectorInstance = { detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]> }
 type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorInstance
 type OccurrenceTarget = '' | 'EQUIPAMENTO' | 'COMPONENTE'
+type ParameterCode =
+  | 'HORIMETRO'
+  | 'TEMPERATURA'
+  | 'VIBRACAO'
+  | 'PRESSAO'
+  | 'CORRENTE'
+  | 'TENSAO'
+
+const PARAMETER_OPTIONS: Array<{ value: ParameterCode; label: string; unit: string }> = [
+  { value: 'HORIMETRO', label: 'Horímetro', unit: 'h' },
+  { value: 'TEMPERATURA', label: 'Temperatura', unit: '°C' },
+  { value: 'VIBRACAO', label: 'Vibração', unit: 'mm/s' },
+  { value: 'PRESSAO', label: 'Pressão', unit: 'bar' },
+  { value: 'CORRENTE', label: 'Corrente', unit: 'A' },
+  { value: 'TENSAO', label: 'Tensão', unit: 'V' },
+]
+
 type StopReasonCode =
   | ''
   | 'FALHA_MECANICA'
@@ -125,9 +142,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [historyLoading, setHistoryLoading] = useState(false)
 
   const [parameterOpen, setParameterOpen] = useState(false)
-  const [parameterName, setParameterName] = useState('HORIMETRO')
+  const [parameterName, setParameterName] = useState<ParameterCode>('HORIMETRO')
   const [parameterValue, setParameterValue] = useState('')
-  const [parameterUnit, setParameterUnit] = useState('h')
   const [componentId, setComponentId] = useState('')
   const [savingParameter, setSavingParameter] = useState(false)
 
@@ -153,6 +169,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const lookupRequestRef = useRef(0)
   const actionCarouselRef = useRef<HTMLDivElement | null>(null)
   const parameters = useMemo(() => context ? latestParameters(context) : [], [context])
+  const selectedParameter =
+    PARAMETER_OPTIONS.find((option) => option.value === parameterName) ?? PARAMETER_OPTIONS[0]
   const availableActions = useMemo(() => {
     const candidates = context?.acoes_pendentes?.length
       ? context.acoes_pendentes
@@ -177,6 +195,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
   function applyContext(result: OperatorQrContextData) {
     setContext(result)
+    setComponentId(result.componente?.id ?? '')
     setManualOpen(false)
     setCameraError('')
     setHistoryItems((result.historico_recente ?? []).slice(0, 4))
@@ -350,10 +369,10 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     try {
       await registerOperatorParameter({
         ativo_id: context.ativo.id,
-        componente_id: componentId || context.componente?.id || '',
+        componente_id: componentId,
         parametro: parameterName,
         valor: value,
-        unidade: parameterName === 'HORIMETRO' ? 'h' : parameterUnit,
+        unidade: selectedParameter.unit,
       })
       setParameterOpen(false)
       setParameterValue('')
@@ -524,6 +543,10 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     setQuery('')
     setLastQuery('')
     setLoading(false)
+    setParameterOpen(false)
+    setParameterName('HORIMETRO')
+    setParameterValue('')
+    setComponentId('')
     closeOccurrence()
     setCameraActive(true)
   }
@@ -781,10 +804,50 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         {parameterOpen && <article className="parameter-entry-card">
           {parameterName === 'HORIMETRO' && <div className="horimeter-qr-note"><strong>Horímetro acumulativo</strong><span>O total não pode diminuir nem ser zerado. A administração reinicia somente o contador desde o último serviço.</span></div>}
           <div className="parameter-form-grid">
-            <label><span>Parâmetro</span><select value={parameterName} onChange={(event) => { setParameterName(event.target.value); if (event.target.value === 'HORIMETRO') setParameterUnit('h') }}><option value="HORIMETRO">Horímetro</option><option value="TEMPERATURA">Temperatura</option><option value="VIBRACAO">Vibração</option><option value="PRESSAO">Pressão</option><option value="CORRENTE">Corrente</option><option value="TENSAO">Tensão</option></select></label>
-            <label><span>Valor</span><input inputMode="decimal" value={parameterName === 'HORIMETRO' && context.horimetro?.automatico ? String(context.horimetro.total_horas ?? asset?.horimetro_atual ?? '') : parameterValue} readOnly={parameterName === 'HORIMETRO' && Boolean(context.horimetro?.automatico)} onChange={(event) => setParameterValue(event.target.value)} placeholder={parameterName === 'HORIMETRO' ? String(asset?.horimetro_atual ?? '0') : '0,00'} /></label>
-            <label><span>Unidade</span><input value={parameterName === 'HORIMETRO' ? 'h' : parameterUnit} disabled={parameterName === 'HORIMETRO'} onChange={(event) => setParameterUnit(event.target.value)} /></label>
-            <label><span>Componente</span><select value={componentId} onChange={(event) => setComponentId(event.target.value)}><option value="">Equipamento geral</option>{(context.componentes ?? []).map((component) => <option key={component.id} value={component.id}>{component.tag || component.id} — {component.nome}</option>)}</select></label>
+            <label>
+              <span>Parâmetro</span>
+              <select
+                value={parameterName}
+                onChange={(event) => {
+                  setParameterName(event.target.value as ParameterCode)
+                  setParameterValue('')
+                }}
+              >
+                {PARAMETER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Valor</span>
+              <input
+                inputMode="decimal"
+                value={
+                  parameterName === 'HORIMETRO' && context.horimetro?.automatico
+                    ? String(context.horimetro.total_horas ?? asset?.horimetro_atual ?? '')
+                    : parameterValue
+                }
+                readOnly={parameterName === 'HORIMETRO' && Boolean(context.horimetro?.automatico)}
+                onChange={(event) => setParameterValue(event.target.value)}
+                placeholder={parameterName === 'HORIMETRO' ? String(asset?.horimetro_atual ?? '0') : '0,00'}
+              />
+            </label>
+            <label>
+              <span>Unidade automática</span>
+              <input value={selectedParameter.unit} readOnly aria-readonly="true" />
+              <small>Definida pelo parâmetro selecionado.</small>
+            </label>
+            <label>
+              <span>Componente opcional</span>
+              <select value={componentId} onChange={(event) => setComponentId(event.target.value)}>
+                <option value="">Equipamento geral</option>
+                {(context.componentes ?? []).map((component) => (
+                  <option key={component.id} value={component.id}>
+                    {component.tag || component.id} — {component.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <button type="button" onClick={() => void saveParameter()} disabled={savingParameter || (parameterName === 'HORIMETRO' && Boolean(context.horimetro?.automatico))}>{parameterName === 'HORIMETRO' && context.horimetro?.automatico ? 'Atualizado pela telemetria' : savingParameter ? 'Registrando…' : 'Confirmar leitura'}</button>
         </article>}
