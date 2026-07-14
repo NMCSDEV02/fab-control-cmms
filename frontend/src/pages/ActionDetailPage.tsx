@@ -28,6 +28,41 @@ function formatDate(value?: string): string {
   }).format(date)
 }
 
+function detailAvailability(detail: OperatorActionDetailData, nowMs: number) {
+  const plannedAt = detail.disponibilidade?.planejada_para || detail.os?.planejada_para
+  const plannedMs = plannedAt ? new Date(plannedAt).getTime() : Number.NaN
+  if (!Number.isFinite(plannedMs)) {
+    return { canStart: true, state: 'SEM_AGENDAMENTO', plannedAt: undefined, secondsUntil: 0, secondsOverdue: 0 }
+  }
+
+  const alertMinutes = detail.disponibilidade?.alerta_minutos ?? 60
+  const graceMinutes = detail.disponibilidade?.tolerancia_atraso_minutos ?? 15
+  const secondsUntil = Math.ceil((plannedMs - nowMs) / 1000)
+  if (secondsUntil > alertMinutes * 60) {
+    return { canStart: false, state: 'AGENDADA', plannedAt, secondsUntil, secondsOverdue: 0 }
+  }
+  if (secondsUntil > 0) {
+    return { canStart: false, state: 'EM_ALERTA', plannedAt, secondsUntil, secondsOverdue: 0 }
+  }
+
+  const secondsOverdue = Math.max(0, Math.floor((nowMs - plannedMs) / 1000))
+  return {
+    canStart: true,
+    state: secondsOverdue > graceMinutes * 60 ? 'ATRASADA' : 'DISPONIVEL',
+    plannedAt,
+    secondsUntil: 0,
+    secondsOverdue,
+  }
+}
+
+function formatShortCountdown(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds))
+  const hours = Math.floor(safe / 3600)
+  const minutes = Math.floor((safe % 3600) / 60)
+  const remaining = safe % 60
+  return [hours, minutes, remaining].map((value) => String(value).padStart(2, '0')).join(':')
+}
+
 function formatDuration(seconds?: number): string {
   const total = Math.max(0, Number(seconds ?? 0))
   if (!total) return 'Não informada'
@@ -175,6 +210,7 @@ export function ActionDetailPage({
   const [readComplete, setReadComplete] = useState(false)
   const [accepted, setAccepted] = useState(false)
   const [startDecisionOpen, setStartDecisionOpen] = useState(false)
+  const [clockMs, setClockMs] = useState(() => Date.now())
   const maxProgressRef = useRef(0)
   const screenRef = useRef<HTMLElement | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
@@ -269,6 +305,11 @@ export function ActionDetailPage({
     }
   }, [detail?.acao.id, loading])
 
+  useEffect(() => {
+    const interval = window.setInterval(() => setClockMs(Date.now()), 1000)
+    return () => window.clearInterval(interval)
+  }, [])
+
   const items = detail?.checklist?.itens ?? []
   const risks = useMemo(() => {
     const seen = new Set<string>()
@@ -293,10 +334,12 @@ export function ActionDetailPage({
         normalizedStatus(button.id),
       ),
   )
-  const canStartByState =
+  const availability = detail ? detailAvailability(detail, clockMs) : null
+  const canStartByState = Boolean(availability?.canStart) && (
     ['PENDENTE', 'ABERTA', 'AGUARDANDO_INICIO'].includes(status) ||
     uiState === 'AGUARDANDO_INICIO'
-  const canStart = Boolean(
+  )
+  const canStart = Boolean(availability?.canStart) && Boolean(
     detail?.ui?.can_start ||
     startButton?.enabled ||
     canStartByState,
@@ -408,6 +451,24 @@ export function ActionDetailPage({
           <span><strong>{detail.componente?.tag || detail.componente?.id}</strong>{detail.componente?.nome}</span>
         </div>
       </article>
+
+      {availability?.plannedAt && !alreadyStarted && (
+        <article className={`schedule-detail-card schedule-detail-card--${availability.state.toLowerCase()}`}>
+          <div>
+            <span>Início planejado</span>
+            <strong>{formatDate(availability.plannedAt)}</strong>
+          </div>
+          <div>
+            <span>Situação</span>
+            <strong>
+              {availability.state === 'AGENDADA' && 'Agendada'}
+              {availability.state === 'EM_ALERTA' && `Libera em ${formatShortCountdown(availability.secondsUntil)}`}
+              {availability.state === 'DISPONIVEL' && 'Disponível agora'}
+              {availability.state === 'ATRASADA' && `Atrasada há ${formatDuration(availability.secondsOverdue)}`}
+            </strong>
+          </div>
+        </article>
+      )}
 
       <article className="technical-summary-card">
         <span className="technical-kicker">Relatório técnico operacional</span>
@@ -614,7 +675,11 @@ export function ActionDetailPage({
               : !accepted
                 ? 'Marque a confirmação de leitura'
                 : !canStart
-                  ? 'Ação indisponível para início'
+                  ? availability?.state === 'EM_ALERTA'
+                    ? `Libera em ${formatShortCountdown(availability.secondsUntil)}`
+                    : availability?.state === 'AGENDADA'
+                      ? `Agendada para ${formatDate(availability.plannedAt)}`
+                      : 'Ação indisponível para início'
                   : 'Preparando início'}
           </div>
         )}

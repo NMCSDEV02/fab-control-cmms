@@ -20,6 +20,18 @@ export interface HealthData {
   serverTime?: string
 }
 
+export interface ActionAvailabilityData {
+  programada?: boolean
+  planejada_para?: string
+  alerta_minutos?: number
+  tolerancia_atraso_minutos?: number
+  estado?: 'SEM_AGENDAMENTO' | 'AGENDADA' | 'EM_ALERTA' | 'DISPONIVEL' | 'ATRASADA'
+  pode_iniciar?: boolean
+  segundos_para_liberar?: number
+  segundos_em_atraso?: number
+  mensagem?: string
+}
+
 export interface RawOperatorCard {
   id?: string
   acao_id?: string
@@ -57,6 +69,7 @@ export interface RawOperatorCard {
   }
   dates?: {
     gerado_em?: string
+    planejada_para?: string
     iniciado_em?: string
     finalizado_em?: string
   }
@@ -71,6 +84,7 @@ export interface RawOperatorCard {
   tipo?: string
   duracao_minutos?: number
   equipe?: string[]
+  availability?: ActionAvailabilityData | null
 }
 
 export interface OperatorActionsData {
@@ -155,6 +169,7 @@ export interface OperatorActionDetailData {
     status: string
     responsavel_id?: string
     gerado_em?: string
+    planejada_para?: string
     iniciado_em?: string
     finalizado_em?: string
     modo_parada_manutencao?: MaintenanceStopMode
@@ -238,6 +253,7 @@ export interface OperatorActionDetailData {
     status?: string
     modo_execucao_manutencao?: MaintenanceStartDecision | 'COM_PARADA' | 'SEM_PARADA'
   } | null
+  disponibilidade?: ActionAvailabilityData | null
   checklist?: {
     modelo?: boolean
     execucao_id?: string

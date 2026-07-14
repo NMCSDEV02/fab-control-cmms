@@ -102,7 +102,7 @@ export function SettingsPage({
           <strong>Interface</strong>
           <p>Mockup 17 Definitivo · fila, QR, checklist, parada e ocorrência integrados.</p>
         </div>
-        <span className="status-chip">Operador 7.9</span>
+        <span className="status-chip">Operador 8.0</span>
       </article>
     </section>
   )

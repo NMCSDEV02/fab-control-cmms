@@ -3002,3 +3002,261 @@ p {
     grid-template-columns: 1fr;
   }
 }
+
+/* Operador 8.0 — Bloco A: agendamento e prioridades */
+.section-heading--stacked {
+  align-items: flex-start;
+}
+
+.queue-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.queue-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #506074;
+  background: #f4f7fa;
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.queue-metric strong {
+  color: var(--text);
+}
+
+.queue-metrics--filters .queue-metric {
+  appearance: none;
+  cursor: pointer;
+  transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.queue-metrics--filters .queue-metric:hover {
+  transform: translateY(-1px);
+}
+
+.queue-metrics--filters .queue-metric:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .2);
+  outline-offset: 2px;
+}
+
+.queue-metric--active {
+  border-color: #7fa6df;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, .12);
+}
+
+.queue-metric--alert.queue-metric--active {
+  border-color: #d98a31;
+  box-shadow: 0 0 0 2px rgba(194, 105, 20, .14);
+}
+
+.queue-metric--available.queue-metric--active {
+  border-color: #4e9d70;
+  box-shadow: 0 0 0 2px rgba(31, 138, 78, .14);
+}
+
+.queue-metric--critical.queue-metric--active {
+  border-color: #cf5454;
+  box-shadow: 0 0 0 2px rgba(183, 35, 35, .14);
+}
+
+.queue-filter-clear {
+  min-height: 38px;
+  margin-top: 10px;
+  padding: 0 13px;
+  border: 1px solid #9fbce8;
+  border-radius: 12px;
+  color: var(--blue);
+  background: var(--blue-soft);
+  font-size: .72rem;
+  font-weight: 900;
+}
+
+.queue-metric--critical {
+  border-color: #efb2b2;
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.queue-metric--high,
+.queue-metric--alert {
+  border-color: #f0c28e;
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.queue-metric--available {
+  border-color: #a8d2ba;
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.emergency-row--critica {
+  border-color: #e7a6a6;
+  border-left-color: var(--red);
+  background: linear-gradient(90deg, rgba(183, 35, 35, 0.08), var(--surface) 35%);
+}
+
+.emergency-row--alta {
+  border-color: #efc18a;
+  border-left-color: var(--orange);
+  background: linear-gradient(90deg, rgba(194, 105, 20, 0.08), var(--surface) 35%);
+}
+
+.emergency-row--media {
+  border-color: #e6d18c;
+  border-left-color: #b78b13;
+  background: linear-gradient(90deg, rgba(183, 139, 19, 0.08), var(--surface) 35%);
+}
+
+.emergency-row--normal,
+.emergency-row--baixa {
+  border-color: var(--line);
+  border-left-color: #8090a5;
+}
+
+.emergency-row--alta .emergency-row__cta {
+  background: var(--orange);
+}
+
+.emergency-row--media .emergency-row__cta {
+  background: #9b7410;
+}
+
+.emergency-row--normal .emergency-row__cta,
+.emergency-row--baixa .emergency-row__cta {
+  background: #617187;
+}
+
+.emergency-row__content .priority-chip {
+  width: max-content;
+  margin-bottom: 6px;
+}
+
+.emergency-row__waiting {
+  color: #32445a !important;
+  font-weight: 850;
+}
+
+.priority-chip--media {
+  color: #8a6608;
+  background: #fff4c7;
+}
+
+.priority-chip--baixa {
+  color: #637083;
+  background: #f2f5f8;
+}
+
+.availability-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.availability-chip--scheduled {
+  color: #506074;
+  background: #edf2f7;
+}
+
+.availability-chip--alert {
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.availability-chip--available {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.availability-chip--overdue {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.action-card--alert {
+  border-color: #efc18a;
+  box-shadow: 0 9px 24px rgba(194, 105, 20, 0.09);
+}
+
+.action-card--available {
+  border-color: #9ccbb0;
+}
+
+.action-card--overdue {
+  border-color: #e8aaaa;
+  box-shadow: 0 9px 24px rgba(183, 35, 35, 0.09);
+}
+
+.countdown-box--alert {
+  border-color: #efc18a;
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.countdown-box--available {
+  border-color: #a8d2ba;
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.countdown-box--overdue {
+  border-color: #efb2b2;
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.schedule-detail-card {
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.schedule-detail-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.schedule-detail-card span {
+  color: var(--muted);
+  font-size: 0.69rem;
+  font-weight: 800;
+}
+
+.schedule-detail-card strong {
+  font-size: 0.82rem;
+}
+
+.schedule-detail-card--em_alerta {
+  border-color: #efc18a;
+  background: var(--orange-soft);
+}
+
+.schedule-detail-card--disponivel {
+  border-color: #a8d2ba;
+  background: var(--green-soft);
+}
+
+.schedule-detail-card--atrasada {
+  border-color: #efb2b2;
+  background: var(--red-soft);
+}
+
+@media (max-width: 430px) {
+  .schedule-detail-card {
+    grid-template-columns: 1fr;
+  }
+}

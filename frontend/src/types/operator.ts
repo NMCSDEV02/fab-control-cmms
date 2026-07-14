@@ -5,7 +5,22 @@ export type ActionStatus =
   | 'CONCLUIDA'
 
 export type ActionGroup = 'NAO_PROGRAMADA' | 'PROGRAMADA'
-export type ActionPriority = 'NORMAL' | 'ALTA' | 'CRITICA'
+export type ActionPriority = 'BAIXA' | 'NORMAL' | 'MEDIA' | 'ALTA' | 'CRITICA'
+
+export type ActionAvailabilityState =
+  | 'SEM_AGENDAMENTO'
+  | 'AGENDADA'
+  | 'EM_ALERTA'
+  | 'DISPONIVEL'
+  | 'ATRASADA'
+
+export interface ActionAvailability {
+  state: ActionAvailabilityState
+  canStart: boolean
+  plannedAt?: string
+  alertMinutes: number
+  overdueGraceMinutes: number
+}
 
 export interface OperatorAction {
   id: string
@@ -20,6 +35,9 @@ export interface OperatorAction {
   priority: ActionPriority
   status: ActionStatus
   startAt: string
+  generatedAt?: string
+  plannedAt?: string
+  availability?: ActionAvailability
   durationMinutes?: number
   crew: string[]
   progress?: {

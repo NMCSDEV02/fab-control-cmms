@@ -12,6 +12,8 @@ function mapPriority(value?: string): ActionPriority {
   const normalized = (value ?? '').toUpperCase()
   if (normalized === 'CRITICA' || normalized === 'CRÍTICA') return 'CRITICA'
   if (normalized === 'ALTA') return 'ALTA'
+  if (normalized === 'MEDIA' || normalized === 'MÉDIA') return 'MEDIA'
+  if (normalized === 'BAIXA') return 'BAIXA'
   return 'NORMAL'
 }
 
@@ -93,6 +95,10 @@ export function mapOperatorCard(card: RawOperatorCard): OperatorAction {
   const group = mapGroup(card, priority)
   const id = card.acao_id ?? card.id ?? ''
 
+  const generatedAt = card.dates?.gerado_em || new Date().toISOString()
+  const plannedAt = card.availability?.planejada_para || card.dates?.planejada_para || undefined
+  const availabilityState = card.availability?.estado || (plannedAt ? 'AGENDADA' : 'SEM_AGENDAMENTO')
+
   return {
     id,
     group,
@@ -106,7 +112,16 @@ export function mapOperatorCard(card: RawOperatorCard): OperatorAction {
     description: card.description?.trim() || 'Sem descrição operacional.',
     priority,
     status: mapStatus(card.status?.state),
-    startAt: card.dates?.gerado_em || new Date().toISOString(),
+    startAt: plannedAt || generatedAt,
+    generatedAt,
+    plannedAt,
+    availability: {
+      state: availabilityState,
+      canStart: card.availability?.pode_iniciar ?? !plannedAt,
+      plannedAt,
+      alertMinutes: card.availability?.alerta_minutos ?? 60,
+      overdueGraceMinutes: card.availability?.tolerancia_atraso_minutos ?? 15,
+    },
     durationMinutes:
       typeof card.duracao_minutos === 'number' ? card.duracao_minutos : undefined,
     crew: Array.isArray(card.equipe) ? card.equipe : [],
