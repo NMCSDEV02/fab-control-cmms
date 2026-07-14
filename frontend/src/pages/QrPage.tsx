@@ -15,6 +15,7 @@ import { readQrContextCache, writeQrContextCache } from '../services/storage/ope
 import type {
   FinishStopResponseData,
   OperatorQrContextData,
+  QrActionData,
   QrHistoryData,
   QrParameterData,
   StartStopResponseData,
@@ -76,13 +77,23 @@ function uniqueHistory(current: QrHistoryData[], incoming: QrHistoryData[]): QrH
   return current.concat(incoming.filter((item) => !known.has(item.id)))
 }
 
+function uniqueActions(actions: QrActionData[]): QrActionData[] {
+  const known = new Set<string>()
+  return actions.filter((action) => {
+    if (!action.id || known.has(action.id)) return false
+    known.add(action.id)
+    return true
+  })
+}
+
 export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [query, setQuery] = useState('')
   const [lastQuery, setLastQuery] = useState('')
   const [context, setContext] = useState<OperatorQrContextData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [cameraActive, setCameraActive] = useState(false)
+  const [cameraActive, setCameraActive] = useState(true)
+  const [manualOpen, setManualOpen] = useState(false)
   const [cameraError, setCameraError] = useState('')
 
   const [historyItems, setHistoryItems] = useState<QrHistoryData[]>([])
@@ -116,10 +127,34 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const streamRef = useRef<MediaStream | null>(null)
   const scanTimerRef = useRef<number | null>(null)
   const lookupRequestRef = useRef(0)
+  const actionCarouselRef = useRef<HTMLDivElement | null>(null)
   const parameters = useMemo(() => context ? latestParameters(context) : [], [context])
+  const availableActions = useMemo(() => {
+    const candidates = context?.acoes_pendentes?.length
+      ? context.acoes_pendentes
+      : context?.proxima_acao
+        ? [context.proxima_acao]
+        : []
+    const normalized = uniqueActions(candidates)
+    const scannedComponentId = context?.componente?.id
+    if (!scannedComponentId) return normalized
+    return normalized.filter((action) => action.componente_id === scannedComponentId)
+  }, [context])
+
+  function scrollActionCarousel(direction: 'previous' | 'next') {
+    const carousel = actionCarouselRef.current
+    if (!carousel) return
+    const distance = Math.max(250, Math.floor(carousel.clientWidth * 0.86))
+    carousel.scrollBy({
+      left: direction === 'next' ? distance : -distance,
+      behavior: 'smooth',
+    })
+  }
 
   function applyContext(result: OperatorQrContextData) {
     setContext(result)
+    setManualOpen(false)
+    setCameraError('')
     setHistoryItems((result.historico_recente ?? []).slice(0, 4))
     setHistoryCursor(result.historico_paginacao?.next_cursor ?? '')
     setHistoryHasMore(Boolean(result.historico_paginacao?.has_more))
@@ -215,16 +250,16 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     }
   }
 
-  function stopCamera() {
+  function stopCamera(updateState = true) {
     if (scanTimerRef.current !== null) window.clearTimeout(scanTimerRef.current)
     scanTimerRef.current = null
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
-    setCameraActive(false)
+    if (updateState) setCameraActive(false)
   }
 
-  useEffect(() => () => stopCamera(), [])
+  useEffect(() => () => stopCamera(false), [])
 
   useEffect(() => {
     if (!cameraActive) return
@@ -233,7 +268,9 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     const start = async () => {
       const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector
       if (!Detector) {
-        setCameraError('Este navegador não possui leitura nativa de QR. Use o campo de código abaixo.')
+        setCameraError('Este navegador não possui leitura nativa de QR. Tente novamente ou digite o código.')
+        // O modo manual permanece fechado até o operador solicitar.
+        setManualOpen(false)
         setCameraActive(false)
         return
       }
@@ -255,6 +292,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
             const raw = results.find((item) => item.rawValue)?.rawValue?.trim()
             if (raw) {
               setQuery(raw)
+              setManualOpen(false)
               stopCamera()
               await lookup(raw)
               return
@@ -267,6 +305,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         void scan()
       } catch (cause) {
         setCameraError(cause instanceof Error ? `Não foi possível abrir a câmera: ${cause.message}` : 'Não foi possível abrir a câmera.')
+        // Permissão negada ou falha de câmera não deve abrir o teclado automaticamente.
+        setManualOpen(false)
         setCameraActive(false)
       }
     }
@@ -274,7 +314,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     void start()
     return () => {
       cancelled = true
-      stopCamera()
+      stopCamera(false)
     }
   }, [cameraActive])
 
@@ -445,10 +485,13 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     setHistoryCursor('')
     setHistoryHasMore(false)
     setError('')
+    setCameraError('')
+    setManualOpen(false)
     setQuery('')
     setLastQuery('')
     setLoading(false)
     closeOccurrence()
+    setCameraActive(true)
   }
 
   if (!context?.found) {
@@ -456,37 +499,120 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
       <section className="screen qr-page-real">
         <header className="screen-heading">
           <span>Consulta técnica</span>
-          <h1>Equipamento por QR Code</h1>
-          <p>Leia o código ou informe a TAG para consultar ações, parâmetros e histórico.</p>
+          <h1>Leitura por QR Code</h1>
+          <p>A câmera inicia automaticamente. A digitação permanece disponível como alternativa.</p>
         </header>
-        <article className="qr-reader-card">
-          <div className={cameraActive ? 'qr-camera qr-camera--active' : 'qr-camera'}>
+
+        <article className="qr-reader-card qr-reader-card--scanner">
+          <div className={cameraActive ? 'qr-camera qr-camera--active' : 'qr-camera qr-camera--idle'}>
             {cameraActive ? (
               <>
-                <video ref={videoRef} muted playsInline />
-                <div className="qr-camera__frame" />
-                <button type="button" onClick={stopCamera}>Cancelar câmera</button>
+                <video ref={videoRef} muted playsInline aria-label="Câmera para leitura do QR Code" />
+                <div className="qr-camera__frame" aria-hidden="true" />
+                <span className="qr-camera__status">Procurando QR Code…</span>
+                <button className="qr-camera__cancel" type="button" onClick={() => stopCamera()}>
+                  Cancelar câmera
+                </button>
               </>
-            ) : <span className="qr-reader-card__icon"><QrIcon /></span>}
+            ) : (
+              <span className="qr-reader-card__icon"><QrIcon /></span>
+            )}
           </div>
-          <h2>{cameraActive ? 'Aponte para o QR Code' : 'Identificar equipamento'}</h2>
-          <p>A câmera é usada apenas durante a leitura. Também é possível digitar a TAG ou o ID.</p>
-          {!cameraActive && <button className="qr-camera-button" type="button" onClick={() => { setCameraError(''); setCameraActive(true) }}><ScanIcon /> Abrir câmera</button>}
-          {cameraError && <div className="inline-warning"><span>{cameraError}</span></div>}
-          <form className="qr-manual-form" onSubmit={(event) => { event.preventDefault(); void lookup() }}>
-            <label><span>QR, TAG ou ID</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex.: TMP-001" autoCapitalize="characters" /></label>
-            <button type="submit" disabled={loading}>{loading ? 'Consultando…' : 'Consultar'}</button>
-          </form>
+
+          <div className="qr-reader-copy">
+            <h2>{cameraActive ? 'Aponte para o código' : 'Câmera pausada'}</h2>
+            <p>Mantenha o QR dentro da moldura. A consulta será aberta automaticamente após a leitura.</p>
+          </div>
+
+          {cameraActive ? (
+            <button
+              className="qr-manual-toggle"
+              type="button"
+              onClick={() => {
+                stopCamera()
+                setManualOpen(true)
+              }}
+            >
+              Digitar código
+            </button>
+          ) : (
+            <div className="qr-reader-actions">
+              <button
+                className="qr-camera-button"
+                type="button"
+                onClick={() => {
+                  setCameraError('')
+                  setManualOpen(false)
+                  setCameraActive(true)
+                }}
+              >
+                <ScanIcon /> Tentar câmera novamente
+              </button>
+              <button
+                className="qr-manual-toggle"
+                type="button"
+                onClick={() => setManualOpen((value) => !value)}
+              >
+                {manualOpen ? 'Ocultar digitação' : 'Digitar código'}
+              </button>
+            </div>
+          )}
+
+          {cameraError && (
+            <div className="inline-warning qr-camera-warning">
+              <span>{cameraError}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCameraError('')
+                  setManualOpen(false)
+                  setCameraActive(true)
+                }}
+              >
+                Tentar novamente
+              </button>
+            </div>
+          )}
+
+          {manualOpen && (
+            <form
+              className="qr-manual-form qr-manual-form--open"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void lookup()
+              }}
+            >
+              <label>
+                <span>QR, TAG ou ID</span>
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Ex.: TMP-001"
+                  autoCapitalize="characters"
+                />
+              </label>
+              <button type="submit" disabled={loading}>
+                {loading ? 'Consultando…' : 'Consultar'}
+              </button>
+            </form>
+          )}
         </article>
-        {error && <article className="state-panel state-panel--error qr-error-panel"><h2>{error}</h2><button type="button" onClick={() => void lookup(lastQuery || query)}>Tentar novamente</button></article>}
+
+        {error && (
+          <article className="state-panel state-panel--error qr-error-panel">
+            <h2>{error}</h2>
+            <button type="button" onClick={() => void lookup(lastQuery || query)}>
+              Tentar novamente
+            </button>
+          </article>
+        )}
       </section>
     )
   }
 
   const asset = context.ativo
-  const action = context.proxima_acao
+  const componentContext = context.componente
   const health = context.saude?.pct ?? asset?.saude_pct
-  const availableActionCount = context.acoes_pendentes?.length ?? 0
   const occurrenceReady = Boolean(
     occurrenceTarget &&
     (occurrenceTarget !== 'COMPONENTE' || occurrenceComponentId) &&
@@ -496,21 +622,114 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
   return (
     <section className="screen qr-asset-page">
-      {action?.id && (
-        <button className="qr-action-available" type="button" onClick={() => onOpenAction(action.id)}>
-          <div>
-            <span>{availableActionCount > 1 ? `${availableActionCount} ações disponíveis para início` : 'Ação disponível para início'}</span>
-            <strong>{action.titulo || action.plano?.nome || 'Ação de manutenção'}</strong>
-            <small>{action.componente_nome || action.componente_id || asset?.nome}</small>
+      {availableActions.length > 0 && (
+        <section className="qr-action-section" aria-label="Ações disponíveis para o QR identificado">
+          <div className="qr-action-section__heading">
+            <div>
+              <span>Ações disponíveis</span>
+              <h2>
+                {componentContext
+                  ? `Manutenções deste componente`
+                  : `Manutenções do equipamento e componentes`}
+              </h2>
+              <p>Deslize os cartões ou use as setas para escolher a atividade.</p>
+            </div>
+            <div className="qr-action-carousel-controls">
+              <span>{availableActions.length}</span>
+              {availableActions.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Ação anterior"
+                    onClick={() => scrollActionCarousel('previous')}
+                  >
+                    ←
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Próxima ação"
+                    onClick={() => scrollActionCarousel('next')}
+                  >
+                    →
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-          <b>Abrir agora →</b>
-        </button>
+
+          <div className="qr-action-carousel" ref={actionCarouselRef}>
+            {availableActions.map((availableAction) => {
+              const component = (context.componentes ?? []).find(
+                (item) => item.id === availableAction.componente_id,
+              )
+              const isComponentAction = Boolean(availableAction.componente_id)
+              const targetName = isComponentAction
+                ? component?.nome ||
+                  availableAction.componente_nome ||
+                  availableAction.componente_id ||
+                  'Componente'
+                : asset?.nome || asset?.tag || 'Equipamento'
+              const priority = availableAction.prioridade || 'NORMAL'
+
+              return (
+                <button
+                  className="qr-action-slide"
+                  type="button"
+                  key={availableAction.id}
+                  onClick={() => onOpenAction(availableAction.id)}
+                >
+                  <div className="qr-action-slide__badges">
+                    <span
+                      className={
+                        isComponentAction
+                          ? 'qr-action-target qr-action-target--component'
+                          : 'qr-action-target qr-action-target--asset'
+                      }
+                    >
+                      {isComponentAction ? 'COMPONENTE' : 'EQUIPAMENTO'}
+                    </span>
+                    <span className={`qr-action-priority qr-action-priority--${priority.toLowerCase()}`}>
+                      {priority}
+                    </span>
+                  </div>
+
+                  <strong>
+                    {availableAction.titulo ||
+                      availableAction.plano?.nome ||
+                      'Ação de manutenção'}
+                  </strong>
+                  <p>{targetName}</p>
+
+                  <div className="qr-action-slide__meta">
+                    <span>{displayName(availableAction.tipo || 'MANUTENCAO')}</span>
+                    <span>
+                      {availableAction.plano?.tempo_estimado_min
+                        ? `${availableAction.plano.tempo_estimado_min} min`
+                        : 'Tempo não informado'}
+                    </span>
+                  </div>
+
+                  <b>Abrir atividade →</b>
+                </button>
+              )
+            })}
+          </div>
+        </section>
       )}
 
       <article className="asset-hero asset-hero--real">
-        <div className="asset-hero__status-line"><span className="status-chip status-chip--online">Equipamento identificado</span><button type="button" onClick={reset}>Ler outro</button></div>
+        <div className="asset-hero__status-line">
+          <span className="status-chip status-chip--online">
+            {componentContext ? 'Componente identificado' : 'Equipamento identificado'}
+          </span>
+          <button type="button" onClick={reset}>Ler outro</button>
+        </div>
         <h1>{asset?.tag || asset?.id} — {asset?.nome || 'Equipamento'}</h1>
-        <p>{asset?.tipo || 'Ativo industrial'} · {asset?.localizacao_tecnica || 'Localização não informada'}</p>
+        <p>
+          {componentContext
+            ? `${componentContext.tag || componentContext.id} — ${componentContext.nome || 'Componente'}`
+            : `${asset?.tipo || 'Ativo industrial'} · ${asset?.localizacao_tecnica || 'Localização não informada'}`}
+        </p>
         <div className="asset-data-grid">
           <div><span>Status</span><strong>{context.parada_ativa ? 'PARADO' : (asset?.status || 'Não informado')}</strong></div>
           <div><span>Saúde</span><strong>{health !== undefined && health !== '' ? `${health}%` : 'Não informada'}</strong></div>

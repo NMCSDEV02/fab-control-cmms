@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { OperatorAction } from '../types/operator'
 import { ActionCard, resolveActionAvailability } from '../components/ActionCard'
-import { ArrowIcon, QrIcon } from '../components/Icons'
+import { ArrowIcon } from '../components/Icons'
 
 type QueueView = 'PENDENTES' | 'EM_EXECUCAO' | 'CONCLUIDAS'
 type ScheduledFilter = 'TODAS' | 'AGENDADA' | 'EM_ALERTA' | 'DISPONIVEL' | 'ATRASADA'
@@ -54,7 +54,6 @@ export function OperatorHome({
   onRetry,
   onOpenSettings,
   onOpenAction,
-  onOpenQr,
 }: OperatorHomeProps) {
   const [activeView, setActiveView] = useState<QueueView>('PENDENTES')
   const [scheduledFilter, setScheduledFilter] = useState<ScheduledFilter>('TODAS')
@@ -425,14 +424,6 @@ export function OperatorHome({
         )}
       </section>
 
-      <button className="qr-shortcut" type="button" onClick={onOpenQr}>
-        <span className="qr-shortcut__icon"><QrIcon /></span>
-        <span className="qr-shortcut__copy">
-          <strong>Consultar equipamento por QR</strong>
-          <small>Parâmetros, histórico técnico e ações disponíveis.</small>
-        </span>
-        <span className="qr-shortcut__button">Ler</span>
-      </button>
     </section>
   )
 }
