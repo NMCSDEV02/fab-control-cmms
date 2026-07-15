@@ -222,7 +222,7 @@ export function ChecklistExecutionPage({
     if (initializedDraftKeyRef.current !== draftStorageKey) {
       let cached: Record<string, DraftAnswer> = {}
       try {
-        const stored = window.sessionStorage.getItem(draftStorageKey)
+        const stored = window.localStorage.getItem(draftStorageKey)
         cached = stored ? JSON.parse(stored) as Record<string, DraftAnswer> : {}
       } catch {
         cached = {}
@@ -257,7 +257,7 @@ export function ChecklistExecutionPage({
     if (initializedDraftKeyRef.current !== draftStorageKey) return
     if (!Object.keys(drafts).length) return
     try {
-      window.sessionStorage.setItem(draftStorageKey, JSON.stringify(drafts))
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(drafts))
     } catch {
       // Armazenamento local indisponível: a execução continua usando memória.
     }

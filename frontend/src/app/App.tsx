@@ -215,8 +215,14 @@ function mergeEvidenceIntoDetail(
 }
 
 export function App() {
+  const initialExecutionContextRef = useRef<StoredExecutionContext | null>(
+    readActiveExecutionContext(),
+  )
+
   const [section, setSection] = useState<AppSection>('home')
-  const [view, setView] = useState<AppView>('navigation')
+  const [view, setView] = useState<AppView>(
+    () => initialExecutionContextRef.current?.view ?? 'navigation',
+  )
   const [toast, setToast] = useState('')
   const [actions, setActions] = useState<OperatorAction[]>([])
   const [loading, setLoading] = useState(false)
@@ -226,7 +232,9 @@ export function App() {
   const [apiVersion, setApiVersion] = useState('')
   const [configurationRevision, setConfigurationRevision] = useState(0)
 
-  const [selectedActionId, setSelectedActionId] = useState('')
+  const [selectedActionId, setSelectedActionId] = useState(
+  () => initialExecutionContextRef.current?.actionId ?? '',
+)
   const [actionDetail, setActionDetail] = useState<OperatorActionDetailData | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailRefreshing, setDetailRefreshing] = useState(false)
@@ -241,11 +249,15 @@ export function App() {
 
   const refreshInFlightRef = useRef<Promise<void> | null>(null)
   const actionsRef = useRef<OperatorAction[]>([])
-  const selectedActionIdRef = useRef('')
+  const selectedActionIdRef = useRef(
+  initialExecutionContextRef.current?.actionId ?? '',
+)
   const actionDetailRef = useRef<OperatorActionDetailData | null>(null)
   const detailRequestRef = useRef(0)
   const writeBusyRef = useRef(false)
-  const viewRef = useRef<AppView>('navigation')
+  const viewRef = useRef<AppView>(
+  initialExecutionContextRef.current?.view ?? 'navigation',
+)
   const sectionRef = useRef<AppSection>('home')
   const apiVersionRef = useRef('')
   const lastHealthCheckRef = useRef(0)
@@ -459,25 +471,35 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    const stored = readActiveExecutionContext()
-    if (!stored || selectedActionIdRef.current) return
+  const stored =
+    initialExecutionContextRef.current ?? readActiveExecutionContext()
 
-    selectedActionIdRef.current = stored.actionId
-    setSelectedActionId(stored.actionId)
-    setVisibleActionDetail(null)
-    setActiveStop(null)
-    setDetailError('')
-    setOperationError('')
-    setDetailLoading(true)
-    setView('action-detail')
+  if (!stored) return
 
-    void loadActionDetail(stored.actionId, { forceNetwork: true }).then(() => {
-      if (selectedActionIdRef.current !== stored.actionId) return
-      if (stored.view === 'checklist' && actionDetailRef.current?.execucao?.id) {
-        setView('checklist')
-      }
-    })
-  }, [configurationRevision, loadActionDetail])
+  initialExecutionContextRef.current = null
+  selectedActionIdRef.current = stored.actionId
+  viewRef.current = stored.view
+
+  setSelectedActionId(stored.actionId)
+  setVisibleActionDetail(null)
+  setActiveStop(null)
+  setDetailError('')
+  setOperationError('')
+  setDetailLoading(true)
+  setView(stored.view)
+
+  void loadActionDetail(stored.actionId).then(() => {
+    if (selectedActionIdRef.current !== stored.actionId) return
+
+    if (
+      stored.view === 'checklist' &&
+      !actionDetailRef.current?.execucao?.id
+    ) {
+      viewRef.current = 'action-detail'
+      setView('action-detail')
+    }
+  })
+}, [configurationRevision, loadActionDetail])
   function openActionById(actionId: string) {
     selectedActionIdRef.current = actionId
     setSelectedActionId(actionId)
@@ -828,7 +850,8 @@ export function App() {
                 setView('checklist')
               }}
             />
-          ) : view === 'checklist' && actionDetail ? (
+          ) : view === 'checklist' ? (
+            actionDetail ? (
             <ChecklistExecutionPage
               detail={actionDetail}
               evidenceSaving={savingEvidence}
@@ -846,8 +869,9 @@ export function App() {
               onFinish={finishOperatorExecution}
               onReturnHome={returnHomeAfterCompletion}
             />
+          ) : null
           ) : (
-            <>
+           <>
               {section === 'home' && (
                 <OperatorHome
                   actions={actions}
