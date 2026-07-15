@@ -780,129 +780,6 @@ function operadorSalvarChecklistItem_(p){
   return {saved:true, checklist_execucao_id:item.id, tipo_resposta:upper_(item.tipo_resposta), conforme:val.conforme, validacao_msg:val.validacao_msg};
 }
 
-var FINAL_OUTCOME_MARKER_120_ = "[RESULTADO_OPERACIONAL:";
-
-function normalizaResultadoOperacional120_(value, legacyResult){
-  var normalized = upper_(clean_(value)).replace(/[^A-Z0-9_]/g, "");
-  var allowed = [
-    "CONFORME",
-    "DIFERENCAS_JUSTIFICADAS",
-    "PARCIAL",
-    "NAO_EXECUTADO",
-    "OUTRO"
-  ];
-  if(allowed.indexOf(normalized) >= 0) return normalized;
-  return upper_(legacyResult) === "OK" ? "CONFORME" : "";
-}
-
-function resultadoOperacionalDaObservacao120_(observacao){
-  var match = clean_(observacao).match(/\[RESULTADO_OPERACIONAL:([A-Z0-9_]+)\]/);
-  return match ? normalizaResultadoOperacional120_(match[1], "") : "";
-}
-
-function observacaoComResultadoOperacional120_(outcome, observacao){
-  var cleaned = clean_(observacao)
-    .replace(/\[RESULTADO_OPERACIONAL:[A-Z0-9_]+\]\s*/g, "")
-    .trim();
-  return FINAL_OUTCOME_MARKER_120_ + outcome + "]" + (cleaned ? " " + cleaned : "");
-}
-
-function observacaoFinalInformada120_(observacao){
-  var text = clean_(observacao);
-  var marker = "Observação final:";
-  var start = text.indexOf(marker);
-  if(start < 0) return "";
-  var value = text.substring(start + marker.length);
-  var next = value.indexOf("Justificativas do checklist:");
-  if(next >= 0) value = value.substring(0, next);
-  return clean_(value).replace(/[.\s]+$/, "");
-}
-
-function itemExigeJustificativa120_(item){
-  var resposta = upper_(clean_(item && item.resposta)).replace(/[^A-Z0-9]/g, "");
-  return resposta === "NOK" ||
-    resposta === "NA" ||
-    resposta === "NAOAPLICAVEL" ||
-    upper_(item && item.conforme) === "NAO";
-}
-
-function validarFinalizacaoOperacional120_(execId, outcome, observacao){
-  var normalized = normalizaResultadoOperacional120_(outcome, "");
-  if(!normalized){
-    err_("RESULTADO_OPERACIONAL_INVALIDO", "Informe um resultado operacional válido.", 400);
-  }
-
-  if(typeof CMMS1083_validateChecklistExecution_ !== "function"){
-    err_(
-      "FINALIZATION_VALIDATOR_UNAVAILABLE",
-      "Validador operacional de checklist indisponível.",
-      500
-    );
-  }
-
-  var validation = CMMS1083_validateChecklistExecution_(execId);
-  var items = rows_("checklist_execucao").filter(function(item){
-    return String(item.execucao_id) === String(execId);
-  });
-
-  var unjustified = items.filter(function(item){
-    return itemExigeJustificativa120_(item) && clean_(item.observacao).length < 5;
-  });
-  if(unjustified.length){
-    err_(
-      "JUSTIFICATIVA_CHECKLIST_OBRIGATORIA",
-      "Itens não conformes, NOK ou N/A exigem justificativa técnica: " +
-        unjustified.map(function(item){ return item.titulo; }).join("; "),
-      400
-    );
-  }
-
-  var pending = validation.pendentes || [];
-  var evidencePending = validation.evidencias_pendentes || [];
-  var blockers = validation.bloqueios || [];
-
-  if(normalized === "CONFORME"){
-    if(pending.length || evidencePending.length || blockers.length){
-      err_(
-        "RESULTADO_CONFORME_INCOMPATIVEL",
-        "Resultado conforme exige checklist completo, evidências atendidas e ausência de bloqueio técnico. " +
-          CMMS1083_buildChecklistBlockMessage_(validation),
-        400
-      );
-    }
-  }
-
-  if(normalized === "DIFERENCAS_JUSTIFICADAS"){
-    if(pending.length || evidencePending.length){
-      err_(
-        "DIFERENCAS_COM_PENDENCIAS",
-        "Diferenças justificadas exigem todos os itens obrigatórios e evidências obrigatórias concluídos. " +
-          CMMS1083_buildChecklistBlockMessage_(validation),
-        400
-      );
-    }
-  }
-
-  if(["PARCIAL", "NAO_EXECUTADO", "OUTRO"].indexOf(normalized) >= 0){
-    if(observacaoFinalInformada120_(observacao).length < 5){
-      err_(
-        "OBSERVACAO_FINAL_OBRIGATORIA",
-        "O resultado informado exige observação final com pelo menos 5 caracteres.",
-        400
-      );
-    }
-  }
-
-  return {
-    ok:true,
-    resultado_operacional:normalized,
-    pendentes:pending,
-    evidencias_pendentes:evidencePending,
-    bloqueios:blockers,
-    justificativas_validas:true
-  };
-}
-
 function operadorFinalizarAcao_(p){
   req_(p,["acao_id","resultado"]);
   var auth = requireOperadorAuth1081_(p.__auth || {}, "operador.finalizar_acao");
@@ -917,13 +794,19 @@ function operadorFinalizarAcao_(p){
   var ex = execs[0];
   requireExecucaoDoOperador1081_(ex, auth);
 
+  // Idempotência: se o back-end concluiu e a resposta de rede se perdeu,
+  // o operador pode repetir a chamada sem refazer o checklist.
   if(
     upper_(ex.status) === ST.FINALIZADA &&
     [ST.AGUARDANDO_VALIDACAO,ST.BLOQUEADA,ST.CONCLUIDA].indexOf(
       upper_(acao.status)
     ) >= 0
   ){
-    finalizarCondicaoManutencao115_(acao, ex, auth);
+    finalizarCondicaoManutencao115_(
+      acao,
+      ex,
+      auth
+    );
     var existingOperationalStop = paradaAtivaPorAtivo114_(acao.ativo_id);
     return {
       finalized:true,
@@ -931,9 +814,6 @@ function operadorFinalizarAcao_(p){
       acao_id:acao.id,
       execucao_id:ex.id,
       status_acao:acao.status,
-      resultado:upper_(ex.resultado),
-      resultado_operacional:resultadoOperacionalDaObservacao120_(ex.observacao),
-      requires_manager_validation:upper_(acao.status) === ST.AGUARDANDO_VALIDACAO,
       parada_operacional:existingOperationalStop
         ? paradaSerializada114_(existingOperationalStop)
         : null,
@@ -945,39 +825,7 @@ function operadorFinalizarAcao_(p){
     err_("ACTION_INVALID_STATUS","Ação não pode finalizar. Status atual: "+acao.status,400);
   }
 
-  var explicitOutcome = clean_(p.resultado_operacional) !== "";
-  var resultadoOperacional = normalizaResultadoOperacional120_(
-    p.resultado_operacional,
-    p.resultado
-  );
-  var validation;
-
-  if(explicitOutcome){
-    if(!resultadoOperacional){
-      err_("RESULTADO_OPERACIONAL_INVALIDO", "Resultado operacional não reconhecido.", 400);
-    }
-    validation = validarFinalizacaoOperacional120_(
-      ex.id,
-      resultadoOperacional,
-      p.observacao
-    );
-  } else {
-    validation = validateChecklist_(ex.id);
-    resultadoOperacional = upper_(p.resultado) === "OK"
-      ? "CONFORME"
-      : "DIFERENCAS_JUSTIFICADAS";
-  }
-
-  if(resultadoOperacional === "CONFORME" && upper_(p.resultado) !== "OK"){
-    err_("RESULTADO_INCOMPATIVEL", "Resultado conforme deve ser enviado como OK.", 400);
-  }
-  if(resultadoOperacional !== "CONFORME" && upper_(p.resultado) !== "NOK"){
-    err_(
-      "RESULTADO_INCOMPATIVEL",
-      "Resultados com diferença, parcial ou impedimento devem ser enviados como NOK.",
-      400
-    );
-  }
+  validateChecklist_(ex.id);
 
   if(respostaCritica_(p.resultado) && clean_(p.observacao).length < 5){
     err_("OBS_REQUIRED","Resultado crítico exige observação.",400);
@@ -987,17 +835,14 @@ function operadorFinalizarAcao_(p){
     ? sincronizarHorimetroChecklist116_(ex, auth)
     : null;
 
-  var novo = explicitOutcome
+  var novo = upper_(p.resultado) === "OK"
     ? ST.AGUARDANDO_VALIDACAO
-    : (upper_(p.resultado) === "OK" ? ST.AGUARDANDO_VALIDACAO : ST.BLOQUEADA);
-  var observacaoFinal = explicitOutcome
-    ? observacaoComResultadoOperacional120_(resultadoOperacional, p.observacao)
-    : clean_(p.observacao);
-  var finalizedAt = now_();
+    : ST.BLOQUEADA;
 
+  var finalizedAt = now_();
   patchRowFast118_("execucoes", ex, {
     resultado:upper_(p.resultado),
-    observacao:observacaoFinal,
+    observacao:clean_(p.observacao),
     duracao_segundos:num_(p.duracao_segundos,0),
     finalizou_em:finalizedAt,
     status:ST.FINALIZADA,
@@ -1010,7 +855,11 @@ function operadorFinalizarAcao_(p){
   });
   releaseLocksForAction_(acao.id, "ACAO_FINALIZADA");
 
-  finalizarCondicaoManutencao115_(acao, ex, auth);
+  finalizarCondicaoManutencao115_(
+    acao,
+    ex,
+    auth
+  );
   var operationalStop = paradaAtivaPorAtivo114_(acao.ativo_id);
 
   (typeof histFast119_ === "function" ? histFast119_ : hist_)({
@@ -1020,10 +869,7 @@ function operadorFinalizarAcao_(p){
     acao_id:acao.id,
     execucao_id:ex.id,
     evento:"ACAO_FINALIZADA_OPERADOR",
-    descricao:
-      "Resultado operacional: "+resultadoOperacional+
-      ". Resultado técnico: "+upper_(p.resultado)+
-      ". "+clean_(p.observacao),
+    descricao:"Resultado: "+upper_(p.resultado)+". "+clean_(p.observacao),
     usuario_id:auth.usuario_id||"",
     perfil:auth.perfil||ROLE.OPERADOR
   });
@@ -1034,14 +880,6 @@ function operadorFinalizarAcao_(p){
     acao_id:acao.id,
     execucao_id:ex.id,
     status_acao:novo,
-    resultado:upper_(p.resultado),
-    resultado_operacional:resultadoOperacional,
-    requires_manager_validation:novo === ST.AGUARDANDO_VALIDACAO,
-    pendencias_registradas:{
-      obrigatorias:(validation.pendentes || []).length,
-      evidencias:(validation.evidencias_pendentes || []).length,
-      bloqueios:(validation.bloqueios || []).length
-    },
     parada_operacional:operationalStop
       ? paradaSerializada114_(operationalStop)
       : null,

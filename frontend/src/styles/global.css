@@ -3598,3 +3598,543 @@ p {
     grid-auto-columns: 88%;
   }
 }
+
+/* Operador 8.4 — configurações seguras e diagnóstico */
+.settings-page {
+  padding-bottom: 12px;
+}
+
+.settings-dashboard {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-panel {
+  min-width: 0;
+  padding: clamp(15px, 3vw, 20px);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  display: grid;
+  gap: 14px;
+  box-shadow: 0 10px 28px rgba(28, 45, 72, 0.05);
+}
+
+.settings-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.settings-panel__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-panel__heading h2 {
+  margin-top: 4px;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.settings-kicker {
+  color: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #f8fafc;
+}
+
+.settings-profile__avatar {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  color: #174fc0;
+  background: var(--blue-soft);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.settings-profile strong,
+.settings-profile p {
+  display: block;
+}
+
+.settings-profile p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.settings-details {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-details--columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-detail-row {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #fff;
+}
+
+.settings-detail-row span,
+.settings-detail-row strong {
+  display: block;
+}
+
+.settings-detail-row span {
+  color: var(--muted);
+  font-size: 0.69rem;
+  font-weight: 850;
+}
+
+.settings-detail-row strong {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.settings-sync-button {
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--blue);
+  font-weight: 950;
+}
+
+.settings-sync-button:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+.settings-sync-result {
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.settings-sync-result--success {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.settings-sync-result--error {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.settings-security-note {
+  padding: 13px 14px;
+  border: 1px solid #bdd0ed;
+  border-radius: 17px;
+  background: #f4f8ff;
+}
+
+.settings-security-note strong {
+  color: #174fc0;
+  font-size: 0.82rem;
+}
+
+.settings-security-note p {
+  margin-top: 5px;
+  color: #526176;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 699px) {
+  .settings-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-panel--wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-details--columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Operador 8.5 — diagnóstico funcional das configurações */
+.settings-pending-note {
+  padding: 11px 12px;
+  border: 1px solid #efd29f;
+  border-radius: 14px;
+  color: #7b4b0b;
+  background: #fff8eb;
+  font-size: 0.72rem;
+  line-height: 1.42;
+}
+
+.settings-diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.settings-diagnostic-item {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.settings-diagnostic-item span,
+.settings-diagnostic-item strong,
+.settings-diagnostic-item small {
+  display: block;
+}
+
+.settings-diagnostic-item span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.settings-diagnostic-item strong {
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.settings-diagnostic-item small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.settings-diagnostic-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 9px;
+}
+
+.settings-diagnostic-actions button {
+  margin: 0;
+}
+
+.settings-cache-button {
+  min-height: 48px;
+}
+
+.settings-diagnostic-time {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.settings-cache-result {
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 0.74rem;
+  font-weight: 850;
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .settings-diagnostic-grid,
+  .settings-diagnostic-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Operador 8.6 — justificativas e evidência contextual */
+
+.observation-field--required {
+
+  padding: 12px;
+
+  border: 1px solid #efd29f;
+
+  border-radius: 16px;
+
+  background: #fff8eb;
+
+}
+
+
+
+.observation-field--required > span {
+
+  color: #8a550d;
+
+}
+
+
+
+.observation-field small {
+
+  color: var(--muted);
+
+  font-size: 0.69rem;
+
+  line-height: 1.4;
+
+}
+
+
+
+.observation-field--required small {
+
+  color: #8a550d;
+
+  font-weight: 800;
+
+}
+
+
+
+.observation-field textarea[aria-invalid="true"] {
+
+  border-color: #d79a36;
+
+}
+
+
+
+.evidence-status--optional {
+
+  border-color: #bdd0ed;
+
+  background: #f4f8ff;
+
+  color: #174fc0;
+
+}
+
+
+
+.evidence-mode-label {
+
+  display: inline-flex;
+
+  width: fit-content;
+
+  margin-bottom: 2px;
+
+  padding: 5px 8px;
+
+  border-radius: 999px;
+
+  color: #526176;
+
+  background: #edf2f7;
+
+  font-size: 0.65rem;
+
+  font-weight: 950;
+
+  letter-spacing: 0.04em;
+
+  text-transform: uppercase;
+
+}
+
+
+
+.evidence-mode-label--required {
+
+  color: #8a550d;
+
+  background: #fff1d9;
+
+}
+
+
+
+.evidence-mode-label--optional {
+
+  color: #174fc0;
+
+  background: var(--blue-soft);
+
+}
+
+/* Operador 8.7 — revisão final e resultado operacional */
+.finalization-review-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  padding: 16px;
+  background: rgba(17, 28, 45, 0.58);
+  display: grid;
+  place-items: center;
+}
+
+.finalization-review-card {
+  width: min(100%, 580px);
+  max-height: min(92vh, 820px);
+  overflow-y: auto;
+  padding: clamp(17px, 4vw, 24px);
+  border-radius: 24px;
+  background: var(--surface);
+  display: grid;
+  gap: 14px;
+  box-shadow: 0 28px 80px rgba(12, 24, 43, 0.3);
+}
+
+.finalization-review-card header > span {
+  color: var(--blue);
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.finalization-review-card header h2 {
+  margin-top: 5px;
+  font-size: 1.35rem;
+}
+
+.finalization-review-card header p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.finalization-review-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.finalization-review-summary div {
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #f8fafc;
+}
+
+.finalization-review-summary span,
+.finalization-review-summary strong {
+  display: block;
+}
+
+.finalization-review-summary span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.finalization-review-summary strong {
+  margin-top: 4px;
+  font-size: 0.84rem;
+}
+
+.finalization-review-field {
+  display: grid;
+  gap: 7px;
+}
+
+.finalization-review-field > span {
+  color: #526176;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.finalization-review-field select,
+.finalization-review-field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 15px;
+  color: var(--text);
+  background: #fff;
+}
+
+.finalization-review-field select {
+  min-height: 50px;
+}
+
+.finalization-review-field textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.finalization-quality {
+  padding: 13px 14px;
+  border: 1px solid #bdd0ed;
+  border-radius: 17px;
+  background: #f4f8ff;
+  display: grid;
+  gap: 5px;
+}
+
+.finalization-quality span {
+  color: #526176;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.finalization-quality strong {
+  color: #174fc0;
+  font-size: 1.12rem;
+  letter-spacing: 0.08em;
+}
+
+.finalization-quality small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.finalization-review-error {
+  padding: 11px 12px;
+  border: 1px solid #efb9b9;
+  border-radius: 14px;
+  color: #a93232;
+  background: #fff0f0;
+  font-size: 0.76rem;
+  font-weight: 850;
+  line-height: 1.4;
+}
+
+.finalization-review-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 9px;
+}
+
+.finalization-review-actions button {
+  min-height: 50px;
+  margin: 0;
+}
+
+@media (max-width: 520px) {
+  .finalization-review-summary,
+  .finalization-review-actions {
+    grid-template-columns: 1fr;
+  }
+}

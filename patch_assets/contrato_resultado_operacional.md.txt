@@ -1,7 +1,3 @@
-# Contrato do operador
-
-A versão inicial deve preservar compatibilidade com o contrato 1.1.2.
-
 ## Resultado operacional da finalização — Operador 8.8
 
 O endpoint `operador.finalizar_acao` aceita o resultado operacional selecionado na revisão final:

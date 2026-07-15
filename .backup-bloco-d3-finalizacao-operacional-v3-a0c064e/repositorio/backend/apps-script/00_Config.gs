@@ -1,6 +1,6 @@
 const FAB = {
   APP_NAME: "FAB Control",
-  VERSION: "1.2.1-operador-finalizacao-operacional",
+  VERSION: "1.1.9-operador-paradas-qr-historico",
   TZ: "America/Sao_Paulo",
   TOKEN_HOURS: 12,
   LOCK_TTL_SECONDS: 120,

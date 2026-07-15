@@ -31,7 +31,6 @@ import {
 import type {
   ChecklistBatchItemInput,
   EvidencePhotoUploadInput,
-  OperatorFinalOutcome,
   EvidenceSaveData,
   MaintenanceStartDecision,
   OperatorActionDetailData,
@@ -685,7 +684,6 @@ export function App() {
     items: ChecklistBatchItemInput[],
     resultado: 'OK' | 'NOK',
     observacao: string,
-    resultadoOperacional: OperatorFinalOutcome,
     durationSeconds: number,
   ) {
     const actionId = selectedActionIdRef.current
@@ -695,16 +693,13 @@ export function App() {
     setFinalizing(true)
     setOperationError('')
     try {
-      if (items.length > 0) {
-        const saved = await saveOperatorChecklistBatch(actionId, items)
-        if (saved.error_count > 0) {
-          throw new Error(saved.erros?.[0]?.message || 'Alguns itens não foram salvos.')
-        }
+      const saved = await saveOperatorChecklistBatch(actionId, items)
+      if (saved.error_count > 0) {
+        throw new Error(saved.erros?.[0]?.message || 'Alguns itens não foram salvos.')
       }
 
       const result = await finalizeOperatorAction(actionId, {
         resultado,
-        resultado_operacional: resultadoOperacional,
         observacao,
         duracao_segundos: durationSeconds,
       })

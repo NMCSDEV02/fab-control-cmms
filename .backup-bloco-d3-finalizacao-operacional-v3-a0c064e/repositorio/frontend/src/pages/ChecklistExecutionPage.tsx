@@ -4,7 +4,6 @@ import type {
   EvidencePhotoUploadInput,
   EvidenceSaveData,
   OperatorActionDetailData,
-  OperatorFinalOutcome,
   OperatorStopData,
   RawChecklistItem,
 } from '../types/api'
@@ -25,7 +24,6 @@ interface ChecklistExecutionPageProps {
     items: ChecklistBatchItemInput[],
     resultado: 'OK' | 'NOK',
     observacao: string,
-    resultadoOperacional: OperatorFinalOutcome,
     durationSeconds: number,
   ) => Promise<void>
   onReturnHome: () => void
@@ -49,7 +47,13 @@ type CompletionSummary = {
   qualityScore: number
 }
 
-type FinalOutcome = '' | OperatorFinalOutcome
+type FinalOutcome =
+  | ''
+  | 'CONFORME'
+  | 'DIFERENCAS_JUSTIFICADAS'
+  | 'PARCIAL'
+  | 'NAO_EXECUTADO'
+  | 'OUTRO'
 
 const FINAL_OUTCOME_OPTIONS: Array<{
   value: Exclude<FinalOutcome, ''>
@@ -560,7 +564,6 @@ export function ChecklistExecutionPage({
         buildPayload(),
         result.resultado,
         result.observacao,
-        finalOutcome,
         durationSeconds,
       )
       try {

@@ -486,16 +486,8 @@ export interface FinalizationValidationData {
   message?: string
 }
 
-export type OperatorFinalOutcome =
-  | 'CONFORME'
-  | 'DIFERENCAS_JUSTIFICADAS'
-  | 'PARCIAL'
-  | 'NAO_EXECUTADO'
-  | 'OUTRO'
-
 export interface FinalizeActionInput {
   resultado: 'OK' | 'NOK'
-  resultado_operacional: OperatorFinalOutcome
   observacao: string
   duracao_segundos?: number
 }
@@ -506,14 +498,6 @@ export interface FinalizeActionData {
   acao_id: string
   execucao_id: string
   status_acao: string
-  resultado?: 'OK' | 'NOK'
-  resultado_operacional?: OperatorFinalOutcome
-  requires_manager_validation?: boolean
-  pendencias_registradas?: {
-    obrigatorias: number
-    evidencias: number
-    bloqueios: number
-  }
   parada?: OperatorStopData | null
   parada_operacional?: OperatorStopData | null
   parada_manutencao?: MaintenanceStopData | null

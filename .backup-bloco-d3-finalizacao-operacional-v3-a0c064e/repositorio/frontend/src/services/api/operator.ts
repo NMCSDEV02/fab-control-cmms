@@ -351,7 +351,6 @@ export async function finalizeOperatorAction(
       token,
       acao_id: actionId,
       resultado: input.resultado,
-      resultado_operacional: input.resultado_operacional,
       observacao: input.observacao,
       duracao_segundos: input.duracao_segundos ?? 0,
     },
