@@ -1,3 +1,0 @@
-Backup completo criado antes do Bloco D3.
-Apps Script do repositório: C:\Users\natan\OneDrive\Documentos\fab-control-cmms-initial-structure\backend\apps-script
-Export externo existente antes: NAO

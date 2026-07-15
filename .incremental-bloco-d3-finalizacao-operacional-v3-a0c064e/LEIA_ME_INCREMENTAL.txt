@@ -1,9 +1,0 @@
-FAB Control — Apps Script incremental do Bloco D3
-
-Arquivos alterados:
-00_Config.gs
-05_Motor_Operador.gs
-15_Execucao_Checklist_UI.gs
-
-NÃO execute clasp push a partir desta pasta parcial.
-O push futuro deve partir do export completo validado.
