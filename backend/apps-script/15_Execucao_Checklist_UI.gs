@@ -126,19 +126,92 @@ function gestorAuditoriaExecucaoChecklist1083_(p, usuario){
 
 function gestorValidarAcao1083_(p){
   req_(p, ["acao_id", "decisao"]);
+  var auth = p.__auth || {};
   var acao = find_("os_acoes", "id", p.acao_id);
   if(!acao) err_("ACTION_NOT_FOUND", "Ação não encontrada.", 404);
 
-  var decisao = upper_(p.decisao);
-  if(decisao === "APROVAR"){
+  var dec = upper_(p.decisao);
+  if(["APROVAR", "REPROVAR"].indexOf(dec) < 0){
+    err_("INVALID_DECISION", "Decisão deve ser APROVAR ou REPROVAR.", 400);
+  }
+
+  var st = upper_(acao.status);
+  if(dec === "APROVAR" && st === ST.CONCLUIDA){
+    syncOsStatus_(acao.os_id);
+    return {
+      validated:true,
+      already_validated:true,
+      acao_id:acao.id,
+      decisao:dec,
+      status:ST.CONCLUIDA
+    };
+  }
+  if(dec === "REPROVAR" && st === ST.PENDENTE){
+    return {
+      validated:true,
+      already_validated:true,
+      acao_id:acao.id,
+      decisao:dec,
+      status:ST.PENDENTE
+    };
+  }
+  if(st !== ST.AGUARDANDO_VALIDACAO){
+    err_(
+      "INVALID_STATUS",
+      "Ação não está aguardando validação. Status atual: "+acao.status,
+      400
+    );
+  }
+
+  if(dec === "APROVAR"){
     var ctx = CMMS1083_resolveExecucaoContext_({acao_id:acao.id});
-    var validacao = CMMS1083_validateChecklistExecution_(ctx.ex.id);
-    if(!validacao.can_finalize){
-      err_("CHECKLIST_INCOMPLETO_GESTOR", "Gestor não pode aprovar ação com checklist incompleto. "+CMMS1083_buildChecklistBlockMessage_(validacao), 400);
+    var resultadoOperacional = typeof resultadoOperacionalDaObservacao120_ === "function"
+      ? resultadoOperacionalDaObservacao120_(ctx.ex.observacao)
+      : "";
+
+    if(resultadoOperacional){
+      validarFinalizacaoOperacional120_(
+        ctx.ex.id,
+        resultadoOperacional,
+        ctx.ex.observacao
+      );
+    } else {
+      var validacao = CMMS1083_validateChecklistExecution_(ctx.ex.id);
+      if(!validacao.can_finalize){
+        err_(
+          "CHECKLIST_INCOMPLETO_GESTOR",
+          "Gestor não pode aprovar ação com checklist incompleto. "+
+            CMMS1083_buildChecklistBlockMessage_(validacao),
+          400
+        );
+      }
     }
   }
 
-  return gestorValidarAcao_(p);
+  var novo = dec === "APROVAR" ? ST.CONCLUIDA : ST.PENDENTE;
+  update_("os_acoes", acao.__rowIndex, {status:novo, atualizado_em:now_()});
+  acao.status = novo;
+  refreshPlanoControleStatus_(acao);
+  syncOsStatus_(acao.os_id);
+  releaseLocksForAction_(acao.id, "VALIDACAO_GESTOR");
+
+  hist_({
+    ativo_id:acao.ativo_id,
+    componente_id:acao.componente_id,
+    os_id:acao.os_id,
+    acao_id:acao.id,
+    evento:dec === "APROVAR" ? "ACAO_APROVADA" : "ACAO_REPROVADA",
+    descricao:clean_(p.comentario),
+    usuario_id:auth.usuario_id||"",
+    perfil:auth.perfil||ROLE.GESTOR
+  });
+
+  return {
+    validated:true,
+    acao_id:acao.id,
+    decisao:dec,
+    status:novo
+  };
 }
 
 function CMMS1083_validateChecklistExecution_(execId){

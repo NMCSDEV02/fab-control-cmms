@@ -1,17 +1,19 @@
-import type { ActiveStopResponseData, FinishStopInput, FinishStopResponseData, ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidencePhotoUploadInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, MaintenanceStartDecision, OperatorActionDetailData, OperatorActionsData, OperatorQrContextData, RawOperatorCard, RegisterOccurrenceInput, RegisterOccurrenceResponseData, RegisterParameterData, RegisterParameterInput, StartActionData, StartStopInput, StartStopResponseData } from '../../types/api'
+import type { ActiveStopResponseData, FinishStopInput, FinishStopResponseData, ChecklistBatchItemInput, ChecklistBatchSaveData, EvidenceInput, EvidencePhotoUploadInput, EvidenceSaveData, FinalizationValidationData, FinalizeActionData, FinalizeActionInput, HealthData, MaintenanceStartDecision, OperatorActionDetailData, OperatorActionStateData, OperatorActionsData, OperatorQrContextData, QrHistoryPageData, RawOperatorCard, RegisterOccurrenceInput, RegisterOccurrenceResponseData, RegisterParameterData, RegisterParameterInput, StartActionData, StartStopInput, StartStopResponseData } from '../../types/api'
 import type {
   ActionGroup,
   ActionPriority,
   ActionStatus,
   OperatorAction,
 } from '../../types/operator'
-import { callApi } from './client'
+import { API_TIMEOUT_MS, callApi } from './client'
 import { getOperatorToken } from './config'
 
 function mapPriority(value?: string): ActionPriority {
   const normalized = (value ?? '').toUpperCase()
   if (normalized === 'CRITICA' || normalized === 'CRÍTICA') return 'CRITICA'
   if (normalized === 'ALTA') return 'ALTA'
+  if (normalized === 'MEDIA' || normalized === 'MÉDIA') return 'MEDIA'
+  if (normalized === 'BAIXA') return 'BAIXA'
   return 'NORMAL'
 }
 
@@ -93,6 +95,10 @@ export function mapOperatorCard(card: RawOperatorCard): OperatorAction {
   const group = mapGroup(card, priority)
   const id = card.acao_id ?? card.id ?? ''
 
+  const generatedAt = card.dates?.gerado_em || new Date().toISOString()
+  const plannedAt = card.availability?.planejada_para || card.dates?.planejada_para || undefined
+  const availabilityState = card.availability?.estado || (plannedAt ? 'AGENDADA' : 'SEM_AGENDAMENTO')
+
   return {
     id,
     group,
@@ -106,7 +112,16 @@ export function mapOperatorCard(card: RawOperatorCard): OperatorAction {
     description: card.description?.trim() || 'Sem descrição operacional.',
     priority,
     status: mapStatus(card.status?.state),
-    startAt: card.dates?.gerado_em || new Date().toISOString(),
+    startAt: plannedAt || generatedAt,
+    generatedAt,
+    plannedAt,
+    availability: {
+      state: availabilityState,
+      canStart: card.availability?.pode_iniciar ?? !plannedAt,
+      plannedAt,
+      alertMinutes: card.availability?.alerta_minutos ?? 60,
+      overdueGraceMinutes: card.availability?.tolerancia_atraso_minutos ?? 15,
+    },
     durationMinutes:
       typeof card.duracao_minutos === 'number' ? card.duracao_minutos : undefined,
     crew: Array.isArray(card.equipe) ? card.equipe : [],
@@ -124,6 +139,7 @@ export async function getSystemHealth(signal?: AbortSignal): Promise<HealthData>
     'sistema.health',
     {},
     signal,
+    { timeoutMs: API_TIMEOUT_MS.FAST_READ, dedupe: true },
   )
 
   if (!response.data) {
@@ -148,6 +164,7 @@ export async function getOperatorActions(signal?: AbortSignal): Promise<Operator
       limite: 200,
     },
     signal,
+    { timeoutMs: API_TIMEOUT_MS.FAST_READ, dedupe: true },
   )
 
   const cards =
@@ -171,6 +188,10 @@ export async function getOperatorActionDetail(
     'operador.tela_acao',
     { token, acao_id: actionId },
     signal,
+    {
+      timeoutMs: API_TIMEOUT_MS.DETAIL_READ,
+      dedupe: true,
+    },
   )
 
   if (!response.data) {
@@ -194,6 +215,8 @@ export async function startOperatorAction(
       acao_id: actionId,
       decisao_parada_manutencao: decision,
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
   )
 
   if (!response.data) {
@@ -203,6 +226,22 @@ export async function startOperatorAction(
   return response.data
 }
 
+export async function getOperatorActionState(
+  actionId: string,
+): Promise<OperatorActionStateData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<OperatorActionStateData>(
+    'operador.estado_acao',
+    { token, acao_id: actionId },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.DETAIL_READ, dedupe: true },
+  )
+
+  if (!response.data) throw new Error('A API não retornou o estado da ação.')
+  return response.data
+}
 
 export async function saveOperatorChecklistBatch(
   actionId: string,
@@ -214,6 +253,8 @@ export async function saveOperatorChecklistBatch(
   const response = await callApi<ChecklistBatchSaveData>(
     'operador.salvar_checklist_lote',
     { token, acao_id: actionId, itens: items },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.SAVE },
   )
 
   if (!response.data) throw new Error('A API não confirmou o salvamento do checklist.')
@@ -240,6 +281,8 @@ export async function registerOperatorEvidence(
       url: input.url,
       observacao: input.observacao ?? '',
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.SAVE },
   )
 
   if (!response.data) throw new Error('A API não confirmou a evidência.')
@@ -267,6 +310,8 @@ export async function uploadOperatorEvidencePhoto(
       base64_data: input.base64_data,
       observacao: input.observacao ?? '',
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.EVIDENCE_UPLOAD },
   )
 
   if (!response.data) throw new Error('A API não confirmou o upload da foto.')
@@ -282,6 +327,11 @@ export async function validateOperatorFinalization(
   const response = await callApi<FinalizationValidationData>(
     'operador.validar_finalizacao_acao',
     { token, acao_id: actionId },
+    undefined,
+    {
+      timeoutMs: API_TIMEOUT_MS.DETAIL_READ,
+      dedupe: true,
+    },
   )
 
   if (!response.data) throw new Error('A API não retornou a validação da finalização.')
@@ -301,9 +351,12 @@ export async function finalizeOperatorAction(
       token,
       acao_id: actionId,
       resultado: input.resultado,
+      resultado_operacional: input.resultado_operacional,
       observacao: input.observacao,
       duracao_segundos: input.duracao_segundos ?? 0,
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.EVIDENCE_UPLOAD },
   )
 
   if (!response.data) throw new Error('A API não confirmou a finalização.')
@@ -322,9 +375,42 @@ export async function getOperatorQrContext(
     'operador.contexto_qr',
     { token, qr_payload: qrPayload.trim() },
     signal,
+    {
+      timeoutMs: API_TIMEOUT_MS.DETAIL_READ,
+      dedupe: true,
+    },
   )
 
   if (!response.data) throw new Error('A API não retornou o contexto do QR Code.')
+  return response.data
+}
+
+export async function getOperatorQrHistoryPage(input: {
+  ativo_id: string
+  componente_id?: string
+  cursor?: string
+  limit?: number
+}): Promise<QrHistoryPageData> {
+  const token = getOperatorToken()
+  if (!token) throw new Error('Token do operador não configurado.')
+
+  const response = await callApi<QrHistoryPageData>(
+    'operador.historico_qr',
+    {
+      token,
+      ativo_id: input.ativo_id,
+      componente_id: input.componente_id ?? '',
+      cursor: input.cursor ?? '',
+      limit: input.limit ?? 4,
+    },
+    undefined,
+    {
+      timeoutMs: API_TIMEOUT_MS.DETAIL_READ,
+      dedupe: true,
+    },
+  )
+
+  if (!response.data) throw new Error('A API não retornou a próxima página do histórico.')
   return response.data
 }
 
@@ -345,6 +431,8 @@ export async function registerOperatorParameter(
       unidade: input.unidade?.trim() ?? '',
       origem: input.origem ?? 'OPERADOR_QR',
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.SAVE },
   )
 
   if (!response.data) throw new Error('A API não confirmou o registro do parâmetro.')
@@ -364,6 +452,11 @@ export async function getOperatorActiveStop(
       token,
       ativo_id: input.ativo_id ?? '',
       acao_id: input.acao_id ?? '',
+    },
+    undefined,
+    {
+      timeoutMs: API_TIMEOUT_MS.FAST_READ,
+      dedupe: true,
     },
   )
 
@@ -386,6 +479,8 @@ export async function startOperatorStop(
       tipo: input.tipo ?? 'NAO_PROGRAMADA',
       motivo_parada: input.motivo_parada ?? '',
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
   )
 
   if (!response.data) throw new Error('A API não confirmou o início da parada.')
@@ -407,6 +502,8 @@ export async function finishOperatorStop(
       categoria_retorno: input.categoria_retorno ?? '',
       justificativa_divergencia: input.justificativa_divergencia ?? '',
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
   )
 
   if (!response.data) throw new Error('A API não confirmou a finalização da parada.')
@@ -425,11 +522,14 @@ export async function registerOperatorOccurrence(
       token,
       ativo_id: input.ativo_id,
       componente_id: input.componente_id ?? '',
-      tipo: input.tipo ?? 'OPERACIONAL',
+      alvo_ocorrencia: input.alvo_ocorrencia,
+      tipo: input.tipo ?? input.alvo_ocorrencia,
       titulo: input.titulo,
       descricao: input.descricao,
       severidade: input.severidade ?? 'MEDIA',
     },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.SAVE },
   )
 
   if (!response.data) throw new Error('A API não confirmou a ocorrência.')

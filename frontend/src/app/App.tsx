@@ -7,10 +7,12 @@ import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
 import { OperatorHome } from '../pages/OperatorHome'
 import { QrPage } from '../pages/QrPage'
 import { SettingsPage } from '../pages/SettingsPage'
+import { ApiRequestError } from '../services/api/client'
 import { hasApiConfiguration } from '../services/api/config'
 import {
   finalizeOperatorAction,
   getOperatorActionDetail,
+  getOperatorActionState,
   getOperatorActions,
   getOperatorActiveStop,
   getSystemHealth,
@@ -29,18 +31,198 @@ import {
 import type {
   ChecklistBatchItemInput,
   EvidencePhotoUploadInput,
+  OperatorFinalOutcome,
   EvidenceSaveData,
   MaintenanceStartDecision,
   OperatorActionDetailData,
   OperatorStopData,
+  StartActionData,
 } from '../types/api'
 import type { OperatorAction } from '../types/operator'
 
 type AppView = 'navigation' | 'action-detail' | 'checklist'
+type RefreshOptions = { forceHealth?: boolean; silent?: boolean }
+type DetailLoadOptions = { forceNetwork?: boolean; background?: boolean }
+
+const HEALTH_REFRESH_INTERVAL_MS = 5 * 60_000
+
+const ACTIVE_EXECUTION_CONTEXT_KEY = 'fab-control.active-execution-context'
+
+type StoredExecutionContext = {
+  actionId: string
+  view: Extract<AppView, 'action-detail' | 'checklist'>
+}
+
+function readActiveExecutionContext(): StoredExecutionContext | null {
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_EXECUTION_CONTEXT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<StoredExecutionContext>
+    if (
+      !parsed.actionId ||
+      (parsed.view !== 'action-detail' && parsed.view !== 'checklist')
+    ) {
+      window.localStorage.removeItem(ACTIVE_EXECUTION_CONTEXT_KEY)
+      return null
+    }
+    return {
+      actionId: parsed.actionId,
+      view: parsed.view,
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveActiveExecutionContext(
+  actionId: string,
+  view: StoredExecutionContext['view'],
+): void {
+  if (!actionId) return
+  try {
+    window.localStorage.setItem(
+      ACTIVE_EXECUTION_CONTEXT_KEY,
+      JSON.stringify({ actionId, view }),
+    )
+  } catch {
+    // Persistência auxiliar indisponível; a execução continua em memória.
+  }
+}
+
+function clearActiveExecutionContext(): void {
+  try {
+    window.localStorage.removeItem(ACTIVE_EXECUTION_CONTEXT_KEY)
+  } catch {
+    // Sem impacto na operação corrente.
+  }
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+}
+
+function mergeStartedDetail(
+  current: OperatorActionDetailData,
+  result: StartActionData,
+): OperatorActionDetailData {
+  const mode = result.modo_execucao_manutencao === 'SEM_PARADA'
+    ? 'SEM_PARADA'
+    : 'COM_PARADA'
+  const now = new Date().toISOString()
+  const checklist = result.checklist?.itens?.length
+    ? result.checklist
+    : current.checklist
+
+  return {
+    ...current,
+    acao: {
+      ...current.acao,
+      status: 'EM_EXECUCAO',
+      iniciado_em: current.acao.iniciado_em || now,
+    },
+    ativo: current.ativo
+      ? {
+          ...current.ativo,
+          status: mode === 'COM_PARADA' ? 'PARADO' : current.ativo.status,
+        }
+      : current.ativo,
+    execucao: {
+      ...(current.execucao ?? {}),
+      ...(result.execucao ?? {}),
+      id: result.execucao?.id || result.execucao_id || current.execucao?.id,
+      acao_id: result.acao_id || current.acao.id,
+      iniciou_em: result.execucao?.iniciou_em || current.execucao?.iniciou_em || now,
+      abriu_em: result.execucao?.abriu_em || current.execucao?.abriu_em || now,
+      status: 'EM_EXECUCAO',
+      modo_execucao_manutencao: mode,
+    },
+    checklist,
+    ui: {
+      ...(current.ui ?? {}),
+      state: 'EM_EXECUCAO',
+      can_start: false,
+      can_answer: true,
+      can_save_batch: true,
+      can_register_evidence: true,
+      message: 'Execução iniciada. Checklist liberado.',
+    },
+    operator_screen: current.operator_screen
+      ? {
+          ...current.operator_screen,
+          header: {
+            ...(current.operator_screen.header ?? {}),
+            execucao_id: result.execucao_id,
+            status: 'EM_EXECUCAO',
+          },
+        }
+      : current.operator_screen,
+  }
+}
+
+function mergeEvidenceIntoDetail(
+  current: OperatorActionDetailData,
+  saved: EvidenceSaveData,
+  input: EvidencePhotoUploadInput,
+): OperatorActionDetailData {
+  const checklistId = saved.checklist_execucao_id || input.checklist_execucao_id
+  const items = current.checklist?.itens ?? []
+  const nextItems = items.map((item) => {
+    if (item.id !== checklistId) return item
+
+    const previousEvidence = item.evidencias ?? []
+    const evidence = saved.evidencia ?? {
+      id: saved.arquivo_id,
+      checklist_execucao_id: checklistId,
+      tipo: 'FOTO',
+      nome_arquivo: input.nome_arquivo,
+      url: saved.url,
+      thumbnail_url: saved.thumbnail_url,
+      arquivo_id: saved.arquivo_id,
+      mime_type: saved.mime_type || input.mime_type,
+      tamanho_bytes: saved.tamanho_bytes || input.tamanho_bytes,
+      observacao: input.observacao,
+      criado_em: new Date().toISOString(),
+    }
+    const duplicate = previousEvidence.some((record) =>
+      Boolean(evidence.id && record.id === evidence.id) ||
+      Boolean(evidence.url && record.url === evidence.url),
+    )
+    const count = Number(
+      saved.evidencias_count ??
+      saved.fotos_registradas ??
+      (item.evidencias_count ?? 0) + 1,
+    )
+
+    return {
+      ...item,
+      evidencias_count: Number.isFinite(count) ? count : (item.evidencias_count ?? 0) + 1,
+      evidencias: duplicate ? previousEvidence : [...previousEvidence, evidence],
+      status: 'RESPONDIDO',
+      respondido: true,
+      resposta: item.resposta || 'EVIDENCIA_ANEXADA',
+    }
+  })
+
+  return {
+    ...current,
+    checklist: current.checklist
+      ? {
+          ...current.checklist,
+          itens: nextItems,
+        }
+      : current.checklist,
+  }
+}
 
 export function App() {
+  const initialExecutionContextRef = useRef<StoredExecutionContext | null>(
+    readActiveExecutionContext(),
+  )
+
   const [section, setSection] = useState<AppSection>('home')
-  const [view, setView] = useState<AppView>('navigation')
+  const [view, setView] = useState<AppView>(
+    () => initialExecutionContextRef.current?.view ?? 'navigation',
+  )
   const [toast, setToast] = useState('')
   const [actions, setActions] = useState<OperatorAction[]>([])
   const [loading, setLoading] = useState(false)
@@ -50,27 +232,66 @@ export function App() {
   const [apiVersion, setApiVersion] = useState('')
   const [configurationRevision, setConfigurationRevision] = useState(0)
 
-  const [selectedActionId, setSelectedActionId] = useState('')
+  const [selectedActionId, setSelectedActionId] = useState(
+  () => initialExecutionContextRef.current?.actionId ?? '',
+)
   const [actionDetail, setActionDetail] = useState<OperatorActionDetailData | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailRefreshing, setDetailRefreshing] = useState(false)
   const [detailError, setDetailError] = useState('')
+  const [operationError, setOperationError] = useState('')
   const [starting, setStarting] = useState(false)
   const [savingChecklist, setSavingChecklist] = useState(false)
   const [savingEvidence, setSavingEvidence] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
   const [activeStop, setActiveStop] = useState<OperatorStopData | null>(null)
   const [showDetailOverlay, setShowDetailOverlay] = useState(false)
+
   const refreshInFlightRef = useRef<Promise<void> | null>(null)
+  const actionsRef = useRef<OperatorAction[]>([])
+  const selectedActionIdRef = useRef(
+  initialExecutionContextRef.current?.actionId ?? '',
+)
+  const actionDetailRef = useRef<OperatorActionDetailData | null>(null)
+  const detailRequestRef = useRef(0)
+  const writeBusyRef = useRef(false)
+  const viewRef = useRef<AppView>(
+  initialExecutionContextRef.current?.view ?? 'navigation',
+)
+  const sectionRef = useRef<AppSection>('home')
+  const apiVersionRef = useRef('')
+  const lastHealthCheckRef = useRef(0)
+  const toastTimerRef = useRef<number | null>(null)
 
   const configured = hasApiConfiguration()
 
-  function notify(message: string) {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2800)
+  useEffect(() => {
+    actionDetailRef.current = actionDetail
+  }, [actionDetail])
+
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
+
+  useEffect(() => {
+    sectionRef.current = section
+  }, [section])
+
+  function setVisibleActionDetail(detail: OperatorActionDetailData | null) {
+    actionDetailRef.current = detail
+    setActionDetail(detail)
   }
 
-  const refresh = useCallback(async () => {
+  function notify(message: string) {
+    setToast(message)
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast('')
+      toastTimerRef.current = null
+    }, 3200)
+  }
+
+  const refresh = useCallback(async (options: RefreshOptions = {}) => {
     if (refreshInFlightRef.current) {
       await refreshInFlightRef.current
       return
@@ -87,38 +308,58 @@ export function App() {
 
       const cached = await readActionsCache()
       const hasCached = cached !== null
-      if (hasCached) setActions(cached)
-      setLoading(true)
+      const hasVisibleActions = hasCached || actionsRef.current.length > 0
+      if (cached) {
+        actionsRef.current = cached
+        setActions(cached)
+      }
 
-      setError('')
-      setConnectionState('checking')
+      if (!options.silent) setLoading(true)
+      if (!options.silent) setError('')
+      if (!hasVisibleActions) setConnectionState('checking')
+
+      const shouldCheckHealth =
+        options.forceHealth ||
+        !apiVersionRef.current ||
+        Date.now() - lastHealthCheckRef.current >= HEALTH_REFRESH_INTERVAL_MS
 
       const [actionsResult, healthResult] = await Promise.allSettled([
         getOperatorActions(),
-        getSystemHealth(),
+        shouldCheckHealth ? getSystemHealth() : Promise.resolve(null),
       ])
 
       if (actionsResult.status === 'fulfilled') {
+        actionsRef.current = actionsResult.value
         setActions(actionsResult.value)
         await writeActionsCache(actionsResult.value)
         setConnectionState('online')
+        setError('')
       } else {
-        const message =
-          actionsResult.reason instanceof Error
-            ? actionsResult.reason.message
-            : 'Falha ao carregar a fila do operador.'
-        setError(message)
-        if (!hasCached) setActions([])
-      }
-
-      if (healthResult.status === 'fulfilled') {
-        setApiVersion(healthResult.value.version)
-        setConnectionState('online')
-      } else if (actionsResult.status === 'rejected') {
+        const message = actionsResult.reason instanceof Error
+          ? actionsResult.reason.message
+          : 'Falha ao carregar a fila do operador.'
+        if (!options.silent) {
+          setError(
+            hasVisibleActions
+              ? 'Atualização online indisponível. Exibindo a fila salva neste aparelho.'
+              : message,
+          )
+        }
+        if (!hasVisibleActions) {
+          actionsRef.current = []
+          setActions([])
+        }
         setConnectionState('offline')
       }
 
-      setLoading(false)
+      if (healthResult.status === 'fulfilled' && healthResult.value) {
+        apiVersionRef.current = healthResult.value.version
+        setApiVersion(healthResult.value.version)
+        lastHealthCheckRef.current = Date.now()
+        setConnectionState('online')
+      }
+
+      if (!options.silent) setLoading(false)
     })()
 
     refreshInFlightRef.current = run
@@ -128,18 +369,27 @@ export function App() {
       refreshInFlightRef.current = null
     }
   }, [])
+
   useEffect(() => {
-    void refresh()
+    void refresh({ forceHealth: true })
   }, [refresh, configurationRevision])
 
   useEffect(() => {
+    const canRefreshHome = () =>
+      document.visibilityState === 'visible' &&
+      !writeBusyRef.current &&
+      viewRef.current === 'navigation' &&
+      sectionRef.current === 'home'
+
     const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') void refresh()
+      if (canRefreshHome()) void refresh({ silent: true })
     }
-    const refreshOnFocus = () => void refresh()
+    const refreshOnFocus = () => {
+      if (canRefreshHome()) void refresh({ silent: true })
+    }
     const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refresh()
-    }, 45_000)
+      if (canRefreshHome()) void refresh({ silent: true })
+    }, 60_000)
 
     document.addEventListener('visibilitychange', refreshWhenVisible)
     window.addEventListener('focus', refreshOnFocus)
@@ -161,47 +411,105 @@ export function App() {
     return () => window.clearTimeout(timer)
   }, [detailLoading, actionDetail])
 
-  const loadActionDetail = useCallback(async (actionId: string, forceBlocking = false) => {
-    setDetailError('')
-    const cached = forceBlocking ? null : await readActionDetailCache(actionId)
+  const loadActionDetail = useCallback(async (
+    actionId: string,
+    options: DetailLoadOptions = {},
+  ) => {
+    const requestId = ++detailRequestRef.current
+    const isCurrentRequest = () =>
+      detailRequestRef.current === requestId && selectedActionIdRef.current === actionId
+    const hadVisibleDetail = actionDetailRef.current?.acao.id === actionId
+
+    if (isCurrentRequest() && !options.background) setDetailError('')
+    const cached = options.forceNetwork ? null : await readActionDetailCache(actionId)
+    if (!isCurrentRequest()) return
 
     if (cached) {
-      setActionDetail(cached)
+      setVisibleActionDetail(cached)
       setDetailLoading(false)
-      setDetailRefreshing(true)
-    } else {
+      if (!options.background) setDetailRefreshing(true)
+    } else if (!hadVisibleDetail && !options.background) {
       setDetailLoading(true)
       setDetailRefreshing(false)
+    } else if (!options.background) {
+      setDetailRefreshing(true)
     }
 
     try {
       const detail = await getOperatorActionDetail(actionId)
-      setActionDetail(detail)
-      await writeActionDetailCache(actionId, detail)
-      try {
-        const stop = await getOperatorActiveStop({
-          ativo_id: detail.ativo?.id || detail.acao.ativo_id,
-          acao_id: actionId,
-        })
-        setActiveStop(stop.parada_ativa)
-      } catch {
-        setActiveStop(null)
+      if (!isCurrentRequest()) {
+        await writeActionDetailCache(actionId, detail)
+        return
       }
+
+      setVisibleActionDetail(detail)
+      await writeActionDetailCache(actionId, detail)
+      setDetailError('')
+
+      void getOperatorActiveStop({
+        ativo_id: detail.ativo?.id || detail.acao.ativo_id,
+        acao_id: actionId,
+      }).then((stop) => {
+        if (isCurrentRequest()) setActiveStop(stop.parada_ativa)
+      }).catch(() => {
+        // A parada operacional é auxiliar e não invalida o checklist carregado.
+      })
     } catch (cause) {
+      if (!isCurrentRequest()) return
       const message = cause instanceof Error ? cause.message : 'Falha ao abrir a ação.'
-      if (!cached) setDetailError(message)
-      else notify('Exibindo dados salvos. Atualização online indisponível.')
+      if (!cached && !hadVisibleDetail && !options.background) {
+        setDetailError(message)
+      } else if (!options.background) {
+        notify('Dados salvos mantidos. Não foi possível atualizar a ação agora.')
+      }
     } finally {
-      setDetailLoading(false)
-      setDetailRefreshing(false)
+      if (isCurrentRequest()) {
+        setDetailLoading(false)
+        setDetailRefreshing(false)
+      }
     }
   }, [])
 
+  useEffect(() => {
+  const stored =
+    initialExecutionContextRef.current ?? readActiveExecutionContext()
+
+  if (!stored) return
+
+  initialExecutionContextRef.current = null
+  selectedActionIdRef.current = stored.actionId
+  viewRef.current = stored.view
+
+  setSelectedActionId(stored.actionId)
+  setVisibleActionDetail(null)
+  setActiveStop(null)
+  setDetailError('')
+  setOperationError('')
+  setDetailLoading(true)
+  setView(stored.view)
+
+  void loadActionDetail(stored.actionId).then(() => {
+    if (selectedActionIdRef.current !== stored.actionId) return
+
+    if (
+      stored.view === 'checklist' &&
+      !actionDetailRef.current?.execucao?.id
+    ) {
+      viewRef.current = 'action-detail'
+      setView('action-detail')
+    }
+  })
+}, [configurationRevision, loadActionDetail])
   function openActionById(actionId: string) {
+    selectedActionIdRef.current = actionId
     setSelectedActionId(actionId)
-    setActionDetail(null)
+    setVisibleActionDetail(null)
+    setActiveStop(null)
+    setDetailError('')
+    setOperationError('')
     setDetailLoading(true)
     setView('action-detail')
+    saveActiveExecutionContext(actionId, 'action-detail')
     void loadActionDetail(actionId)
   }
 
@@ -210,94 +518,188 @@ export function App() {
   }
 
   function closeAction() {
+    clearActiveExecutionContext()
+    selectedActionIdRef.current = ''
+    detailRequestRef.current += 1
     setView('navigation')
     setSelectedActionId('')
-    setActionDetail(null)
+    setVisibleActionDetail(null)
     setDetailError('')
+    setOperationError('')
     setActiveStop(null)
-    void refresh()
+    void refresh({ silent: true })
+  }
+
+  async function reconcileStartedAction(actionId: string): Promise<StartActionData | null> {
+    for (const delay of [1200, 2500, 4000]) {
+      await wait(delay)
+      try {
+        const state = await getOperatorActionState(actionId)
+        if (state.started && state.execucao_id) {
+          return {
+            started: true,
+            already_started: true,
+            acao_id: state.acao_id,
+            execucao_id: state.execucao_id,
+            status: state.status,
+            execucao: state.execucao ?? undefined,
+            checklist: state.checklist ?? undefined,
+            modo_execucao_manutencao: state.modo_execucao_manutencao === 'SEM_PARADA'
+              ? 'SEM_PARADA'
+              : 'COM_PARADA',
+            decisao_parada_manutencao: state.modo_execucao_manutencao === 'SEM_PARADA'
+              ? 'SEM_PARADA'
+              : 'PARAR_EQUIPAMENTO',
+            parada_operacional: state.parada_operacional,
+            parada_manutencao: state.parada_manutencao,
+          }
+        }
+      } catch {
+        // Apenas reconciliação de leitura. A gravação nunca é repetida automaticamente.
+      }
+    }
+    return null
   }
 
   async function startAction(decision: MaintenanceStartDecision) {
-    if (!selectedActionId) return
+    const actionId = selectedActionIdRef.current
+    if (!actionId) return
+
+    writeBusyRef.current = true
     setStarting(true)
     setDetailError('')
+    setOperationError('')
+
     try {
-      const result = await startOperatorAction(selectedActionId, decision)
-      setActiveStop(result.parada_operacional ?? result.parada ?? activeStop)
-      await removeActionDetailCache(selectedActionId)
+      let result: StartActionData
+      try {
+        result = await startOperatorAction(actionId, decision)
+      } catch (cause) {
+        if (!(cause instanceof ApiRequestError) || cause.code !== 'API_TIMEOUT') throw cause
+        notify('O início demorou mais que o esperado. Confirmando a execução sem repetir a gravação…')
+        const reconciled = await reconcileStartedAction(actionId)
+        if (!reconciled) {
+          throw new Error(
+            'Não foi possível confirmar o início. Atualize a ação antes de tentar novamente; o sistema não repetiu a gravação.',
+          )
+        }
+        result = reconciled
+      }
+
+      setActiveStop((current) => result.parada_operacional ?? result.parada ?? current)
+      await removeActionDetailCache(actionId)
+
+      const current = actionDetailRef.current
+      if (current?.acao.id === actionId && result.checklist?.itens?.length) {
+        const next = mergeStartedDetail(current, result)
+        setVisibleActionDetail(next)
+        await writeActionDetailCache(actionId, next)
+        saveActiveExecutionContext(actionId, 'checklist')
+        setView('checklist')
+      } else {
+        await loadActionDetail(actionId, { forceNetwork: true })
+        if (!actionDetailRef.current?.execucao?.id) {
+          throw new Error('A execução foi criada, mas o checklist ainda não ficou disponível. Atualize a ação.')
+        }
+        saveActiveExecutionContext(actionId, 'checklist')
+        setView('checklist')
+      }
 
       notify(
         result.modo_execucao_manutencao === 'SEM_PARADA'
-          ? 'Execução iniciada sem parada do equipamento.'
-          : 'Execução iniciada com parada técnica da manutenção.',
+          ? 'Execução iniciada sem parada da máquina.'
+          : result.parada_operacional
+            ? 'Manutenção iniciada e vinculada à parada operacional existente.'
+            : 'Execução iniciada com parada do equipamento.',
       )
 
-      await Promise.all([loadActionDetail(selectedActionId, true), refresh()])
-      setView('checklist')
+      window.setTimeout(() => {
+        if (selectedActionIdRef.current !== actionId) return
+        void loadActionDetail(actionId, { forceNetwork: true, background: true })
+        void refresh({ silent: true })
+      }, 800)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao iniciar execução.'
-      setDetailError(message)
+      setOperationError(message)
       notify(message)
     } finally {
       setStarting(false)
+      writeBusyRef.current = false
     }
   }
 
   async function refreshCurrentDetail() {
-    if (!selectedActionId) return
-    await loadActionDetail(selectedActionId, true)
+    const actionId = selectedActionIdRef.current
+    if (!actionId) return
+    await loadActionDetail(actionId, { forceNetwork: true })
   }
 
   async function saveChecklistProgress(items: ChecklistBatchItemInput[]) {
-    if (!selectedActionId || items.length === 0) return
+    const actionId = selectedActionIdRef.current
+    if (!actionId || items.length === 0) return
+
+    writeBusyRef.current = true
     setSavingChecklist(true)
-    setDetailError('')
+    setOperationError('')
     try {
-      const result = await saveOperatorChecklistBatch(selectedActionId, items)
+      const result = await saveOperatorChecklistBatch(actionId, items)
       if (result.error_count > 0) {
         throw new Error(result.erros?.[0]?.message || 'Alguns itens não foram salvos.')
       }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao salvar o progresso.'
-      setDetailError(message)
+      setOperationError(message)
       notify(message)
       throw cause
     } finally {
       setSavingChecklist(false)
+      writeBusyRef.current = false
     }
   }
 
   async function saveEvidencePhotos(inputs: EvidencePhotoUploadInput[]): Promise<EvidenceSaveData[]> {
-    if (!selectedActionId || !actionDetail?.execucao?.id) {
+    const actionId = selectedActionIdRef.current
+    const executionId = actionDetailRef.current?.execucao?.id
+    if (!actionId || !executionId) {
       throw new Error('Execução não identificada para registrar evidência.')
     }
     if (!inputs.length) return []
 
+    writeBusyRef.current = true
     setSavingEvidence(true)
-    setDetailError('')
+    setOperationError('')
     try {
       const saved: EvidenceSaveData[] = []
+      let updatedDetail = actionDetailRef.current
+
       for (const input of inputs) {
-        saved.push(
-          await uploadOperatorEvidencePhoto(
-            selectedActionId,
-            actionDetail.execucao.id,
-            input,
-          ),
-        )
+        const result = await uploadOperatorEvidencePhoto(actionId, executionId, input)
+        saved.push(result)
+        if (updatedDetail?.acao.id === actionId) {
+          updatedDetail = mergeEvidenceIntoDetail(updatedDetail, result, input)
+          setVisibleActionDetail(updatedDetail)
+        }
       }
-      await removeActionDetailCache(selectedActionId)
-      await refreshCurrentDetail()
+
+      await removeActionDetailCache(actionId)
+      if (updatedDetail) await writeActionDetailCache(actionId, updatedDetail)
       notify(`${saved.length} foto(s) registrada(s)`)
+
+      window.setTimeout(() => {
+        if (selectedActionIdRef.current === actionId) {
+          void loadActionDetail(actionId, { forceNetwork: true, background: true })
+        }
+      }, 900)
+
       return saved
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao registrar evidência.'
-      setDetailError(message)
+      setOperationError(message)
       notify(message)
       throw cause
     } finally {
       setSavingEvidence(false)
+      writeBusyRef.current = false
     }
   }
 
@@ -305,48 +707,61 @@ export function App() {
     items: ChecklistBatchItemInput[],
     resultado: 'OK' | 'NOK',
     observacao: string,
+    resultadoOperacional: OperatorFinalOutcome,
     durationSeconds: number,
   ) {
-    if (!selectedActionId) throw new Error('Ação não identificada para finalização.')
+    const actionId = selectedActionIdRef.current
+    if (!actionId) throw new Error('Ação não identificada para finalização.')
 
+    writeBusyRef.current = true
     setFinalizing(true)
-    setDetailError('')
+    setOperationError('')
     try {
-      const saved = await saveOperatorChecklistBatch(selectedActionId, items)
-      if (saved.error_count > 0) {
-        throw new Error(saved.erros?.[0]?.message || 'Alguns itens não foram salvos.')
+      if (items.length > 0) {
+        const saved = await saveOperatorChecklistBatch(actionId, items)
+        if (saved.error_count > 0) {
+          throw new Error(saved.erros?.[0]?.message || 'Alguns itens não foram salvos.')
+        }
       }
 
-      const result = await finalizeOperatorAction(selectedActionId, {
+      const result = await finalizeOperatorAction(actionId, {
         resultado,
+        resultado_operacional: resultadoOperacional,
         observacao,
         duracao_segundos: durationSeconds,
       })
 
-      setActiveStop(result.parada_operacional ?? result.parada ?? activeStop)
-      await removeActionDetailCache(selectedActionId)
+      setActiveStop((current) => result.parada_operacional ?? result.parada ?? current)
+      await removeActionDetailCache(actionId)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao finalizar a execução.'
-      setDetailError(message)
+      setOperationError(message)
       throw cause
     } finally {
       setFinalizing(false)
+      writeBusyRef.current = false
     }
   }
 
   function returnHomeAfterCompletion() {
+    clearActiveExecutionContext()
+    selectedActionIdRef.current = ''
+    detailRequestRef.current += 1
     setView('navigation')
     setSection('home')
     setSelectedActionId('')
-    setActionDetail(null)
+    setVisibleActionDetail(null)
     setDetailError('')
+    setOperationError('')
     setActiveStop(null)
-    void refresh()
+    void refresh({ forceHealth: true })
   }
 
   async function testConnection() {
     try {
       const health = await getSystemHealth()
+      apiVersionRef.current = health.version
+      lastHealthCheckRef.current = Date.now()
       setApiVersion(health.version)
       setConnectionState('online')
       notify(`API ${health.version} conectada`)
@@ -358,8 +773,19 @@ export function App() {
     }
   }
 
-  function configurationSaved() {
-    void clearOperatorCache()
+  async function configurationSaved() {
+    await clearOperatorCache()
+    actionsRef.current = []
+    selectedActionIdRef.current = ''
+    detailRequestRef.current += 1
+    apiVersionRef.current = ''
+    lastHealthCheckRef.current = 0
+    setActions([])
+    setSelectedActionId('')
+    setVisibleActionDetail(null)
+    setActiveStop(null)
+    setDetailError('')
+    setOperationError('')
     setConfigurationRevision((value) => value + 1)
     setSection('home')
     setView('navigation')
@@ -382,7 +808,7 @@ export function App() {
       ? {
           visible: true,
           title: 'Iniciando execução',
-          description: 'Preparando checklist e condição do equipamento.',
+          description: 'Criando a execução e liberando o checklist.',
         }
       : savingChecklist
         ? {
@@ -394,7 +820,7 @@ export function App() {
           ? {
               visible: true,
               title: 'Enviando evidências',
-              description: 'Compactando e sincronizando as fotos com a execução.',
+              description: 'Sincronizando as fotos compactadas com a execução.',
             }
           : {
               visible: false,
@@ -412,37 +838,47 @@ export function App() {
             <ActionDetailPage
               detail={actionDetail}
               loading={detailLoading && !actionDetail}
-              error={detailError}
+              error={detailError || operationError}
               starting={starting}
               onBack={closeAction}
-              onRetry={() => void loadActionDetail(selectedActionId, true)}
+              onRetry={() => void loadActionDetail(selectedActionIdRef.current, { forceNetwork: true })}
               onStart={startAction}
               activeStop={activeStop}
-              onContinue={() => setView('checklist')}
+              onContinue={() => {
+                setOperationError('')
+                saveActiveExecutionContext(selectedActionIdRef.current, 'checklist')
+                setView('checklist')
+              }}
             />
-          ) : view === 'checklist' && actionDetail ? (
+          ) : view === 'checklist' ? (
+            actionDetail ? (
             <ChecklistExecutionPage
               detail={actionDetail}
               evidenceSaving={savingEvidence}
               finalizing={finalizing}
-              error={detailError}
+              error={operationError}
               activeStop={activeStop}
-              onBack={() => setView('action-detail')}
+              onBack={() => {
+                setOperationError('')
+                saveActiveExecutionContext(selectedActionIdRef.current, 'action-detail')
+                setView('action-detail')
+              }}
               onRefresh={refreshCurrentDetail}
               onSaveProgress={saveChecklistProgress}
               onRegisterEvidence={saveEvidencePhotos}
               onFinish={finishOperatorExecution}
               onReturnHome={returnHomeAfterCompletion}
             />
+          ) : null
           ) : (
-            <>
+           <>
               {section === 'home' && (
                 <OperatorHome
                   actions={actions}
                   loading={loading}
                   error={error}
                   configured={configured}
-                  onRetry={() => void refresh()}
+                  onRetry={() => void refresh({ forceHealth: true })}
                   onOpenSettings={() => setSection('settings')}
                   onOpenAction={openAction}
                   onOpenQr={() => setSection('qr')}

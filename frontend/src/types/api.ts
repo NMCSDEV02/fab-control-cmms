@@ -20,6 +20,18 @@ export interface HealthData {
   serverTime?: string
 }
 
+export interface ActionAvailabilityData {
+  programada?: boolean
+  planejada_para?: string
+  alerta_minutos?: number
+  tolerancia_atraso_minutos?: number
+  estado?: 'SEM_AGENDAMENTO' | 'AGENDADA' | 'EM_ALERTA' | 'DISPONIVEL' | 'ATRASADA'
+  pode_iniciar?: boolean
+  segundos_para_liberar?: number
+  segundos_em_atraso?: number
+  mensagem?: string
+}
+
 export interface RawOperatorCard {
   id?: string
   acao_id?: string
@@ -57,6 +69,7 @@ export interface RawOperatorCard {
   }
   dates?: {
     gerado_em?: string
+    planejada_para?: string
     iniciado_em?: string
     finalizado_em?: string
   }
@@ -71,6 +84,7 @@ export interface RawOperatorCard {
   tipo?: string
   duracao_minutos?: number
   equipe?: string[]
+  availability?: ActionAvailabilityData | null
 }
 
 export interface OperatorActionsData {
@@ -115,6 +129,7 @@ export interface RawChecklistItem {
   resposta?: string
   valor_numero?: string | number
   observacao?: string
+  conforme?: string
   status?: string
   respondido?: boolean
   evidencias_count?: number
@@ -154,6 +169,7 @@ export interface OperatorActionDetailData {
     status: string
     responsavel_id?: string
     gerado_em?: string
+    planejada_para?: string
     iniciado_em?: string
     finalizado_em?: string
     modo_parada_manutencao?: MaintenanceStopMode
@@ -166,6 +182,7 @@ export interface OperatorActionDetailData {
     prioridade?: string
     status?: string
     aberta_em?: string
+    planejada_para?: string
     iniciada_em?: string
     finalizada_em?: string
   }
@@ -182,6 +199,10 @@ export interface OperatorActionDetailData {
     horimetro_atualizado_em?: string
     horimetro_base_servico?: number | string
     horimetro_base_servico_em?: string
+    fabricante?: string
+    modelo?: string
+    numero_serie?: string
+    localizacao_tecnica?: string
   }
   horimetro?: HorimeterSummary | null
   componente?: {
@@ -193,6 +214,10 @@ export interface OperatorActionDetailData {
     status?: string
     vida_util_horas?: number
     horas_acumuladas?: number
+    fabricante?: string
+    modelo?: string
+    numero_serie?: string
+    localizacao_tecnica?: string
   }
   plano?: {
     id?: string
@@ -210,6 +235,11 @@ export interface OperatorActionDetailData {
     workflow_status?: string
     revisao?: number
   }
+  executor?: {
+    id?: string
+    nome?: string
+    email?: string
+  } | null
   execucao?: {
     id?: string
     acao_id?: string
@@ -223,6 +253,7 @@ export interface OperatorActionDetailData {
     status?: string
     modo_execucao_manutencao?: MaintenanceStartDecision | 'COM_PARADA' | 'SEM_PARADA'
   } | null
+  disponibilidade?: ActionAvailabilityData | null
   checklist?: {
     modelo?: boolean
     execucao_id?: string
@@ -330,8 +361,23 @@ export interface StartActionData {
   parada_operacional?: OperatorStopData | null
   parada_manutencao?: MaintenanceStopData | null
   horimetro?: HorimeterSummary | null
+  execucao?: NonNullable<OperatorActionDetailData['execucao']>
+  checklist?: OperatorActionDetailData['checklist']
 }
 
+export interface OperatorActionStateData {
+  ok?: boolean
+  started: boolean
+  acao_id: string
+  status?: string
+  execucao_id?: string
+  execucao?: OperatorActionDetailData['execucao']
+  checklist?: OperatorActionDetailData['checklist'] | null
+  modo_execucao_manutencao?: 'COM_PARADA' | 'SEM_PARADA' | ''
+  parada_operacional?: OperatorStopData | null
+  parada_manutencao?: MaintenanceStopData | null
+  server_time?: string
+}
 
 export interface ChecklistBatchItemInput {
   id?: string
@@ -412,6 +458,9 @@ export interface EvidenceSaveData {
   mime_type?: string
   tamanho_bytes?: number
   evidencia?: EvidenceRecord
+  quantidade_configurada?: number
+  fotos_registradas?: number
+  fotos_restantes?: number
 }
 
 export interface FinalizationValidationData {
@@ -437,8 +486,16 @@ export interface FinalizationValidationData {
   message?: string
 }
 
+export type OperatorFinalOutcome =
+  | 'CONFORME'
+  | 'DIFERENCAS_JUSTIFICADAS'
+  | 'PARCIAL'
+  | 'NAO_EXECUTADO'
+  | 'OUTRO'
+
 export interface FinalizeActionInput {
   resultado: 'OK' | 'NOK'
+  resultado_operacional: OperatorFinalOutcome
   observacao: string
   duracao_segundos?: number
 }
@@ -449,6 +506,14 @@ export interface FinalizeActionData {
   acao_id: string
   execucao_id: string
   status_acao: string
+  resultado?: 'OK' | 'NOK'
+  resultado_operacional?: OperatorFinalOutcome
+  requires_manager_validation?: boolean
+  pendencias_registradas?: {
+    obrigatorias: number
+    evidencias: number
+    bloqueios: number
+  }
   parada?: OperatorStopData | null
   parada_operacional?: OperatorStopData | null
   parada_manutencao?: MaintenanceStopData | null
@@ -520,6 +585,7 @@ export interface StartStopResponseData {
   started: boolean
   already_open?: boolean
   parada: OperatorStopData
+  notified_profiles?: string[]
 }
 
 export interface FinishStopInput {
@@ -548,6 +614,7 @@ export interface FinishStopResponseData {
 export interface RegisterOccurrenceInput {
   ativo_id: string
   componente_id?: string
+  alvo_ocorrencia: 'EQUIPAMENTO' | 'COMPONENTE'
   tipo?: string
   titulo: string
   descricao: string
@@ -557,6 +624,7 @@ export interface RegisterOccurrenceInput {
 export interface RegisterOccurrenceResponseData {
   saved: boolean
   occurrence: OperatorOccurrenceData
+  alvo_ocorrencia?: 'EQUIPAMENTO' | 'COMPONENTE'
   notified_profiles?: string[]
 }
 
@@ -603,6 +671,10 @@ export interface QrComponentData {
   criticidade?: string
   status?: string
   horas_acumuladas?: number | string
+  fabricante?: string
+  modelo?: string
+  numero_serie?: string
+  localizacao_tecnica?: string
 }
 
 export interface QrActionData {
@@ -640,6 +712,20 @@ export interface QrHistoryData {
   criado_em?: string
 }
 
+
+export interface QrHistoryPaginationData {
+  next_cursor?: string
+  has_more?: boolean
+  limit?: number
+}
+
+export interface QrHistoryPageData extends QrHistoryPaginationData {
+  items: QrHistoryData[]
+  ativo_id?: string
+  componente_id?: string
+  scanned_rows?: number
+}
+
 export interface QrParameterData {
   id: string
   ativo_id?: string
@@ -664,6 +750,7 @@ export interface OperatorQrContextData {
   acoes_pendentes?: QrActionData[]
   proxima_acao?: QrActionData | null
   historico_recente?: QrHistoryData[]
+  historico_paginacao?: QrHistoryPaginationData
   parametros_recentes?: QrParameterData[]
   parametros_atuais?: QrParameterData[]
   parada_ativa?: OperatorStopData | null

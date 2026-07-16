@@ -150,7 +150,9 @@ function openActionsForContextFast_(ctx){
   return rows_("os_acoes").filter(function(a){
     return String(a.ativo_id) === String(ctx.ativo.id) &&
       (!ctx.componente || String(a.componente_id) === String(ctx.componente.id)) &&
-      acaoAberta_(a);
+      (typeof acaoDisponivelInicioQr119_ === "function"
+        ? acaoDisponivelInicioQr119_(a)
+        : upper_(a.status) === ST.PENDENTE);
   }).sort(function(a,b){
     return priorityScore_(b.prioridade)-priorityScore_(a.prioridade) ||
       String(a.gerado_em).localeCompare(String(b.gerado_em));

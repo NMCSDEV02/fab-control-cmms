@@ -130,7 +130,14 @@ export function readQrContextCache(qrPayload: string): Promise<OperatorQrContext
 }
 
 export function writeQrContextCache(qrPayload: string, context: OperatorQrContextData): Promise<void> {
-  return writeRecord(`qr-context:${qrPayload.trim().toUpperCase()}`, context)
+  const compactContext: OperatorQrContextData = {
+    ...context,
+    historico_recente: (context.historico_recente ?? []).slice(0, 4),
+    historico_paginacao: context.historico_paginacao
+      ? { ...context.historico_paginacao, limit: 4 }
+      : { next_cursor: '', has_more: false, limit: 4 },
+  }
+  return writeRecord(`qr-context:${qrPayload.trim().toUpperCase()}`, compactContext)
 }
 
 export async function clearOperatorCache(): Promise<void> {

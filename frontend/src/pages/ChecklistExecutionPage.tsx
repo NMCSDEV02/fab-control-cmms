@@ -4,6 +4,7 @@ import type {
   EvidencePhotoUploadInput,
   EvidenceSaveData,
   OperatorActionDetailData,
+  OperatorFinalOutcome,
   OperatorStopData,
   RawChecklistItem,
 } from '../types/api'
@@ -24,6 +25,7 @@ interface ChecklistExecutionPageProps {
     items: ChecklistBatchItemInput[],
     resultado: 'OK' | 'NOK',
     observacao: string,
+    resultadoOperacional: OperatorFinalOutcome,
     durationSeconds: number,
   ) => Promise<void>
   onReturnHome: () => void
@@ -43,7 +45,22 @@ type CompletionSummary = {
   comparison: string
   checklistTotal: number
   evidenceCount: number
+  outcomeLabel: string
+  qualityScore: number
 }
+
+type FinalOutcome = '' | OperatorFinalOutcome
+
+const FINAL_OUTCOME_OPTIONS: Array<{
+  value: Exclude<FinalOutcome, ''>
+  label: string
+}> = [
+  { value: 'CONFORME', label: 'Executado conforme o checklist' },
+  { value: 'DIFERENCAS_JUSTIFICADAS', label: 'Executado com diferenças justificadas' },
+  { value: 'PARCIAL', label: 'Executado parcialmente' },
+  { value: 'NAO_EXECUTADO', label: 'Não foi possível executar' },
+  { value: 'OUTRO', label: 'Outro' },
+]
 
 function typeOf(item: RawChecklistItem): string {
   return (item.input?.tipo_resposta || item.tipo_resposta || 'TEXTO').toUpperCase()
@@ -73,6 +90,13 @@ function isHourMeterItem(item: RawChecklistItem): boolean {
     normalizeTechnicalText(item.titulo).includes('HORIMETRO')
 }
 
+function isRedundantFinalObservation(item: RawChecklistItem): boolean {
+  return (
+    item.obrigatorio === false &&
+    normalizeTechnicalText(item.titulo) === 'OBSERVACAO COMPLEMENTAR'
+  )
+}
+
 function existingAnswer(item: RawChecklistItem): string {
   const type = typeOf(item)
   if (['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(type)) {
@@ -90,6 +114,29 @@ function answered(item: RawChecklistItem, draft: DraftAnswer): boolean {
 
 function required(item: RawChecklistItem): boolean {
   return item.obrigatorio !== false && typeOf(item) !== 'INSTRUCAO'
+}
+
+function normalizedChecklistAnswer(value: string): string {
+  return normalizeTechnicalText(value).replace(/[^A-Z0-9]/g, '')
+}
+
+function justificationRequired(item: RawChecklistItem, draft: DraftAnswer): boolean {
+  if (typeOf(item) !== 'OK_NOK') return false
+  const answer = normalizedChecklistAnswer(draft.answer)
+  return answer === 'NOK' || answer === 'NA' || answer === 'NAOAPLICAVEL'
+}
+
+type EvidenceMode = 'required' | 'optional' | 'none'
+
+function evidenceMode(item: RawChecklistItem): EvidenceMode {
+  if (evidenceMinimum(item) > 0) return 'required'
+  if (item.input?.suporta_evidencia) return 'optional'
+  return 'none'
+}
+
+function evidenceMaximum(item: RawChecklistItem): number {
+  const minimum = evidenceMinimum(item)
+  return minimum > 0 ? minimum : 3
 }
 
 function formatElapsed(seconds: number): string {
@@ -124,10 +171,23 @@ export function ChecklistExecutionPage({
   onReturnHome,
 }: ChecklistExecutionPageProps) {
   const items = useMemo(
-    () => [...(detail.checklist?.itens ?? [])].sort((a, b) => a.ordem - b.ordem),
+    () =>
+      [...(detail.checklist?.itens ?? [])]
+        .filter((item) => !isRedundantFinalObservation(item))
+        .sort((a, b) => a.ordem - b.ordem),
     [detail.checklist?.itens],
   )
-  const [index, setIndex] = useState(0)
+  const checklistPositionKey = `fab-control:checklist-position:${detail.execucao?.id || detail.acao.id}`
+  const [index, setIndex] = useState(() => {
+    try {
+      const savedIndex = Number(window.localStorage.getItem(checklistPositionKey))
+      return Number.isInteger(savedIndex) && savedIndex >= 0
+        ? Math.min(savedIndex, Math.max(0, items.length - 1))
+        : 0
+    } catch {
+      return 0
+    }
+  })
   const [drafts, setDrafts] = useState<Record<string, DraftAnswer>>({})
   const [message, setMessage] = useState('')
   const [showEvidence, setShowEvidence] = useState(false)
@@ -137,6 +197,10 @@ export function ChecklistExecutionPage({
   const [elapsed, setElapsed] = useState(0)
   const [completionPhase, setCompletionPhase] = useState<CompletionPhase>('idle')
   const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null)
+  const [finalizationOpen, setFinalizationOpen] = useState(false)
+  const [finalOutcome, setFinalOutcome] = useState<FinalOutcome>('')
+  const [finalObservation, setFinalObservation] = useState('')
+  const [finalizationError, setFinalizationError] = useState('')
   const initializedDraftKeyRef = useRef('')
   const selectedEvidenceRef = useRef<SelectedEvidence[]>([])
   const draftStorageKey = `fab-control:checklist-draft:${detail.execucao?.id || detail.acao.id}`
@@ -158,7 +222,7 @@ export function ChecklistExecutionPage({
     if (initializedDraftKeyRef.current !== draftStorageKey) {
       let cached: Record<string, DraftAnswer> = {}
       try {
-        const stored = window.sessionStorage.getItem(draftStorageKey)
+        const stored = window.localStorage.getItem(draftStorageKey)
         cached = stored ? JSON.parse(stored) as Record<string, DraftAnswer> : {}
       } catch {
         cached = {}
@@ -193,11 +257,20 @@ export function ChecklistExecutionPage({
     if (initializedDraftKeyRef.current !== draftStorageKey) return
     if (!Object.keys(drafts).length) return
     try {
-      window.sessionStorage.setItem(draftStorageKey, JSON.stringify(drafts))
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(drafts))
     } catch {
       // Armazenamento local indisponível: a execução continua usando memória.
     }
   }, [draftStorageKey, drafts])
+
+  useEffect(() => {
+    if (!items.length) return
+    try {
+      window.localStorage.setItem(checklistPositionKey, String(index))
+    } catch {
+      // A posição é auxiliar; o checklist continua normalmente.
+    }
+  }, [checklistPositionKey, index, items.length])
 
   useEffect(() => {
     selectedEvidenceRef.current = selectedEvidence
@@ -267,11 +340,10 @@ export function ChecklistExecutionPage({
       }
     }
     if (
-      typeOf(current) === 'OK_NOK' &&
-      currentDraft.answer === 'NOK' &&
+      justificationRequired(current, currentDraft) &&
       currentDraft.observation.trim().length < 5
     ) {
-      setMessage('Resposta NOK exige observação técnica.')
+      setMessage('Resposta NOK ou N/A exige justificativa técnica com pelo menos 5 caracteres.')
       return
     }
     setMessage('')
@@ -305,15 +377,100 @@ export function ChecklistExecutionPage({
     return payload
   }
 
-  function resolveExecutionResult(): {
+  function missingRequiredItems(): RawChecklistItem[] {
+    return items.filter(
+      (item) =>
+        required(item) &&
+        !answered(item, drafts[item.id] ?? { answer: '', observation: '' }),
+    )
+  }
+
+  function missingRequiredEvidence(): RawChecklistItem[] {
+    return items.filter(
+      (item) => evidenceMinimum(item) > (item.evidencias_count ?? 0),
+    )
+  }
+
+  function nonConformityCount(): number {
+    return items.filter((item) => {
+      const draft = drafts[item.id] ?? { answer: '', observation: '' }
+      return typeOf(item) === 'OK_NOK' && normalizedChecklistAnswer(draft.answer) === 'NOK'
+    }).length
+  }
+
+  function notApplicableCount(): number {
+    return items.filter((item) => {
+      const draft = drafts[item.id] ?? { answer: '', observation: '' }
+      const answer = normalizedChecklistAnswer(draft.answer)
+      return typeOf(item) === 'OK_NOK' && (answer === 'NA' || answer === 'NAOAPLICAVEL')
+    }).length
+  }
+
+  function finalOutcomeLabel(outcome: FinalOutcome): string {
+    return FINAL_OUTCOME_OPTIONS.find((option) => option.value === outcome)?.label ?? ''
+  }
+
+  function finalOutcomeRequiresObservation(outcome: FinalOutcome): boolean {
+    return outcome === 'PARCIAL' || outcome === 'NAO_EXECUTADO' || outcome === 'OUTRO'
+  }
+
+  function calculateQualityScore(outcome: FinalOutcome): number {
+    let score = 5
+    if (missingRequiredItems().length > 0) score -= 2
+    if (missingRequiredEvidence().length > 0) score -= 1
+    if (nonConformityCount() > 0) score -= 1
+
+    if (outcome === 'PARCIAL') score = Math.min(score, 3)
+    if (outcome === 'NAO_EXECUTADO') score = 1
+    if (outcome === 'OUTRO') score = Math.min(score, 3)
+
+    return Math.max(1, Math.min(5, score))
+  }
+
+  function validateAnsweredTechnicalItems(): boolean {
+    const invalidHourMeter = items.find((item) => {
+      if (!isHourMeterItem(item)) return false
+      const draft = drafts[item.id] ?? { answer: '', observation: '' }
+      if (!draft.answer.trim()) return false
+      const reading = Number(draft.answer.replace(',', '.'))
+      const currentTotal = Number(detail.horimetro?.total_horas ?? detail.ativo?.horimetro_atual ?? 0)
+      return !Number.isFinite(reading) || reading < currentTotal
+    })
+    if (invalidHourMeter) {
+      setFinalizationOpen(false)
+      setIndex(items.findIndex((item) => item.id === invalidHourMeter.id))
+      setMessage('O horímetro total não pode diminuir.')
+      return false
+    }
+
+    const invalidJustification = items.find((item) => {
+      const draft = drafts[item.id] ?? { answer: '', observation: '' }
+      return justificationRequired(item, draft) && draft.observation.trim().length < 5
+    })
+    if (invalidJustification) {
+      setFinalizationOpen(false)
+      setIndex(items.findIndex((item) => item.id === invalidJustification.id))
+      setMessage('Resposta NOK ou N/A exige justificativa técnica com pelo menos 5 caracteres.')
+      return false
+    }
+
+    return true
+  }
+
+  function openFinalizationReview() {
+    if (!validateAnsweredTechnicalItems()) return
+    setMessage('')
+    setFinalizationError('')
+    setFinalizationOpen(true)
+  }
+
+  function resolveExecutionResult(
+    outcome: Exclude<FinalOutcome, ''>,
+    qualityScore: number,
+  ): {
     resultado: 'OK' | 'NOK'
     observacao: string
   } {
-    const nonConformities = items.filter((item) => {
-      const draft = drafts[item.id] ?? { answer: '', observation: '' }
-      return typeOf(item) === 'OK_NOK' && draft.answer === 'NOK'
-    })
-
     const observations = items
       .map((item) => {
         const draft = drafts[item.id] ?? { answer: '', observation: '' }
@@ -321,71 +478,56 @@ export function ChecklistExecutionPage({
       })
       .filter(Boolean)
 
-    if (nonConformities.length) {
-      return {
-        resultado: 'NOK',
-        observacao:
-          observations.join(' | ') ||
-          'Checklist concluído com condição não conforme registrada.',
-      }
+    const parts = [
+      `Resultado operacional: ${finalOutcomeLabel(outcome)}.`,
+      `Qualidade automática da execução: ${qualityScore}/5.`,
+    ]
+
+    if (finalObservation.trim()) {
+      parts.push(`Observação final: ${finalObservation.trim()}`)
+    }
+    if (observations.length) {
+      parts.push(`Justificativas do checklist: ${observations.join(' | ')}`)
     }
 
     return {
-      resultado: 'OK',
-      observacao:
-        observations.join(' | ') ||
-        'Checklist técnico executado conforme procedimento.',
+      resultado: outcome === 'CONFORME' ? 'OK' : 'NOK',
+      observacao: parts.join(' '),
     }
   }
 
-  async function finishExecution() {
-    const missing = items.filter(
-      (item) =>
-        required(item) &&
-        !answered(item, drafts[item.id] ?? { answer: '', observation: '' }),
-    )
-    if (missing.length) {
-      setIndex(Math.max(0, items.findIndex((item) => item.id === missing[0].id)))
-      setMessage(`Existem ${missing.length} item(ns) obrigatório(s) pendente(s).`)
+  async function confirmFinalization() {
+    if (!finalOutcome) {
+      setFinalizationError('Selecione o resultado da execução.')
       return
     }
+    if (!validateAnsweredTechnicalItems()) return
 
-    const evidenceMissing = items.filter(
-      (item) => evidenceMinimum(item) > (item.evidencias_count ?? 0),
-    )
-    if (evidenceMissing.length) {
-      setIndex(Math.max(0, items.findIndex((item) => item.id === evidenceMissing[0].id)))
-      const first = evidenceMissing[0]
-      setMessage(
-        `Faltam ${evidenceMinimum(first) - (first.evidencias_count ?? 0)} foto(s) obrigatória(s) neste item.`,
+    const missing = missingRequiredItems()
+    const evidenceMissing = missingRequiredEvidence()
+    const nokCount = nonConformityCount()
+
+    if (finalOutcome === 'CONFORME') {
+      if (missing.length || evidenceMissing.length || nokCount) {
+        setFinalizationError(
+          'O resultado conforme exige checklist completo, evidências obrigatórias atendidas e nenhuma resposta NOK.',
+        )
+        return
+      }
+    }
+
+    if (finalOutcome === 'DIFERENCAS_JUSTIFICADAS' && (missing.length || evidenceMissing.length)) {
+      setFinalizationError(
+        'Diferenças justificadas exigem todos os itens obrigatórios e evidências obrigatórias concluídos.',
       )
       return
     }
 
-    const invalidHourMeter = items.find((item) => {
-      if (!isHourMeterItem(item)) return false
-      const draft = drafts[item.id] ?? { answer: '', observation: '' }
-      const reading = Number(draft.answer.replace(',', '.'))
-      const currentTotal = Number(detail.horimetro?.total_horas ?? detail.ativo?.horimetro_atual ?? 0)
-      return !Number.isFinite(reading) || reading < currentTotal
-    })
-    if (invalidHourMeter) {
-      setIndex(items.findIndex((item) => item.id === invalidHourMeter.id))
-      setMessage('O horímetro total não pode diminuir.')
-      return
-    }
-
-    const invalidNok = items.find((item) => {
-      const draft = drafts[item.id] ?? { answer: '', observation: '' }
-      return (
-        typeOf(item) === 'OK_NOK' &&
-        draft.answer === 'NOK' &&
-        draft.observation.trim().length < 5
-      )
-    })
-    if (invalidNok) {
-      setIndex(items.findIndex((item) => item.id === invalidNok.id))
-      setMessage('Resposta NOK exige observação técnica.')
+    if (
+      finalOutcomeRequiresObservation(finalOutcome) &&
+      finalObservation.trim().length < 5
+    ) {
+      setFinalizationError('Este resultado exige uma observação final com pelo menos 5 caracteres.')
       return
     }
 
@@ -394,8 +536,11 @@ export function ChecklistExecutionPage({
       (sum, item) => sum + (item.evidencias_count ?? 0),
       0,
     )
-    const result = resolveExecutionResult()
+    const qualityScore = calculateQualityScore(finalOutcome)
+    const result = resolveExecutionResult(finalOutcome, qualityScore)
 
+    setFinalizationError('')
+    setFinalizationOpen(false)
     setMessage('')
     setCompletionSummary({
       durationSeconds,
@@ -405,6 +550,8 @@ export function ChecklistExecutionPage({
       ),
       checklistTotal: items.length,
       evidenceCount,
+      outcomeLabel: finalOutcomeLabel(finalOutcome),
+      qualityScore,
     })
     setCompletionPhase('syncing')
 
@@ -413,21 +560,25 @@ export function ChecklistExecutionPage({
         buildPayload(),
         result.resultado,
         result.observacao,
+        finalOutcome,
         durationSeconds,
       )
       try {
         window.sessionStorage.removeItem(draftStorageKey)
+        window.localStorage.removeItem(checklistPositionKey)
       } catch {
         // Sem impacto na conclusão.
       }
       setCompletionPhase('success')
     } catch (cause) {
-      setCompletionPhase('idle')
-      setMessage(
+      const failureMessage =
         cause instanceof Error
           ? cause.message
-          : 'Não foi possível finalizar a execução.',
-      )
+          : 'Não foi possível finalizar a execução.'
+      setCompletionPhase('idle')
+      setFinalizationOpen(true)
+      setFinalizationError(failureMessage)
+      setMessage(failureMessage)
     }
   }
 
@@ -440,10 +591,15 @@ export function ChecklistExecutionPage({
 
     const currentCount = current.evidencias_count ?? 0
     const configuredQuantity = evidenceMinimum(current)
-    const remainingQuantity = Math.max(0, configuredQuantity - currentCount)
+    const maximumQuantity = evidenceMaximum(current)
+    const remainingQuantity = Math.max(0, maximumQuantity - currentCount)
 
     if (remainingQuantity <= 0) {
-      setMessage('A quantidade de fotos configurada para este item já foi atendida.')
+      setMessage(
+        configuredQuantity > 0
+          ? 'A quantidade de fotos configurada para este item já foi atendida.'
+          : 'O limite de evidências opcionais deste item já foi atendido.',
+      )
       return
     }
 
@@ -454,29 +610,39 @@ export function ChecklistExecutionPage({
       return
     }
 
-    await onSaveProgress(buildPayload())
-    const prepared: EvidencePhotoUploadInput[] = []
-    for (const selected of selectedEvidence) {
-      prepared.push(
-        await prepareEvidencePhoto(
+    const progressPayload = buildPayload()
+    const preparePromise = Promise.all(
+      selectedEvidence.map((selected) =>
+        prepareEvidencePhoto(
           selected.file,
           current.id,
           evidenceObservation.trim(),
         ),
-      )
-    }
+      ),
+    )
+    const savePromise = progressPayload.length
+      ? onSaveProgress(progressPayload)
+      : Promise.resolve()
 
-    await onRegisterEvidence(prepared)
+    const [prepared] = await Promise.all([preparePromise, savePromise])
+    const saved = await onRegisterEvidence(prepared)
     selectedEvidence.forEach((item) => URL.revokeObjectURL(item.previewUrl))
     setSelectedEvidence([])
     setEvidenceSelectionWarning('')
     setShowEvidence(false)
     setEvidenceObservation('')
-    const total = currentCount + prepared.length
+    const confirmedCounts = saved
+      .map((item) => Number(item.evidencias_count ?? item.fotos_registradas ?? 0))
+      .filter((value) => Number.isFinite(value) && value > 0)
+    const total = confirmedCounts.length
+      ? Math.max(...confirmedCounts)
+      : currentCount + prepared.length
     setMessage(
-      total >= configuredQuantity
-        ? 'Quantidade de evidências configurada foi atendida.'
-        : `Evidências registradas: ${total} de ${configuredQuantity}.`,
+      configuredQuantity <= 0
+        ? `Evidência opcional registrada. Total neste item: ${total}.`
+        : total >= configuredQuantity
+          ? 'Quantidade de evidências configurada foi atendida.'
+          : `Evidências registradas: ${total} de ${configuredQuantity}.`,
     )
   }
 
@@ -503,7 +669,7 @@ export function ChecklistExecutionPage({
   const currentType = typeOf(current)
   const options = optionsOf(current)
   const numeric = ['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(currentType)
-  const evidence = currentType === 'EVIDENCIA'
+  const evidenceOnly = currentType === 'EVIDENCIA'
   const instruction = currentType === 'INSTRUCAO'
   const min = current.input?.limite_min ?? current.limite_min
   const max = current.input?.limite_max ?? current.limite_max
@@ -511,9 +677,13 @@ export function ChecklistExecutionPage({
   const hourMeter = isHourMeterItem(current)
   const currentHourMeter = Number(detail.horimetro?.total_horas ?? detail.ativo?.horimetro_atual ?? 0)
   const serviceHours = detail.horimetro?.contador_servico_horas
+  const currentEvidenceMode = evidenceMode(current)
+  const evidenceEnabled = currentEvidenceMode !== 'none'
   const evidenceMin = evidenceMinimum(current)
+  const evidenceMax = evidenceMaximum(current)
   const evidenceCount = current.evidencias_count ?? 0
-  const evidenceRemaining = Math.max(0, evidenceMin - evidenceCount)
+  const evidenceRemaining = Math.max(0, evidenceMax - evidenceCount)
+  const currentJustificationRequired = justificationRequired(current, currentDraft)
 
   return (
     <section className="screen checklist-screen">
@@ -530,11 +700,11 @@ export function ChecklistExecutionPage({
         <strong>
           {detail.execucao?.modo_execucao_manutencao === 'SEM_PARADA'
             ? 'Execução sem parada do equipamento'
-            : 'Parada técnica vinculada à execução'}
+            : 'Parada do equipamento vinculada à execução'}
         </strong>
         <small>
           {activeStop
-            ? 'A parada operacional da produção permanece registrada separadamente.'
+            ? 'A produção já registrou a parada operacional; a manutenção foi vinculada sem duplicar o evento.'
             : detail.execucao?.modo_execucao_manutencao === 'SEM_PARADA'
               ? 'A máquina permanece em operação durante o serviço.'
               : 'Esta parada termina junto com a execução técnica.'}
@@ -616,7 +786,7 @@ export function ChecklistExecutionPage({
           </div>
         )}
 
-        {!numeric && !evidence && !instruction && options.length > 0 && (
+        {!numeric && !evidenceOnly && !instruction && options.length > 0 && (
           <div className="answer-options">
             {options.map((option) => (
               <button
@@ -635,7 +805,7 @@ export function ChecklistExecutionPage({
           </div>
         )}
 
-        {!numeric && !evidence && !instruction && options.length === 0 && (
+        {!numeric && !evidenceOnly && !instruction && options.length === 0 && (
           <textarea
             className="text-answer"
             value={currentDraft.answer}
@@ -662,21 +832,42 @@ export function ChecklistExecutionPage({
           </button>
         )}
 
-        {evidence && (
+        {evidenceEnabled && (
           <div className="evidence-answer">
+            <span
+              className={
+                currentEvidenceMode === 'required'
+                  ? 'evidence-mode-label evidence-mode-label--required'
+                  : 'evidence-mode-label evidence-mode-label--optional'
+              }
+            >
+              {currentEvidenceMode === 'required' ? 'Evidência obrigatória' : 'Evidência opcional'}
+            </span>
             <div
               className={
-                evidenceCount >= evidenceMin
-                  ? 'evidence-status evidence-status--done'
-                  : 'evidence-status'
+                currentEvidenceMode === 'required'
+                  ? evidenceCount >= evidenceMin
+                    ? 'evidence-status evidence-status--done'
+                    : 'evidence-status'
+                  : evidenceCount > 0
+                    ? 'evidence-status evidence-status--done'
+                    : 'evidence-status evidence-status--optional'
               }
             >
               <strong>
-                {evidenceCount >= evidenceMin
-                  ? 'Evidência validada'
-                  : 'Evidência necessária'}
+                {currentEvidenceMode === 'required'
+                  ? evidenceCount >= evidenceMin
+                    ? 'Evidência validada'
+                    : 'Evidência necessária'
+                  : evidenceCount > 0
+                    ? 'Evidência opcional registrada'
+                    : 'Foto disponível para este item'}
               </strong>
-              <span>{evidenceCount} de {evidenceMin} foto(s) obrigatória(s)</span>
+              <span>
+                {currentEvidenceMode === 'required'
+                  ? `${evidenceCount} de ${evidenceMin} foto(s) obrigatória(s)`
+                  : `${evidenceCount} foto(s) registrada(s) · limite ${evidenceMax}`}
+              </span>
             </div>
             {(current.evidencias?.length ?? 0) > 0 && (
               <div className="evidence-gallery">
@@ -703,27 +894,52 @@ export function ChecklistExecutionPage({
               onClick={() => setShowEvidence(true)}
             >
               {evidenceRemaining <= 0
-                ? 'Quantidade atendida'
-                : evidenceCount
-                  ? `Adicionar ${evidenceRemaining} foto(s)`
-                  : evidenceRemaining > 1
-                    ? `Tirar ${evidenceRemaining} fotos`
-                    : 'Tirar foto'}
+                ? 'Limite de fotos atendido'
+                : currentEvidenceMode === 'optional'
+                  ? evidenceCount
+                    ? 'Adicionar outra foto'
+                    : 'Adicionar foto opcional'
+                  : evidenceCount
+                    ? `Adicionar ${evidenceRemaining} foto(s)`
+                    : evidenceRemaining > 1
+                      ? `Tirar ${evidenceRemaining} fotos`
+                      : 'Tirar foto'}
             </button>
           </div>
         )}
 
-        {!evidence && !instruction && (
-          <label className="observation-field">
-            <span>Observação técnica</span>
+        {/* Justificativa exibida somente para NOK ou N/A */}
+
+        {!evidenceOnly && !instruction && currentJustificationRequired && (
+
+          <label className="observation-field observation-field--required">
+
+            <span>Justificativa técnica obrigatória</span>
+
             <textarea
+
               value={currentDraft.observation}
+
+              aria-invalid={currentDraft.observation.trim().length < 5}
+
               onChange={(event) =>
+
                 updateDraft({ observation: event.target.value })
+
               }
-              placeholder="Opcional. Obrigatória quando houver não conformidade."
+
+              placeholder="Explique o motivo da resposta NOK ou N/A."
+
             />
+
+            <small>
+
+              Preencha pelo menos 5 caracteres. Após preencher, o avanço é liberado sem confirmação adicional.
+
+            </small>
+
           </label>
+
         )}
       </article>
 
@@ -756,7 +972,7 @@ export function ChecklistExecutionPage({
                   const accepted = files.slice(0, available)
                   if (files.length > accepted.length) {
                     setEvidenceSelectionWarning(
-                      `Quantidade limitada pelo administrador: ${evidenceMin} foto(s). Apenas ${available} nova(s) foto(s) foram aceita(s).`,
+                      `Limite de evidências deste item: ${evidenceMax} foto(s). Apenas ${available} nova(s) foto(s) foram aceita(s).`,
                     )
                   } else {
                     setEvidenceSelectionWarning('')
@@ -806,7 +1022,9 @@ export function ChecklistExecutionPage({
               />
             </label>
             <small>
-              Quantidade configurada pelo administrador: {evidenceMin} foto(s). Já registradas: {evidenceCount}. Restantes: {evidenceRemaining}.
+              {currentEvidenceMode === 'required'
+                ? `Quantidade obrigatória: ${evidenceMin} foto(s). Já registradas: ${evidenceCount}. Restantes: ${evidenceRemaining}.`
+                : `Evidência opcional. Já registradas: ${evidenceCount}. Limite disponível: ${evidenceMax}.`}
             </small>
             <div className="evidence-modal__actions">
               <button
@@ -863,12 +1081,118 @@ export function ChecklistExecutionPage({
             type="button"
             className="primary-button"
             disabled={finalizing}
-            onClick={() => void finishExecution()}
+            onClick={openFinalizationReview}
           >
-            {finalizing ? 'Sincronizando…' : 'Finalizar e sincronizar'}
+            Revisar conclusão
           </button>
         )}
       </div>
+
+      {finalizationOpen && completionPhase === 'idle' && (
+        <div className="finalization-review-backdrop" role="dialog" aria-modal="true">
+          <article className="finalization-review-card">
+            <header>
+              <span>Revisão final</span>
+              <h2>Concluir execução</h2>
+              <p>
+                Revise o resultado antes de sincronizar. Nenhuma avaliação manual por estrelas é solicitada.
+              </p>
+            </header>
+
+            <div className="finalization-review-summary">
+              <div>
+                <span>Checklist respondido</span>
+                <strong>{answeredCount}/{items.length}</strong>
+              </div>
+              <div>
+                <span>Itens obrigatórios pendentes</span>
+                <strong>{missingRequiredItems().length}</strong>
+              </div>
+              <div>
+                <span>Respostas NOK</span>
+                <strong>{nonConformityCount()}</strong>
+              </div>
+              <div>
+                <span>Respostas N/A</span>
+                <strong>{notApplicableCount()}</strong>
+              </div>
+            </div>
+
+            <label className="finalization-review-field">
+              <span>Resultado da execução</span>
+              <select
+                value={finalOutcome}
+                onChange={(event) => {
+                  const nextOutcome = event.target.value as FinalOutcome
+                  setFinalOutcome(nextOutcome)
+                  setFinalizationError('')
+                  if (!finalOutcomeRequiresObservation(nextOutcome)) {
+                    setFinalObservation('')
+                  }
+                }}
+              >
+                <option value="">Selecione o resultado</option>
+                {FINAL_OUTCOME_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="finalization-quality">
+              <span>Qualidade automática da execução</span>
+              <strong>
+                {'★'.repeat(calculateQualityScore(finalOutcome))}
+                {'☆'.repeat(5 - calculateQualityScore(finalOutcome))}
+              </strong>
+              <small>
+                Nota calculada pela conclusão dos itens, evidências e respostas registradas. Não é uma autoavaliação.
+              </small>
+            </div>
+
+            {finalOutcomeRequiresObservation(finalOutcome) && (
+              <label className="finalization-review-field">
+                <span>Observação final obrigatória</span>
+                <textarea
+                  value={finalObservation}
+                  onChange={(event) => {
+                    setFinalObservation(event.target.value)
+                    setFinalizationError('')
+                  }}
+                  placeholder="Explique a execução parcial, o impedimento ou o resultado informado."
+                />
+              </label>
+            )}
+
+            {finalizationError && (
+              <div className="finalization-review-error" role="alert">
+                {finalizationError}
+              </div>
+            )}
+
+            <div className="finalization-review-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={finalizing}
+                onClick={() => {
+                  setFinalizationOpen(false)
+                  setFinalizationError('')
+                }}
+              >
+                Voltar ao checklist
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={finalizing || !finalOutcome}
+                onClick={() => void confirmFinalization()}
+              >
+                {finalizing ? 'Sincronizando…' : 'Confirmar e sincronizar'}
+              </button>
+            </div>
+          </article>
+        </div>
+      )}
 
       {completionPhase !== 'idle' && completionSummary && (
         <div className="execution-completion-overlay" role="dialog" aria-modal="true">
@@ -905,6 +1229,18 @@ export function ChecklistExecutionPage({
                   <div>
                     <span>Evidências</span>
                     <strong>{completionSummary.evidenceCount} foto(s)</strong>
+                  </div>
+                  <div>
+                    <span>Resultado</span>
+                    <strong>{completionSummary.outcomeLabel}</strong>
+                  </div>
+                  <div>
+                    <span>Qualidade automática</span>
+                    <strong>
+                      {completionSummary.qualityScore}/5 ·{' '}
+                      {'★'.repeat(completionSummary.qualityScore)}
+                      {'☆'.repeat(5 - completionSummary.qualityScore)}
+                    </strong>
                   </div>
                 </div>
               </div>

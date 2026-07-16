@@ -1,6 +1,6 @@
 const FAB = {
   APP_NAME: "FAB Control",
-  VERSION: "1.1.7-fila-cache-evidencias",
+  VERSION: "1.2.1-operador-finalizacao-operacional",
   TZ: "America/Sao_Paulo",
   TOKEN_HOURS: 12,
   LOCK_TTL_SECONDS: 120,
@@ -8,6 +8,9 @@ const FAB = {
   AUTH_CACHE_SECONDS: 180,
   WARMUP_CACHE_SECONDS: 300,
   QR_FAST_CACHE_SECONDS: 30,
+  QR_HISTORY_PAGE_SIZE: 4,
+  QR_HISTORY_SCAN_BLOCK: 120,
+  QR_HISTORY_MAX_SCAN_ROWS: 480,
   MOTOR_THRESHOLD_RATIO: 0.98
 };
 
@@ -104,7 +107,7 @@ const PERM = {
     "admin.listar_tipos_item_checklist", "admin.listar_regras_checklist", "admin.validar_catalogo_item_checklist", "admin.salvar_item_modelo_checklist", "admin.remover_item_modelo_checklist", "admin.reordenar_itens_modelo_checklist", "admin.clonar_item_modelo_checklist", "admin.listar_itens_modelo_checklist", "admin.detalhar_modelo_checklist_catalogo", "cmms.catalogo_checklist_schema_upgrade",
     "cmms.schema_upgrade", "admin.salvar_modelo_checklist", "admin.enviar_modelo_checklist_validacao", "admin.detalhe_modelo_checklist", "admin.listar_modelos_checklist", "admin.modelos_devolvidos", "admin.corrigir_modelo_checklist", "admin.criar_revisao_modelo_checklist", "gestor.modelos_em_validacao", "gestor.listar_modelos_checklist", "gestor.detalhe_modelo_checklist", "gestor.validar_modelo_checklist", "operador.listar_checklist_execucao",
     "sistema.warmup", "admin.resumo", "perf.cache_clear", "perf.cache_status", "admin.resumo_cache", "admin.listar", "admin.obter", "admin.salvar", "admin.gerar_qr", "admin.criar_demo", "admin.recalcular_ativo",
-    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "admin.registrar_horimetro_telemetria", "admin.reiniciar_contador_servico", "admin.verificar_drive_evidencias", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.historico_qr", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "admin.registrar_horimetro_telemetria", "admin.reiniciar_contador_servico", "admin.verificar_drive_evidencias", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "gestor.listar_paradas", "gestor.listar_ocorrencias", "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "cmms.kpis_base", "cmms.diagnostico", "perf.cache_status", "perf.cache_clear", "cmms.higiene_diagnosticar", "cmms.higienizar_status", "cmms.higienizar_duplicidades", "cmms.higienizar_base",
@@ -116,7 +119,7 @@ const PERM = {
     "gestor.modelos_em_validacao", "gestor.listar_modelos_checklist", "gestor.detalhe_modelo_checklist", "gestor.validar_modelo_checklist", "admin.detalhe_modelo_checklist", "operador.listar_checklist_execucao",
     "sistema.warmup",
     "admin.resumo", "perf.cache_clear", "perf.cache_status", "admin.resumo_cache", "admin.listar", "admin.obter", "admin.recalcular_ativo",
-    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.historico_qr", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "gestor.listar_paradas", "gestor.listar_ocorrencias",
     "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
@@ -124,11 +127,11 @@ const PERM = {
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
   ],
   OPERADOR: [
-    "operador.home", "operador.painel", "operador.minhas_acoes", "operador.tela_acao", "operador.salvar_checklist_lote", "operador.detalhar_checklist_execucao", "operador.validar_finalizacao_acao",
+    "operador.home", "operador.painel", "operador.minhas_acoes", "operador.tela_acao", "operador.estado_acao", "operador.salvar_checklist_lote", "operador.detalhar_checklist_execucao", "operador.validar_finalizacao_acao",
     "operador.validar_resposta_checklist_item",
     "operador.listar_checklist_execucao",
     "sistema.warmup",
-    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
+    "operador.contexto_qr", "operador.contexto_qr_fast", "operador.historico_qr", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
   ]
