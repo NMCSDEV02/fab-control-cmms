@@ -25,6 +25,7 @@ type BarcodeDetectorResult = { rawValue?: string }
 type BarcodeDetectorInstance = { detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]> }
 type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorInstance
 type OccurrenceTarget = '' | 'EQUIPAMENTO' | 'COMPONENTE'
+type ParameterTarget = 'EQUIPAMENTO' | 'COMPONENTE'
 type ParameterCode =
   | 'HORIMETRO'
   | 'TEMPERATURA'
@@ -142,6 +143,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [historyLoading, setHistoryLoading] = useState(false)
 
   const [parameterOpen, setParameterOpen] = useState(false)
+  const [parameterTarget, setParameterTarget] = useState<ParameterTarget>('EQUIPAMENTO')
   const [parameterName, setParameterName] = useState<ParameterCode>('HORIMETRO')
   const [parameterValue, setParameterValue] = useState('')
   const [componentId, setComponentId] = useState('')
@@ -171,6 +173,22 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const parameters = useMemo(() => context ? latestParameters(context) : [], [context])
   const selectedParameter =
     PARAMETER_OPTIONS.find((option) => option.value === parameterName) ?? PARAMETER_OPTIONS[0]
+  const selectedLastParameter = useMemo(
+    () =>
+      parameters.find(
+        (parameter) =>
+          parameter.parametro === parameterName &&
+          (parameter.componente_id ?? '') ===
+            (parameterTarget === 'COMPONENTE' ? componentId : ''),
+      ) ?? null,
+    [componentId, parameterName, parameterTarget, parameters],
+  )
+  const selectedComponent = useMemo(
+    () => (context?.componentes ?? []).find((component) => component.id === componentId) ?? null,
+    [componentId, context?.componentes],
+  )
+  const automaticHourMeter =
+    parameterName === 'HORIMETRO' && Boolean(context?.horimetro?.automatico)
   const availableActions = useMemo(() => {
     const candidates = context?.acoes_pendentes?.length
       ? context.acoes_pendentes
@@ -196,6 +214,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   function applyContext(result: OperatorQrContextData) {
     setContext(result)
     setComponentId(result.componente?.id ?? '')
+    setParameterTarget(result.componente?.id ? 'COMPONENTE' : 'EQUIPAMENTO')
     setManualOpen(false)
     setCameraError('')
     setHistoryItems((result.historico_recente ?? []).slice(0, 4))
@@ -361,15 +380,41 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     }
   }, [cameraActive])
 
+  function openParameterModal() {
+    const initialComponentId = context?.componente?.id ?? ''
+    setParameterTarget(initialComponentId ? 'COMPONENTE' : 'EQUIPAMENTO')
+    setComponentId(initialComponentId)
+    setParameterName('HORIMETRO')
+    setParameterValue('')
+    setParameterOpen(true)
+  }
+
+  function closeParameterModal() {
+    if (savingParameter) return
+    setParameterOpen(false)
+    setParameterValue('')
+  }
+
+  function useLastParameterValue() {
+    if (selectedLastParameter?.valor === null || selectedLastParameter?.valor === undefined) return
+    setParameterValue(String(selectedLastParameter.valor))
+  }
+
   async function saveParameter() {
     if (!context?.ativo?.id) return
+    if (parameterTarget === 'COMPONENTE' && !componentId) {
+      return onNotify('Selecione o componente')
+    }
+
     const value = Number(parameterValue.replace(',', '.'))
     if (!Number.isFinite(value)) return onNotify('Informe um valor numérico válido')
+    if (automaticHourMeter) return onNotify('Horímetro atualizado pela telemetria')
+
     setSavingParameter(true)
     try {
       await registerOperatorParameter({
         ativo_id: context.ativo.id,
-        componente_id: componentId,
+        componente_id: parameterTarget === 'COMPONENTE' ? componentId : '',
         parametro: parameterName,
         valor: value,
         unidade: selectedParameter.unit,
@@ -799,61 +844,148 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
 
       {context.parada_ativa && <ActiveStopBanner stop={context.parada_ativa} />}
 
-      <section className="content-section">
-        <div className="section-heading section-heading--button"><div><h2>Parâmetros do equipamento</h2><p>Últimas leituras registradas.</p></div><button type="button" onClick={() => setParameterOpen((value) => !value)}>{parameterOpen ? 'Fechar' : 'Registrar leitura'}</button></div>
-        {parameterOpen && <article className="parameter-entry-card">
-          {parameterName === 'HORIMETRO' && <div className="horimeter-qr-note"><strong>Horímetro acumulativo</strong><span>O total não pode diminuir nem ser zerado. A administração reinicia somente o contador desde o último serviço.</span></div>}
-          <div className="parameter-form-grid">
-            <label>
-              <span>Parâmetro</span>
-              <select
-                value={parameterName}
-                onChange={(event) => {
+      {/* FAB_CONTROL_PARAMETERS_V2 */}
+      <section className="content-section parameter-v2">
+        <div className="parameter-v2__heading">
+          <div>
+            <h2>Parâmetros</h2>
+            <p>Últimos valores registrados</p>
+          </div>
+          <button type="button" className="parameter-v2__new" onClick={openParameterModal}>
+            Nova leitura
+          </button>
+        </div>
+
+        {parameters.length > 0 ? (
+          <div className="parameter-v2__grid">
+            {parameters.map((parameter) => {
+              const linkedComponent = (context.componentes ?? []).find(
+                (component) => component.id === parameter.componente_id,
+              )
+              const isComponent = Boolean(parameter.componente_id)
+              const targetLabel = isComponent
+                ? linkedComponent?.tag || linkedComponent?.nome || parameter.componente_id || 'Componente'
+                : 'Equipamento'
+
+              return (
+                <article className="parameter-v2__card" key={parameter.id}>
+                  <span className={isComponent ? 'parameter-v2__tag parameter-v2__tag--component' : 'parameter-v2__tag parameter-v2__tag--asset'}>
+                    {isComponent ? 'COMP' : 'EQUIP'}
+                  </span>
+                  <strong className="parameter-v2__name">{displayName(parameter.parametro)}</strong>
+                  <span className="parameter-v2__target" title={targetLabel}>{targetLabel}</span>
+                  <div className="parameter-v2__value">
+                    {parameter.valor ?? '—'} <small>{parameter.unidade || ''}</small>
+                  </div>
+                  <div className="parameter-v2__date" title="Último registro">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M5.5 9A8 8 0 0 1 19 7M18.5 15A8 8 0 0 1 5 17" />
+                    </svg>
+                    <span>{formatDate(parameter.registrado_em || parameter.criado_em)}</span>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        ) : (
+          <article className="empty-panel qr-empty-panel">
+            <strong>Nenhuma leitura registrada</strong>
+            <p>Use “Nova leitura” para incluir o primeiro parâmetro.</p>
+          </article>
+        )}
+
+        {parameterOpen && (
+          <div className="parameter-v2__backdrop" role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeParameterModal()
+          }}>
+            <form className="parameter-v2__modal" onSubmit={(event) => {
+              event.preventDefault()
+              void saveParameter()
+            }}>
+              <div className="parameter-v2__modal-header">
+                <h2>Nova leitura</h2>
+                <button type="button" onClick={closeParameterModal} aria-label="Fechar">×</button>
+              </div>
+
+              <fieldset className="parameter-v2__target-choice">
+                <legend>Aplicar em</legend>
+                <div>
+                  <button type="button" className={parameterTarget === 'EQUIPAMENTO' ? 'is-selected' : ''} onClick={() => {
+                    setParameterTarget('EQUIPAMENTO')
+                    setComponentId('')
+                  }}>Equipamento</button>
+                  <button type="button" className={parameterTarget === 'COMPONENTE' ? 'is-selected' : ''} onClick={() => setParameterTarget('COMPONENTE')}>
+                    Componente
+                  </button>
+                </div>
+              </fieldset>
+
+              {parameterTarget === 'COMPONENTE' && (
+                <label className="parameter-v2__field">
+                  <span>Componente</span>
+                  <select value={componentId} onChange={(event) => setComponentId(event.target.value)}>
+                    <option value="">Selecione</option>
+                    {(context.componentes ?? []).map((component) => (
+                      <option key={component.id} value={component.id}>
+                        {component.tag || component.id} — {component.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <label className="parameter-v2__field">
+                <span>Parâmetro</span>
+                <select value={parameterName} onChange={(event) => {
                   setParameterName(event.target.value as ParameterCode)
                   setParameterValue('')
-                }}
-              >
-                {PARAMETER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Valor</span>
-              <input
-                inputMode="decimal"
-                value={
-                  parameterName === 'HORIMETRO' && context.horimetro?.automatico
-                    ? String(context.horimetro.total_horas ?? asset?.horimetro_atual ?? '')
-                    : parameterValue
-                }
-                readOnly={parameterName === 'HORIMETRO' && Boolean(context.horimetro?.automatico)}
-                onChange={(event) => setParameterValue(event.target.value)}
-                placeholder={parameterName === 'HORIMETRO' ? String(asset?.horimetro_atual ?? '0') : '0,00'}
-              />
-            </label>
-            <label>
-              <span>Unidade automática</span>
-              <input value={selectedParameter.unit} readOnly aria-readonly="true" />
-              <small>Definida pelo parâmetro selecionado.</small>
-            </label>
-            <label>
-              <span>Componente opcional</span>
-              <select value={componentId} onChange={(event) => setComponentId(event.target.value)}>
-                <option value="">Equipamento geral</option>
-                {(context.componentes ?? []).map((component) => (
-                  <option key={component.id} value={component.id}>
-                    {component.tag || component.id} — {component.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
+                }}>
+                  {PARAMETER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedLastParameter && (
+                <div className="parameter-v2__last">
+                  <div className="parameter-v2__last-meta" title="Último registro">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M5.5 9A8 8 0 0 1 19 7M18.5 15A8 8 0 0 1 5 17" />
+                    </svg>
+                    <span>{formatDate(selectedLastParameter.registrado_em || selectedLastParameter.criado_em)}</span>
+                  </div>
+                  <strong>{selectedLastParameter.valor ?? '—'} {selectedLastParameter.unidade || selectedParameter.unit}</strong>
+                  {!automaticHourMeter && <button type="button" onClick={useLastParameterValue}>Usar último valor</button>}
+                </div>
+              )}
+
+              <label className="parameter-v2__field">
+                <span>Novo valor</span>
+                <div className="parameter-v2__input-unit">
+                  <input
+                    inputMode="decimal"
+                    value={automaticHourMeter ? String(context.horimetro?.total_horas ?? context.ativo?.horimetro_atual ?? '') : parameterValue}
+                    readOnly={automaticHourMeter}
+                    onChange={(event) => setParameterValue(event.target.value)}
+                    placeholder="0,00"
+                  />
+                  <b>{selectedParameter.unit}</b>
+                </div>
+                {automaticHourMeter && <small>Atualizado pela telemetria.</small>}
+                {parameterTarget === 'COMPONENTE' && selectedComponent && (
+                  <small>Leitura vinculada a {selectedComponent.tag || selectedComponent.nome}.</small>
+                )}
+              </label>
+
+              <div className="parameter-v2__actions">
+                <button type="button" onClick={closeParameterModal}>Cancelar</button>
+                <button type="submit" disabled={savingParameter || automaticHourMeter || (parameterTarget === 'COMPONENTE' && !componentId)}>
+                  {savingParameter ? 'Salvando…' : 'Salvar'}
+                </button>
+              </div>
+            </form>
           </div>
-          <button type="button" onClick={() => void saveParameter()} disabled={savingParameter || (parameterName === 'HORIMETRO' && Boolean(context.horimetro?.automatico))}>{parameterName === 'HORIMETRO' && context.horimetro?.automatico ? 'Atualizado pela telemetria' : savingParameter ? 'Registrando…' : 'Confirmar leitura'}</button>
-        </article>}
-        {parameters.length > 0 ? (
-          <div className="parameter-grid parameter-grid--real">{parameters.map((parameter) => <article className="parameter-card parameter-card--real" key={parameter.id}><div><strong>{displayName(parameter.parametro)}</strong><span>{parameter.componente_id ? `Componente: ${parameter.componente_id}` : 'Equipamento geral'}</span><small>{formatDate(parameter.registrado_em || parameter.criado_em)}</small></div><div className="parameter-value">{parameter.valor ?? '—'} {parameter.unidade || ''}</div></article>)}</div>
-        ) : <article className="empty-panel qr-empty-panel"><strong>Nenhuma leitura registrada</strong><p>Use “Registrar leitura” para incluir o primeiro parâmetro operacional.</p></article>}
+        )}
       </section>
 
       {(context.ocorrencias_abertas?.length ?? 0) > 0 && (
