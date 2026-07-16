@@ -1277,11 +1277,34 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         )}
       </section>
 
-      <div className="qr-next-actions">
-        <button type="button" className="secondary-action" onClick={() => { closeOccurrence(); setOccurrenceOpen(true) }}>Registrar ocorrência</button>
+      {/* FAB_CONTROL_QR_FINAL_REFINEMENT_BLOCK_4 */}
+      <div className="qr-next-actions qr-final-actions" aria-label="Ações operacionais">
         <button
           type="button"
-          className={context.parada_ativa ? 'danger-action danger-action--finish' : 'danger-action'}
+          className="secondary-action qr-final-action qr-final-action--occurrence"
+          onClick={() => {
+            closeOccurrence()
+            setOccurrenceOpen(true)
+          }}
+        >
+          <span className="qr-final-action__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.3 3.8 2.4 17.5A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.5L13.7 3.8a2 2 0 0 0-3.4 0Z" />
+            </svg>
+          </span>
+          <span className="qr-final-action__copy">
+            <strong>Registrar ocorrência</strong>
+            <small>Informar uma condição</small>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className={
+            context.parada_ativa
+              ? 'danger-action danger-action--finish qr-final-action qr-final-action--stop qr-final-action--return'
+              : 'danger-action qr-final-action qr-final-action--stop'
+          }
           onClick={() => {
             setReturnValidation(null)
             setStopReason('')
@@ -1289,7 +1312,19 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
             setStopOpen(true)
           }}
         >
-          {context.parada_ativa ? 'Finalizar parada' : 'Iniciar parada do equipamento'}
+          <span className="qr-final-action__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {context.parada_ativa ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
+              ) : (
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              )}
+            </svg>
+          </span>
+          <span className="qr-final-action__copy">
+            <strong>{context.parada_ativa ? 'Finalizar parada' : 'Iniciar parada'}</strong>
+            <small>{context.parada_ativa ? 'Retomar operação' : 'Parar equipamento'}</small>
+          </span>
         </button>
       </div>
 
