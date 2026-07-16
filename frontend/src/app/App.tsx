@@ -5,6 +5,15 @@ import { OperationOverlay } from '../components/OperationOverlay'
 import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
 import { OperatorHome } from '../pages/OperatorHome'
+import { LoginPage } from '../pages/LoginPage'
+import {
+  clearPreviewSession,
+  markExpiredPreviewSession,
+  readPreviewSession,
+  readPreviewSessionExpiresAt,
+  readPreviewSessionStartedAt,
+  savePreviewSession,
+} from '../services/auth/session'
 import { QrPage } from '../pages/QrPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { ApiRequestError } from '../services/api/client'
@@ -41,6 +50,9 @@ import type {
 import type { OperatorAction } from '../types/operator'
 
 type AppView = 'navigation' | 'action-detail' | 'checklist'
+
+const AUTH_PREVIEW_DURATION_MS = 8 * 60 * 60_000
+
 type RefreshOptions = { forceHealth?: boolean; silent?: boolean }
 type DetailLoadOptions = { forceNetwork?: boolean; background?: boolean }
 
@@ -215,6 +227,9 @@ function mergeEvidenceIntoDetail(
 }
 
 export function App() {
+  const [authPreviewRegistration, setAuthPreviewRegistration] = useState(readPreviewSession)
+  const [authPreviewStartedAt, setAuthPreviewStartedAt] = useState(readPreviewSessionStartedAt)
+  const [authPreviewExpiresAt, setAuthPreviewExpiresAt] = useState(readPreviewSessionExpiresAt)
   const initialExecutionContextRef = useRef<StoredExecutionContext | null>(
     readActiveExecutionContext(),
   )
@@ -264,6 +279,19 @@ export function App() {
   const toastTimerRef = useRef<number | null>(null)
 
   const configured = hasApiConfiguration()
+
+  useEffect(() => {
+    if (!authPreviewRegistration || !authPreviewExpiresAt) return
+
+    const remainingSessionTime = authPreviewExpiresAt - Date.now()
+    if (remainingSessionTime <= 0) {
+      expireOperatorSession()
+      return
+    }
+
+    const timer = window.setTimeout(expireOperatorSession, remainingSessionTime)
+    return () => window.clearTimeout(timer)
+  }, [authPreviewRegistration, authPreviewExpiresAt])
 
   useEffect(() => {
     actionDetailRef.current = actionDetail
@@ -792,10 +820,39 @@ export function App() {
     notify('Configuração salva')
   }
 
+  function expireOperatorSession() {
+    markExpiredPreviewSession()
+    setAuthPreviewRegistration('')
+    setAuthPreviewStartedAt('')
+    setAuthPreviewExpiresAt(0)
+    setSection('home')
+    setView('navigation')
+  }
+
+  function logoutOperator() {
+    clearPreviewSession()
+    window.location.reload()
+  }
+
   function changeSection(next: AppSection) {
     setView('navigation')
     setSection(next)
     if (next === 'home') void refresh()
+  }
+
+  if (!authPreviewRegistration) {
+    return (
+      <LoginPage
+        onPreviewAuthenticated={(registration, options) => {
+          const startedAt = new Date().toISOString()
+          const expiresAt = Date.now() + (options?.expiresInMs ?? AUTH_PREVIEW_DURATION_MS)
+          savePreviewSession(registration, startedAt, expiresAt)
+          setAuthPreviewStartedAt(startedAt)
+          setAuthPreviewExpiresAt(expiresAt)
+          setAuthPreviewRegistration(registration)
+        }}
+      />
+    )
   }
 
   const operationOverlay = showDetailOverlay
@@ -831,7 +888,11 @@ export function App() {
   return (
     <div className="app-stage">
       <section className="app-frame">
-        <AppHeader operatorName="Carlos" shift="Turno A" connectionState={connectionState} />
+        <AppHeader
+          operatorName="Operador"
+          shift={`Matrícula ${authPreviewRegistration}`}
+          connectionState={connectionState}
+        />
 
         <main className="app-content">
           {view === 'action-detail' ? (
@@ -887,11 +948,18 @@ export function App() {
               {section === 'qr' && <QrPage onNotify={notify} onOpenAction={openActionById} />}
               {section === 'settings' && (
                 <SettingsPage
-                  apiOnline={connectionState === 'online'}
-                  apiVersion={apiVersion}
-                  onConfigurationSaved={configurationSaved}
-                  onTestConnection={testConnection}
-                />
+                    apiOnline={connectionState === 'online'}
+                    apiVersion={apiVersion}
+                    operatorName="Operador"
+                    operatorRegistration={authPreviewRegistration}
+                    operatorRole="Operador"
+                    operatorDepartment="Não sincronizado"
+                    operatorShift="Não sincronizado"
+                    sessionStartedAt={authPreviewStartedAt}
+                    onConfigurationSaved={configurationSaved}
+                    onTestConnection={testConnection}
+                    onLogout={logoutOperator}
+                  />
               )}
             </>
           )}
