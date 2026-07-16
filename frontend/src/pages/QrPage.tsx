@@ -174,6 +174,9 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [expandedOccurrenceIds, setExpandedOccurrenceIds] = useState<Set<string>>(
     () => new Set(),
   )
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(
+    () => new Set(),
+  )
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -252,6 +255,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     setParameterError('')
     setVisibleOccurrenceCount(OCCURRENCES_PAGE_SIZE)
     setExpandedOccurrenceIds(new Set())
+    setExpandedHistoryIds(new Set())
     setManualOpen(false)
     setCameraError('')
     setHistoryItems((result.historico_recente ?? []).slice(0, 4))
@@ -588,6 +592,15 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     }
   }
 
+  function toggleHistoryDetails(historyId: string) {
+    setExpandedHistoryIds((current) => {
+      const next = new Set(current)
+      if (next.has(historyId)) next.delete(historyId)
+      else next.add(historyId)
+      return next
+    })
+  }
+
   function toggleOccurrenceDetails(occurrenceId: string) {
     setExpandedOccurrenceIds((current) => {
       const next = new Set(current)
@@ -658,6 +671,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     setVisibleParameterCount(PARAMETERS_PAGE_SIZE)
     setVisibleOccurrenceCount(OCCURRENCES_PAGE_SIZE)
     setExpandedOccurrenceIds(new Set())
+    setExpandedHistoryIds(new Set())
     closeOccurrence()
     setCameraActive(true)
   }
@@ -1194,12 +1208,73 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         </section>
       )}
 
-      <section className="content-section">
-        <div className="section-heading"><div><h2>Histórico do equipamento</h2><p>Os quatro eventos mais recentes são carregados primeiro.</p></div><span>{historyItems.length}</span></div>
+      {/* FAB_CONTROL_HISTORY_COMPACT_BLOCK_3 */}
+      <section className="content-section history-compact">
+        <div className="section-heading history-compact__heading">
+          <div>
+            <h2>Histórico do equipamento</h2>
+            <p>Eventos técnicos mais recentes.</p>
+          </div>
+          <span>{historyItems.length}</span>
+        </div>
+
         {historyItems.length > 0 ? (
-          <div className="history-list">{historyItems.map((item) => <article className="history-card" key={item.id}><div><strong>{displayName(item.evento || 'Evento técnico')}</strong><p>{item.descricao || 'Sem descrição.'}</p><small>{formatDate(item.criado_em)}</small></div><span className="history-status">{item.perfil || 'SISTEMA'}</span></article>)}</div>
-        ) : <article className="empty-panel qr-empty-panel"><strong>Sem eventos registrados</strong><p>O histórico aparecerá conforme o equipamento for utilizado.</p></article>}
-        {historyHasMore && <button type="button" className="history-load-more" disabled={historyLoading} onClick={() => void loadMoreHistory()}>{historyLoading ? 'Carregando…' : 'Ver mais'}</button>}
+          <div className="history-compact__list">
+            {historyItems.map((item) => {
+              const expanded = expandedHistoryIds.has(item.id)
+              const description = item.descricao || 'Sem descrição.'
+              const canExpand = description.length > 68
+              const visibleDescription =
+                canExpand && !expanded
+                  ? `${description.slice(0, 68).trimEnd()}…`
+                  : description
+
+              return (
+                <article className="history-compact__card" key={item.id}>
+                  <div className="history-compact__top">
+                    <strong>{displayName(item.evento || 'Evento técnico')}</strong>
+                    <span className="history-compact__profile">
+                      {displayName(item.perfil || 'SISTEMA')}
+                    </span>
+                  </div>
+
+                  <p className={expanded ? 'history-compact__description is-expanded' : 'history-compact__description'}>
+                    {visibleDescription}
+                  </p>
+
+                  <div className="history-compact__footer">
+                    <small>{formatDate(item.criado_em)}</small>
+                    {canExpand && (
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={() => toggleHistoryDetails(item.id)}
+                      >
+                        {expanded ? 'Resumir' : 'Detalhes'}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        ) : (
+          <article className="empty-panel qr-empty-panel history-compact__empty">
+            <strong>Sem eventos registrados</strong>
+            <p>O histórico aparecerá conforme o equipamento for utilizado.</p>
+          </article>
+        )}
+
+        {historyHasMore && (
+          <button
+            type="button"
+            className="history-compact__load-more"
+            disabled={historyLoading}
+            onClick={() => void loadMoreHistory()}
+          >
+            {historyLoading ? 'Carregando eventos…' : 'Carregar mais eventos'}
+          </button>
+        )}
       </section>
 
       <div className="qr-next-actions">

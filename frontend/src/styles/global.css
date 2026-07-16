@@ -4524,3 +4524,139 @@ p {
   }
 }
 
+/* FAB_CONTROL_HISTORY_COMPACT_BLOCK_3_STYLES */
+.history-compact {
+  gap: 7px;
+}
+
+.history-compact__heading {
+  align-items: center;
+}
+
+.history-compact__heading h2 {
+  font-size: .96rem;
+}
+
+.history-compact__heading p {
+  margin-top: 2px;
+  font-size: .68rem;
+}
+
+.history-compact__heading > span {
+  padding: 5px 8px;
+  font-size: .64rem;
+}
+
+.history-compact__list {
+  display: grid;
+  gap: 6px;
+}
+
+.history-compact__card {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid #e1e7ee;
+  border-left: 3px solid #7a94b8;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .04);
+}
+
+.history-compact__top {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-compact__top strong {
+  overflow: hidden;
+  color: #172234;
+  font-size: .76rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-compact__profile {
+  max-width: 105px;
+  overflow: hidden;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #45658e;
+  background: #edf4ff;
+  font-size: .54rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-compact__description {
+  display: block;
+  overflow: visible;
+  margin: 0;
+  color: #596779;
+  font-size: .67rem;
+  line-height: 1.35;
+}
+
+.history-compact__description.is-expanded {
+  color: #455468;
+}
+
+.history-compact__footer {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-compact__footer small {
+  overflow: hidden;
+  color: #8a96a6;
+  font-size: .58rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-compact__footer button {
+  flex: 0 0 auto;
+  padding: 3px 0;
+  color: #2563eb;
+  background: transparent;
+  font-size: .59rem;
+  font-weight: 900;
+}
+
+.history-compact__load-more {
+  min-height: 34px;
+  margin-top: 2px;
+  padding: 0 12px;
+  border: 1px solid #c8d8f1;
+  border-radius: 11px;
+  color: #1d5dcb;
+  background: #eef4ff;
+  font-size: .67rem;
+  font-weight: 900;
+}
+
+.history-compact__load-more:disabled {
+  cursor: wait;
+  opacity: .68;
+}
+
+.history-compact__empty {
+  padding: 16px;
+  border-radius: 15px;
+}
+
+@media (min-width: 760px) {
+  .history-compact__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
