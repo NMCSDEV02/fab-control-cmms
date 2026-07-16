@@ -239,7 +239,10 @@ function seedUser_(id,nome,email,perfil,pin){
   if(old) return;
   append_("usuarios", fit_("usuarios", {
     id:id, nome:nome, email:email, perfil:perfil, status:ST.ATIVO,
-    pin_hash:hashPin_(pin), criado_em:now_(), atualizado_em:now_()
+    pin_hash:hashPin_(pin), criado_em:now_(), atualizado_em:now_(),
+    matricula:id, senha_hash:"", primeiro_acesso:"SIM", tentativas_login:0,
+    bloqueado_ate:"", ultimo_login_em:"", senha_atualizada_em:"",
+    recuperacao_referencia:"", recuperacao_solicitada_em:""
   }));
 }
 

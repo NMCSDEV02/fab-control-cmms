@@ -1,5 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { APP_RELEASE_VERSION, isCompatibleRelease } from '../release'
+import { ApiRequestError } from '../services/api/client'
 import { getApiUrl } from '../services/api/config'
+import {
+  completeFirstAccess,
+  loginOperator,
+  requestPasswordRecovery,
+  type OperatorSession,
+} from '../services/api/auth'
 import { getSystemHealth } from '../services/api/operator'
 import {
   consumeAuthenticationNotice,
@@ -7,15 +15,8 @@ import {
   markStartupCompleted,
 } from '../services/auth/session'
 
-export interface PreviewAuthenticationOptions {
-  expiresInMs?: number
-}
-
 export interface LoginPageProps {
-  onPreviewAuthenticated: (
-    registration: string,
-    options?: PreviewAuthenticationOptions,
-  ) => void
+  onAuthenticated: (session: OperatorSession) => void
 }
 
 type LoginView =
@@ -28,8 +29,6 @@ type LoginView =
   | 'connection-error'
 
 type StartupState = 'checking' | 'online' | 'offline' | 'local'
-
-const PREVIEW_EXPIRATION_TEST_MS = 6_000
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
@@ -60,7 +59,7 @@ function PasswordVisibilityIcon({ visible }: { visible: boolean }) {
   )
 }
 
-export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
+export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [view, setView] = useState<LoginView>(
     () => hasCompletedStartup() ? 'login' : 'startup',
   )
@@ -71,11 +70,15 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
   const [recoveryRegistration, setRecoveryRegistration] = useState('')
   const [recoveryRequestId, setRecoveryRequestId] = useState('')
   const [firstAccessRegistration, setFirstAccessRegistration] = useState('')
+  const [firstAccessToken, setFirstAccessToken] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showNewPasswordConfirmation, setShowNewPasswordConfirmation] = useState(false)
   const [error, setError] = useState('')
+  const [connectionErrorMessage, setConnectionErrorMessage] = useState(
+    'Verifique a rede do dispositivo e tente novamente. Nenhuma credencial foi alterada.',
+  )
   const [message, setMessage] = useState(() => {
     return consumeAuthenticationNotice() === 'session-expired'
       ? 'Sua sessão expirou. Entre novamente para continuar.'
@@ -117,7 +120,19 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
       const abortTimer = window.setTimeout(() => controller.abort(), 1_600)
 
       try {
-        await getSystemHealth(controller.signal)
+        const health = await getSystemHealth(controller.signal)
+        const receivedVersion = health.release_version ?? health.version
+        if (!isCompatibleRelease(receivedVersion)) {
+          if (!active) return
+          setStartupState('offline')
+          setStartupLabel('Atualização necessária')
+          setConnectionErrorMessage(
+            `Versão incompatível: aplicativo ${APP_RELEASE_VERSION}; API ${receivedVersion || 'não identificada'}.`,
+          )
+          await wait(520)
+          if (active) setView('connection-error')
+          return
+        }
         if (!active) return
         setStartupState('online')
         setStartupLabel('Sincronização inicial concluída')
@@ -125,6 +140,9 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
         if (!active) return
         setStartupState('offline')
         setStartupLabel('Modo de acesso preparado')
+        setConnectionErrorMessage(
+          'Verifique a rede do dispositivo e tente novamente. Nenhuma credencial foi alterada.',
+        )
       } finally {
         window.clearTimeout(abortTimer)
       }
@@ -149,16 +167,26 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
     setMessage('')
   }
 
+  function showConnectionError(cause?: unknown) {
+    const messageText =
+      cause instanceof ApiRequestError && cause.code === 'VERSION_MISMATCH'
+        ? cause.message
+        : 'Verifique a rede do dispositivo e tente novamente. Nenhuma credencial foi alterada.'
+    setConnectionErrorMessage(messageText)
+    setView('connection-error')
+  }
+
   function returnToLogin(messageText = '') {
     setView('login')
     setPassword('')
+    setFirstAccessToken('')
     setNewPassword('')
     setNewPasswordConfirmation('')
     setError('')
     setMessage(messageText)
   }
 
-  function submitLogin(event: FormEvent<HTMLFormElement>) {
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     clearFeedback()
 
@@ -169,46 +197,73 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
     }
 
     setSubmitting(true)
-    window.setTimeout(() => {
-      setSubmitting(false)
+    try {
+      const result = await loginOperator(normalizedRegistration, password)
 
-      const scenario = `${normalizedRegistration}:${password}`.toUpperCase()
+      if (result.requires_password_change) {
+        if (!result.change_token) {
+          throw new ApiRequestError(
+            'A API não forneceu a autorização de primeiro acesso.',
+            'CHANGE_TOKEN_MISSING',
+          )
+        }
 
-      if (scenario.includes('INVALIDA') || scenario.includes('INVALIDO')) {
-        setError('Matrícula ou senha inválida. Verifique os dados informados.')
-        return
-      }
-
-      if (scenario.includes('BLOQUEADO')) {
-        setView('locked')
-        return
-      }
-
-      if (scenario.includes('OFFLINE')) {
-        setView('connection-error')
-        return
-      }
-
-      if (scenario.includes('PRIMEIRO')) {
-        setFirstAccessRegistration(normalizedRegistration)
+        setFirstAccessRegistration(result.usuario.matricula || normalizedRegistration)
+        setFirstAccessToken(result.change_token)
         setNewPassword('')
         setNewPasswordConfirmation('')
+        setPassword('')
         setView('first-access')
         return
       }
 
-      if (scenario.includes('EXPIRAR')) {
-        onPreviewAuthenticated(normalizedRegistration, {
-          expiresInMs: PREVIEW_EXPIRATION_TEST_MS,
-        })
-        return
+      if (!result.token || !result.expira_ms) {
+        throw new ApiRequestError(
+          'A API não retornou uma sessão operacional válida.',
+          'AUTH_SESSION_INVALID',
+        )
       }
 
-      onPreviewAuthenticated(normalizedRegistration)
-    }, 450)
+      onAuthenticated({
+        token: result.token,
+        startedAt: new Date().toISOString(),
+        expiresAt: result.expira_ms,
+        user: result.usuario,
+      })
+    } catch (cause) {
+      if (cause instanceof ApiRequestError) {
+        if (cause.code === 'ACCOUNT_LOCKED') {
+          setView('locked')
+          return
+        }
+
+        if (cause.code === 'USER_INACTIVE') {
+          setError('Conta inativa. Solicite a regularização ao administrador.')
+          return
+        }
+
+        if (
+          [
+            'API_TIMEOUT',
+            'NETWORK_ERROR',
+            'HTTP_ERROR',
+            'INVALID_JSON',
+            'API_URL_MISSING',
+            'VERSION_MISMATCH',
+          ].includes(cause.code)
+        ) {
+          showConnectionError(cause)
+          return
+        }
+      }
+
+      setError('Matrícula ou senha inválida. Verifique os dados informados.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  function submitRecovery(event: FormEvent<HTMLFormElement>) {
+  async function submitRecovery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     clearFeedback()
 
@@ -218,13 +273,34 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
       return
     }
 
-    const requestId = `REC-${Date.now().toString(36).toUpperCase()}`
-    setRecoveryRegistration(normalizedRegistration)
-    setRecoveryRequestId(requestId)
-    setView('recovery-confirmation')
+    setSubmitting(true)
+    try {
+      const result = await requestPasswordRecovery(normalizedRegistration)
+      setRecoveryRegistration(normalizedRegistration)
+      setRecoveryRequestId(result.request_id)
+      setView('recovery-confirmation')
+    } catch (cause) {
+      if (
+        cause instanceof ApiRequestError &&
+        [
+          'API_TIMEOUT',
+          'NETWORK_ERROR',
+          'HTTP_ERROR',
+          'INVALID_JSON',
+          'API_URL_MISSING',
+          'VERSION_MISMATCH',
+        ].includes(cause.code)
+      ) {
+        showConnectionError(cause)
+        return
+      }
+      setError('Não foi possível registrar a solicitação. Tente novamente.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  function submitFirstAccess(event: FormEvent<HTMLFormElement>) {
+  async function submitFirstAccess(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     clearFeedback()
 
@@ -240,12 +316,46 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
       return
     }
 
+    if (!firstAccessToken) {
+      setError('A autorização de primeiro acesso expirou. Entre novamente.')
+      return
+    }
+
     setSubmitting(true)
-    window.setTimeout(() => {
-      setSubmitting(false)
+    try {
+      await completeFirstAccess(firstAccessToken, newPassword)
       setRegistration(firstAccessRegistration)
-      returnToLogin('Nova senha definida para homologação. Entre novamente para continuar.')
-    }, 450)
+      returnToLogin('Nova senha definida. Entre novamente para continuar.')
+    } catch (cause) {
+      if (
+        cause instanceof ApiRequestError &&
+        ['CHANGE_TOKEN_INVALID', 'CHANGE_TOKEN_INACTIVE', 'CHANGE_TOKEN_EXPIRED'].includes(
+          cause.code,
+        )
+      ) {
+        setError('A autorização de primeiro acesso expirou. Entre novamente.')
+        return
+      }
+
+      if (
+        cause instanceof ApiRequestError &&
+        [
+          'API_TIMEOUT',
+          'NETWORK_ERROR',
+          'HTTP_ERROR',
+          'INVALID_JSON',
+          'API_URL_MISSING',
+          'VERSION_MISMATCH',
+        ].includes(cause.code)
+      ) {
+        showConnectionError(cause)
+        return
+      }
+
+      setError(cause instanceof Error ? cause.message : 'Não foi possível definir a nova senha.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (view === 'startup') {
@@ -363,8 +473,8 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
               {error && <p className="auth-feedback auth-feedback--error" role="alert">{error}</p>}
               {message && <p className="auth-feedback auth-feedback--success" role="status">{message}</p>}
 
-              <button className="auth-primary-button" type="submit">
-                Solicitar nova senha
+              <button className="auth-primary-button" type="submit" disabled={submitting}>
+                {submitting ? 'Registrando solicitação…' : 'Solicitar nova senha'}
               </button>
 
               <button
@@ -384,8 +494,7 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
             <span className="auth-intro__kicker">Recuperação de acesso</span>
             <h2>Solicitação preparada</h2>
             <p>
-              A matrícula foi validada na interface e está pronta para ser enviada ao administrador
-              quando a integração da API for ativada.
+              A solicitação foi registrada na API. O administrador fará a validação e a redefinição do acesso.
             </p>
 
             <div className="auth-recovery-summary">
@@ -399,18 +508,18 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
               </div>
               <div>
                 <span>Status atual</span>
-                <strong>Pendente de integração</strong>
+                <strong>Registrada</strong>
               </div>
             </div>
 
             <div className="auth-state__note auth-state__note--neutral">
-              Nenhuma mensagem foi enviada neste ambiente de homologação.
+              Por segurança, a confirmação não informa se a matrícula existe na base.
             </div>
 
             <button
               className="auth-primary-button"
               type="button"
-              onClick={() => returnToLogin('Solicitação local registrada para homologação.')}
+              onClick={() => returnToLogin('Solicitação registrada. Aguarde a validação do administrador.')}
             >
               Voltar para o login
             </button>
@@ -532,11 +641,9 @@ export function LoginPage({ onPreviewAuthenticated }: LoginPageProps) {
             <span className="auth-state__icon" aria-hidden="true">↻</span>
             <span className="auth-intro__kicker">Falha de conexão</span>
             <h2>Não foi possível validar o acesso</h2>
-            <p>
-              Verifique a rede do dispositivo e tente novamente. Nenhuma credencial foi alterada.
-            </p>
+            <p>{connectionErrorMessage}</p>
             <div className="auth-state__actions">
-              <button className="auth-primary-button" type="button" onClick={() => returnToLogin()}>
+              <button className="auth-primary-button" type="button" onClick={() => window.location.reload()}>
                 Tentar novamente
               </button>
               <button

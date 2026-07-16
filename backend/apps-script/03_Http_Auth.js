@@ -53,6 +53,9 @@ function route_(action, p, req){
     case "cmms.paradas_operacionais_schema_upgrade": return cmmsParadasOperacionaisSchemaUpgrade114_(p, p.__auth);
     case "cmms.horimetro_evidencias_schema_upgrade": return cmmsHorimetroEvidenciasSchemaUpgrade116_(p, p.__auth);
     case "auth.login": return authLogin_(p, req);
+    case "auth.first_access.complete": return authCompleteFirstAccess_(p, req);
+    case "auth.recovery.request": return authRecoveryRequest_(p, req);
+    case "auth.logout": return authLogout_(p, req);
 
     case "admin.resumo": return adminResumo_();
     case "admin.resumo_cache": return adminResumoCache_(p);
@@ -177,15 +180,105 @@ function sistemaBootstrap_(){
   }, releaseVersionInfo_());
 }
 
-function authLogin_(p, req){
-  req_(p, ["email","pin"]);
-  var email = clean_(p.email).toLowerCase();
-  var user = rows_("usuarios").find(function(u){ return clean_(u.email).toLowerCase() === email; });
-  if(!user || clean_(user.pin_hash) !== hashPin_(p.pin)) err_("LOGIN_INVALID","Usuário ou PIN inválido.",401);
-  if(upper_(user.status) !== ST.ATIVO) err_("USER_INACTIVE","Usuário inativo.",403);
+function ensureAuthSchema_(){
+  var ss = getSpreadsheet_();
+  ensureSheet_(ss, "usuarios", SH.usuarios);
+  ensureSheet_(ss, "sessoes", SH.sessoes);
 
-  var token = "FAB-" + Utilities.getUuid().replace(/-/g,"").toUpperCase();
-  var exp = addHours_(new Date(), FAB.TOKEN_HOURS);
+  var releaseRow = find_("config", "chave", "release.version");
+  if(!releaseRow || clean_(releaseRow.valor) !== FAB.RELEASE_VERSION){
+    syncReleaseVersionConfig_();
+  }
+
+  var authSchemaRow = find_("config", "chave", "auth.schema.version");
+  if(authSchemaRow && clean_(authSchemaRow.valor) === FAB.SCHEMA_VERSION) return;
+
+  rows_("usuarios", true).forEach(function(user){
+    var patch = {};
+    if(!clean_(user.matricula)) patch.matricula = clean_(user.id);
+    if(!clean_(user.primeiro_acesso)){
+      patch.primeiro_acesso = clean_(user.senha_hash) ? "NAO" : "SIM";
+    }
+    if(clean_(user.tentativas_login) === "") patch.tentativas_login = 0;
+    if(Object.keys(patch).length){
+      patch.atualizado_em = now_();
+      update_("usuarios", user.__rowIndex, patch);
+    }
+  });
+
+  upsert_("config", "chave", {
+    chave:"auth.schema.version",
+    valor:FAB.SCHEMA_VERSION,
+    descricao:"Versao da migracao do schema de autenticacao",
+    atualizado_em:now_()
+  });
+}
+
+function authFindUser_(registration){
+  var normalized = clean_(registration);
+  var upperRegistration = upper_(normalized);
+  var lowerRegistration = normalized.toLowerCase();
+  return rows_("usuarios", true).find(function(user){
+    return upper_(user.matricula) === upperRegistration ||
+      upper_(user.id) === upperRegistration ||
+      clean_(user.email).toLowerCase() === lowerRegistration;
+  }) || null;
+}
+
+function authPublicUser_(user){
+  return {
+    id:clean_(user.id),
+    nome:clean_(user.nome),
+    email:clean_(user.email),
+    matricula:clean_(user.matricula || user.id),
+    perfil:upper_(user.perfil)
+  };
+}
+
+function authSessionExpiryMs_(session){
+  var explicit = num_(session && session.expira_ms, 0);
+  if(explicit > 0) return explicit;
+  var parsed = new Date(clean_(session && session.expira_em)).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function authLockedUntilMs_(user){
+  var parsed = new Date(clean_(user && user.bloqueado_ate)).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function authRegisterInvalidAttempt_(user){
+  var attempts = num_(user.tentativas_login, 0) + 1;
+  var patch = {
+    tentativas_login:attempts,
+    atualizado_em:now_()
+  };
+
+  if(attempts >= (FAB.AUTH_LOGIN_MAX_ATTEMPTS || 5)){
+    patch.bloqueado_ate = iso_(addMinutes_(new Date(), FAB.AUTH_LOCK_MINUTES || 15));
+    update_("usuarios", user.__rowIndex, patch);
+    err_("ACCOUNT_LOCKED", "Conta temporariamente bloqueada após tentativas inválidas.", 423);
+  }
+
+  update_("usuarios", user.__rowIndex, patch);
+  err_("LOGIN_INVALID", "Matrícula ou senha inválida.", 401);
+}
+
+function authResetLoginProtection_(user){
+  update_("usuarios", user.__rowIndex, {
+    tentativas_login:0,
+    bloqueado_ate:"",
+    ultimo_login_em:now_(),
+    atualizado_em:now_()
+  });
+}
+
+function authCreateScopedSession_(user,scope,hours,minutes,userAgent){
+  var token = authRandomToken_(scope === "FIRST_ACCESS" ? "FAB-CHANGE" : "FAB");
+  var exp = minutes
+    ? addMinutes_(new Date(), minutes)
+    : addHours_(new Date(), hours || FAB.TOKEN_HOURS);
+  var expMs = exp.getTime();
 
   append_("sessoes", fit_("sessoes", {
     token:token,
@@ -195,27 +288,237 @@ function authLogin_(p, req){
     criado_em:now_(),
     expira_em:iso_(exp),
     ultimo_uso_em:now_(),
-    user_agent:p.user_agent || ""
+    user_agent:userAgent || "",
+    escopo:scope,
+    expira_ms:expMs,
+    revogado_em:"",
+    motivo_revogacao:""
   }));
 
-  var authData = {
+  return {
     token:token,
     usuario_id:user.id,
     nome:user.nome,
     email:user.email,
+    matricula:user.matricula || user.id,
     perfil:upper_(user.perfil),
+    escopo:scope,
     expira_em:iso_(exp),
-    expira_ms:exp.getTime()
+    expira_ms:expMs
   };
-  cacheAuthSession_(authData);
+}
 
-  return {
-    token:token,
-    expira_em:iso_(exp),
-    usuario:{id:user.id, nome:user.nome, email:user.email, perfil:upper_(user.perfil)},
+function authFindSession_(token){
+  return rows_("sessoes", true).find(function(session){
+    return String(session.token) === String(token);
+  }) || null;
+}
+
+function authRevokeSession_(session,reason){
+  if(!session || !session.__rowIndex) return;
+  update_("sessoes", session.__rowIndex, {
+    status:ST.INATIVO,
+    revogado_em:now_(),
+    motivo_revogacao:reason || "REVOGADA"
+  });
+  if(typeof authCacheKey_ === "function") safeCacheRemove_(authCacheKey_(session.token));
+}
+
+function authLogin_(p, req){
+  ensureAuthSchema_();
+
+  var registration = clean_(p.matricula || p.registration || p.email);
+  var password = String(p.senha || p.password || p.pin || "");
+  if(!registration) err_("FIELD_REQUIRED", "Campo obrigatório: matricula", 400);
+  if(!password) err_("FIELD_REQUIRED", "Campo obrigatório: senha", 400);
+
+  var user = authFindUser_(registration);
+  if(!user){
+    Utilities.sleep(120);
+    err_("LOGIN_INVALID", "Matrícula ou senha inválida.", 401);
+  }
+
+  if(upper_(user.status) !== ST.ATIVO){
+    err_("USER_INACTIVE", "Usuário inativo.", 403);
+  }
+
+  var lockedUntil = authLockedUntilMs_(user);
+  if(lockedUntil > Date.now()){
+    err_("ACCOUNT_LOCKED", "Conta temporariamente bloqueada após tentativas inválidas.", 423);
+  }
+
+  if(lockedUntil && lockedUntil <= Date.now()){
+    update_("usuarios", user.__rowIndex, {
+      tentativas_login:0,
+      bloqueado_ate:"",
+      atualizado_em:now_()
+    });
+    user = authFindUser_(registration);
+  }
+
+  var passwordHash = clean_(user.senha_hash);
+  var valid = passwordHash
+    ? authVerifyPasswordHash_(password, passwordHash)
+    : authSecureEquals_(clean_(user.pin_hash), hashPin_(password));
+
+  if(!valid) authRegisterInvalidAttempt_(user);
+
+  authResetLoginProtection_(user);
+  user = authFindUser_(registration);
+
+  var firstAccess = bool_(user.primeiro_acesso) || !clean_(user.senha_hash);
+  if(firstAccess){
+    var changeSession = authCreateScopedSession_(
+      user,
+      "FIRST_ACCESS",
+      0,
+      FAB.AUTH_FIRST_ACCESS_MINUTES || 15,
+      p.user_agent || ""
+    );
+
+    return Object.assign({
+      requires_password_change:true,
+      first_access:true,
+      change_token:changeSession.token,
+      expira_em:changeSession.expira_em,
+      expira_ms:changeSession.expira_ms,
+      usuario:authPublicUser_(user)
+    }, releaseVersionInfo_());
+  }
+
+  var appSession = authCreateScopedSession_(
+    user,
+    "APP",
+    FAB.TOKEN_HOURS,
+    0,
+    p.user_agent || ""
+  );
+
+  cacheAuthSession_(appSession);
+
+  return Object.assign({
+    requires_password_change:false,
+    token:appSession.token,
+    expira_em:appSession.expira_em,
+    expira_ms:appSession.expira_ms,
+    usuario:authPublicUser_(user),
     warmup_required:true,
     warmup_action:"sistema.warmup"
-  };
+  }, releaseVersionInfo_());
+}
+
+function authCompleteFirstAccess_(p, req){
+  ensureAuthSchema_();
+  req_(p, ["change_token", "nova_senha"]);
+
+  var policy = authPasswordPolicy_(p.nova_senha);
+  if(!policy.ok) err_(policy.code, policy.message, 400);
+
+  var session = authFindSession_(p.change_token);
+  if(!session) err_("CHANGE_TOKEN_INVALID", "Solicitação de primeiro acesso inválida.", 401);
+  if(upper_(session.status) !== ST.ATIVO) err_("CHANGE_TOKEN_INACTIVE", "Solicitação de primeiro acesso inativa.", 401);
+  if(upper_(session.escopo) !== "FIRST_ACCESS") err_("CHANGE_TOKEN_SCOPE_INVALID", "Escopo de primeiro acesso inválido.", 401);
+  if(authSessionExpiryMs_(session) <= Date.now()) err_("CHANGE_TOKEN_EXPIRED", "Solicitação de primeiro acesso expirada.", 401);
+
+  var user = find_("usuarios", "id", session.usuario_id);
+  if(!user || upper_(user.status) !== ST.ATIVO) err_("USER_INACTIVE", "Usuário inativo.", 403);
+
+  var newHash = authCreatePasswordHash_(p.nova_senha);
+  update_("usuarios", user.__rowIndex, {
+    senha_hash:newHash,
+    pin_hash:"",
+    primeiro_acesso:"NAO",
+    tentativas_login:0,
+    bloqueado_ate:"",
+    senha_atualizada_em:now_(),
+    atualizado_em:now_()
+  });
+
+  rows_("sessoes", true)
+    .filter(function(item){
+      return String(item.usuario_id) === String(user.id) && upper_(item.status) === ST.ATIVO;
+    })
+    .forEach(function(item){ authRevokeSession_(item, "PASSWORD_CHANGED"); });
+
+  audit_(
+    {usuario_id:user.id, perfil:upper_(user.perfil)},
+    "AUTH_FIRST_ACCESS_COMPLETED",
+    "usuarios",
+    user.id,
+    null,
+    {matricula:user.matricula || user.id},
+    p.user_agent || ""
+  );
+
+  return Object.assign({
+    password_changed:true,
+    usuario:authPublicUser_(user)
+  }, releaseVersionInfo_());
+}
+
+function authRecoveryReference_(registration){
+  return "REC-" + sha256_(
+    "FAB-RECOVERY-V1:" + authPasswordPepper_() + ":" + upper_(registration)
+  ).slice(0,12).toUpperCase();
+}
+
+function authRecoveryRequest_(p, req){
+  ensureAuthSchema_();
+  var started = Date.now();
+  var registration = clean_(p.matricula || p.registration || p.email);
+  if(!registration) err_("FIELD_REQUIRED", "Campo obrigatório: matricula", 400);
+
+  // A referência depende somente da matrícula normalizada e de um segredo do projeto.
+  // Assim, a resposta pública é idêntica para contas existentes e inexistentes.
+  var reference = authRecoveryReference_(registration);
+  var user = authFindUser_(registration);
+
+  if(user){
+    var lastRequestMs = new Date(clean_(user.recuperacao_solicitada_em)).getTime();
+    var cooldownMs = (FAB.AUTH_RECOVERY_COOLDOWN_MINUTES || 10) * 60000;
+    var cooldownActive =
+      !isNaN(lastRequestMs) &&
+      lastRequestMs > 0 &&
+      Date.now() - lastRequestMs < cooldownMs;
+
+    if(!cooldownActive){
+      update_("usuarios", user.__rowIndex, {
+        recuperacao_referencia:reference,
+        recuperacao_solicitada_em:now_(),
+        atualizado_em:now_()
+      });
+      audit_(
+        {usuario_id:user.id, perfil:upper_(user.perfil)},
+        "AUTH_RECOVERY_REQUESTED",
+        "usuarios",
+        user.id,
+        null,
+        {referencia:reference},
+        p.user_agent || ""
+      );
+    }
+  }
+
+  // Reduz diferenças triviais de tempo entre matrícula existente e inexistente.
+  var remainingDelay = 200 - (Date.now() - started);
+  if(remainingDelay > 0) Utilities.sleep(remainingDelay);
+
+  return Object.assign({
+    accepted:true,
+    request_id:reference,
+    message:"Solicitação registrada. O administrador fará a validação do acesso."
+  }, releaseVersionInfo_());
+}
+
+function authLogout_(p, req){
+  ensureAuthSchema_();
+  var token = clean_(p.token || (req && req.params && req.params.token));
+  if(!token) return Object.assign({logged_out:true}, releaseVersionInfo_());
+
+  var session = authFindSession_(token);
+  if(session) authRevokeSession_(session, "LOGOUT");
+
+  return Object.assign({logged_out:true}, releaseVersionInfo_());
 }
 
 function authorize_(action, token){
@@ -242,7 +545,8 @@ function authorize_(action, token){
 
   if(!sess) err_("TOKEN_INVALID","Sessão inválida. Faça login novamente.",401);
   if(upper_(sess.status) !== ST.ATIVO) err_("TOKEN_INACTIVE","Sessão inativa.",401);
-  if(new Date(sess.expira_em).getTime() < Date.now()) err_("TOKEN_EXPIRED","Sessão expirada. Faça login novamente.",401);
+  if(clean_(sess.escopo) && upper_(sess.escopo) !== "APP") err_("TOKEN_SCOPE_INVALID","Sessão sem escopo operacional.",401);
+  if(authSessionExpiryMs_(sess) < Date.now()) err_("TOKEN_EXPIRED","Sessão expirada. Faça login novamente.",401);
 
   var user = find_("usuarios","id",sess.usuario_id);
   if(!user || upper_(user.status) !== ST.ATIVO) err_("USER_INACTIVE","Usuário inativo.",403);

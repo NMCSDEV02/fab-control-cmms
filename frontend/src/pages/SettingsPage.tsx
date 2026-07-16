@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { APP_RELEASE_VERSION } from '../release'
 import { clearOperatorCache } from '../services/storage/operatorCache'
 
 export interface SettingsPageProps {
@@ -37,7 +38,7 @@ type NetworkInformationLike = {
   saveData?: boolean
 }
 
-const APP_VERSION = '8.5.0'
+const APP_VERSION = APP_RELEASE_VERSION
 
 function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat('pt-BR', {

@@ -8,6 +8,11 @@ const FAB = {
   SCHEMA_VERSION: FAB_RELEASE_VERSION,
   CONTRACT_VERSION: FAB_RELEASE_VERSION,
   FRONTEND_VERSION: FAB_RELEASE_VERSION,
+  AUTH_LOGIN_MAX_ATTEMPTS: 5,
+  AUTH_LOCK_MINUTES: 15,
+  AUTH_FIRST_ACCESS_MINUTES: 15,
+  AUTH_RECOVERY_COOLDOWN_MINUTES: 10,
+  AUTH_PASSWORD_ITERATIONS: 1200,
   TZ: "America/Sao_Paulo",
   TOKEN_HOURS: 12,
   LOCK_TTL_SECONDS: 120,
@@ -57,8 +62,8 @@ const ST = {
 
 const SH = {
   config: ["chave", "valor", "descricao", "atualizado_em"],
-  usuarios: ["id", "nome", "email", "perfil", "status", "pin_hash", "criado_em", "atualizado_em"],
-  sessoes: ["token", "usuario_id", "perfil", "status", "criado_em", "expira_em", "ultimo_uso_em", "user_agent"],
+  usuarios: ["id","nome","email","perfil","status","pin_hash","criado_em","atualizado_em","matricula","senha_hash","primeiro_acesso","tentativas_login","bloqueado_ate","ultimo_login_em","senha_atualizada_em","recuperacao_referencia","recuperacao_solicitada_em"],
+  sessoes: ["token","usuario_id","perfil","status","criado_em","expira_em","ultimo_uso_em","user_agent","escopo","expira_ms","revogado_em","motivo_revogacao"],
 
   plantas: ["id", "tag", "nome", "status", "criado_em", "atualizado_em"],
   setores: ["id", "planta_id", "tag", "nome", "status", "criado_em", "atualizado_em"],
@@ -106,7 +111,7 @@ const SH = {
   legado_quarentena: ["id", "aba_origem", "linha_origem", "motivo", "payload_json", "movido_em"]
 };
 
-const PUBLIC_ACTIONS = ["sistema.health", "sistema.bootstrap", "auth.login"];
+const PUBLIC_ACTIONS = ["sistema.health", "sistema.bootstrap", "auth.login", "auth.first_access.complete", "auth.recovery.request", "auth.logout"];
 
 const PERM = {
   ADMIN: [

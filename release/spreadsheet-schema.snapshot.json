@@ -39,6 +39,47 @@
     "legado_quarentena"
   ],
   "liveSheetNamesConfirmedAgainstBaseline": true,
-  "headerSnapshotStatus": "pending",
-  "dataIncluded": false
+  "headerSnapshotStatus": "auth-schema-declared-local",
+  "dataIncluded": false,
+  "authSchema": {
+    "usuarios": [
+      "id",
+      "nome",
+      "email",
+      "perfil",
+      "status",
+      "pin_hash",
+      "criado_em",
+      "atualizado_em",
+      "matricula",
+      "senha_hash",
+      "primeiro_acesso",
+      "tentativas_login",
+      "bloqueado_ate",
+      "ultimo_login_em",
+      "senha_atualizada_em",
+      "recuperacao_referencia",
+      "recuperacao_solicitada_em"
+    ],
+    "sessoes": [
+      "token",
+      "usuario_id",
+      "perfil",
+      "status",
+      "criado_em",
+      "expira_em",
+      "ultimo_uso_em",
+      "user_agent",
+      "escopo",
+      "expira_ms",
+      "revogado_em",
+      "motivo_revogacao"
+    ],
+    "migration": "append-only-columns-on-first-auth-call",
+    "dataIncluded": false,
+    "migrationMarker": "config:auth.schema.version",
+    "recoveryCooldownMinutes": 10,
+    "recoveryReference": "secret-derived-stable-reference",
+    "recoveryMinimumResponseMs": 200
+  }
 }
