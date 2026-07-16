@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 1,
+  "release": "1.3.0",
+  "status": "integration",
+  "components": {
+    "frontend": "1.3.0",
+    "backendApi": "1.3.0",
+    "apiContract": "1.3.0",
+    "spreadsheetSchema": "1.3.0"
+  },
+  "baseline": {
+    "backendFabVersion": "1.2.1-operador-finalizacao-operacional",
+    "appsScriptVersion": 49,
+    "sourceCaptureSha256": "69F3FBFF318ACF297DAE403D0C9A3E42F0431BA5E39E9481288B0C9F6C0E41DA"
+  },
+  "target": {
+    "backendSourceSha256": "27A2CA009F8876D3926F17DFD28F098D4DB4CBFDC1E0FEB03E25D8A123A8223F",
+    "immutableAppsScriptVersion": null,
+    "deploymentId": null,
+    "gitCommit": null
+  },
+  "homologationGate": {
+    "requireExactVersionMatch": true,
+    "requireImmutableAppsScriptVersion": true,
+    "allowHeadDeployment": false,
+    "requireCleanGitTag": true
+  }
+}

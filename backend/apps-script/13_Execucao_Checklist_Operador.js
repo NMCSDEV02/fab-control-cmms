@@ -9,7 +9,7 @@ function cmmsExecucaoChecklistSchemaUpgrade108_(p, usuario){
   if(auth.perfil !== ROLE.ADMIN) err_("FORBIDDEN","Somente ADMIN pode executar upgrade de execução de checklist.",403);
   var ss = getSpreadsheet_();
   Object.keys(SH).forEach(function(name){ ensureSheet_(ss, name, SH[name]); });
-  upsert_("config","chave", {chave:"app.version", valor:FAB.VERSION, descricao:"Versão backend", atualizado_em:now_()});
+  syncReleaseVersionConfig_();
   invalidateRuntimeCache_();
   return {
     upgraded:true,

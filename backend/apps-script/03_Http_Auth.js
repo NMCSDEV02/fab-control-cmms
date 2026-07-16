@@ -153,11 +153,15 @@ function route_(action, p, req){
 }
 
 function sistemaHealth_(){
-  return { ok:true, app:FAB.APP_NAME, version:FAB.VERSION, spreadsheetId:getSpreadsheet_().getId(), serverTime:now_() };
+  return Object.assign(
+    {ok:true, app:FAB.APP_NAME, version:FAB.VERSION},
+    releaseVersionInfo_(),
+    {spreadsheetId:getSpreadsheet_().getId(), serverTime:now_()}
+  );
 }
 
 function sistemaBootstrap_(){
-  return {
+  return Object.assign({
     app:FAB.APP_NAME,
     version:FAB.VERSION,
     spreadsheetId:getSpreadsheet_().getId(),
@@ -170,7 +174,7 @@ function sistemaBootstrap_(){
       "gestor.auditoria_execucao_checklist","gestor.listar_paradas","gestor.listar_ocorrencias","gestor.modelos_em_validacao","gestor.listar_modelos_checklist","gestor.detalhe_modelo_checklist","gestor.validar_modelo_checklist","gestor.listar_acoes","gestor.detalhe_acao_fast","gestor.detalhe_acao","gestor.validar_acao",
       "cmms.higiene_diagnosticar","cmms.higienizar_status","cmms.higienizar_duplicidades","cmms.higienizar_base","cmms.kpis_base","perf.cache_status","perf.cache_clear"
     ]
-  };
+  }, releaseVersionInfo_());
 }
 
 function authLogin_(p, req){

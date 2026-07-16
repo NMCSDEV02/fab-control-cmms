@@ -12,3 +12,8 @@ coverage/
 Thumbs.db
 *.log
 .clasp.json
+
+# FAB Control local deployment metadata
+**/.clasp.json
+**/.clasprc.json
+release/fab-control.environment.local.json

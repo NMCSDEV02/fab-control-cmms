@@ -17,12 +17,7 @@ function cmmsExecucaoChecklistSchemaUpgrade1083_(p, usuario){
   var ss = getSpreadsheet_();
   Object.keys(SH).forEach(function(name){ ensureSheet_(ss, name, SH[name]); });
 
-  upsert_("config", "chave", {
-    chave:"app.version",
-    valor:FAB.VERSION,
-    descricao:"Versão backend",
-    atualizado_em:now_()
-  });
+  syncReleaseVersionConfig_();
 
   invalidateRuntimeCache_();
 
