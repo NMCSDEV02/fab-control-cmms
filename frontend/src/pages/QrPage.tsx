@@ -43,6 +43,9 @@ const PARAMETER_OPTIONS: Array<{ value: ParameterCode; label: string; unit: stri
   { value: 'TENSAO', label: 'Tensão', unit: 'V' },
 ]
 
+const PARAMETERS_PAGE_SIZE = 6
+const OCCURRENCES_PAGE_SIZE = 3
+
 type StopReasonCode =
   | ''
   | 'FALHA_MECANICA'
@@ -148,6 +151,9 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [parameterValue, setParameterValue] = useState('')
   const [componentId, setComponentId] = useState('')
   const [savingParameter, setSavingParameter] = useState(false)
+  const [parameterError, setParameterError] = useState('')
+  const [parameterScope, setParameterScope] = useState('EQUIPAMENTO')
+  const [visibleParameterCount, setVisibleParameterCount] = useState(PARAMETERS_PAGE_SIZE)
 
   const [stopOpen, setStopOpen] = useState(false)
   const [stopReason, setStopReason] = useState<StopReasonCode>('')
@@ -164,6 +170,10 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const [occurrenceSeverity, setOccurrenceSeverity] = useState('MEDIA')
   const [occurrenceComponentId, setOccurrenceComponentId] = useState('')
   const [savingOccurrence, setSavingOccurrence] = useState(false)
+  const [visibleOccurrenceCount, setVisibleOccurrenceCount] = useState(OCCURRENCES_PAGE_SIZE)
+  const [expandedOccurrenceIds, setExpandedOccurrenceIds] = useState<Set<string>>(
+    () => new Set(),
+  )
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -189,6 +199,28 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   )
   const automaticHourMeter =
     parameterName === 'HORIMETRO' && Boolean(context?.horimetro?.automatico)
+  const scannedComponentId = context?.componente?.id ?? ''
+  const parameterComponents = useMemo(() => {
+    const componentIds = new Set(
+      parameters
+        .map((parameter) => parameter.componente_id)
+        .filter((id): id is string => Boolean(id)),
+    )
+    return (context?.componentes ?? []).filter((component) => componentIds.has(component.id))
+  }, [context?.componentes, parameters])
+  const effectiveParameterScope = scannedComponentId || parameterScope
+  const filteredParameters = useMemo(
+    () =>
+      effectiveParameterScope === 'EQUIPAMENTO'
+        ? parameters.filter((parameter) => !parameter.componente_id)
+        : parameters.filter((parameter) => parameter.componente_id === effectiveParameterScope),
+    [effectiveParameterScope, parameters],
+  )
+  const visibleParameters = filteredParameters.slice(0, visibleParameterCount)
+  const hasMoreParameters = visibleParameterCount < filteredParameters.length
+  const openOccurrences = context?.ocorrencias_abertas ?? []
+  const visibleOccurrences = openOccurrences.slice(0, visibleOccurrenceCount)
+  const hasMoreOccurrences = visibleOccurrenceCount < openOccurrences.length
   const availableActions = useMemo(() => {
     const candidates = context?.acoes_pendentes?.length
       ? context.acoes_pendentes
@@ -215,6 +247,11 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     setContext(result)
     setComponentId(result.componente?.id ?? '')
     setParameterTarget(result.componente?.id ? 'COMPONENTE' : 'EQUIPAMENTO')
+    setParameterScope(result.componente?.id ?? 'EQUIPAMENTO')
+    setVisibleParameterCount(PARAMETERS_PAGE_SIZE)
+    setParameterError('')
+    setVisibleOccurrenceCount(OCCURRENCES_PAGE_SIZE)
+    setExpandedOccurrenceIds(new Set())
     setManualOpen(false)
     setCameraError('')
     setHistoryItems((result.historico_recente ?? []).slice(0, 4))
@@ -381,11 +418,14 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   }, [cameraActive])
 
   function openParameterModal() {
-    const initialComponentId = context?.componente?.id ?? ''
+    const initialComponentId =
+      context?.componente?.id ??
+      (parameterScope !== 'EQUIPAMENTO' ? parameterScope : '')
     setParameterTarget(initialComponentId ? 'COMPONENTE' : 'EQUIPAMENTO')
     setComponentId(initialComponentId)
     setParameterName('HORIMETRO')
     setParameterValue('')
+    setParameterError('')
     setParameterOpen(true)
   }
 
@@ -393,6 +433,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     if (savingParameter) return
     setParameterOpen(false)
     setParameterValue('')
+    setParameterError('')
   }
 
   function useLastParameterValue() {
@@ -403,13 +444,22 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   async function saveParameter() {
     if (!context?.ativo?.id) return
     if (parameterTarget === 'COMPONENTE' && !componentId) {
-      return onNotify('Selecione o componente')
+      setParameterError('Selecione o componente.')
+      return
     }
 
     const value = Number(parameterValue.replace(',', '.'))
-    if (!Number.isFinite(value)) return onNotify('Informe um valor numérico válido')
-    if (automaticHourMeter) return onNotify('Horímetro atualizado pela telemetria')
+    if (!Number.isFinite(value)) {
+      setParameterError('Informe um valor numérico válido.')
+      return
+    }
+    if (automaticHourMeter) {
+      setParameterError('Horímetro atualizado pela telemetria.')
+      return
+    }
 
+    const savedScope = parameterTarget === 'COMPONENTE' ? componentId : 'EQUIPAMENTO'
+    setParameterError('')
     setSavingParameter(true)
     try {
       await registerOperatorParameter({
@@ -423,8 +473,10 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
       setParameterValue('')
       onNotify('Leitura registrada')
       await lookup(lastQuery || context.ativo.tag || context.ativo.id)
+      setParameterScope(savedScope)
+      setVisibleParameterCount(PARAMETERS_PAGE_SIZE)
     } catch (cause) {
-      onNotify(cause instanceof Error ? cause.message : 'Falha ao registrar parâmetro')
+      setParameterError(cause instanceof Error ? cause.message : 'Falha ao registrar parâmetro')
     } finally {
       setSavingParameter(false)
     }
@@ -536,6 +588,15 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     }
   }
 
+  function toggleOccurrenceDetails(occurrenceId: string) {
+    setExpandedOccurrenceIds((current) => {
+      const next = new Set(current)
+      if (next.has(occurrenceId)) next.delete(occurrenceId)
+      else next.add(occurrenceId)
+      return next
+    })
+  }
+
   function closeOccurrence() {
     setOccurrenceOpen(false)
     setOccurrenceTarget('')
@@ -592,6 +653,11 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     setParameterName('HORIMETRO')
     setParameterValue('')
     setComponentId('')
+    setParameterError('')
+    setParameterScope('EQUIPAMENTO')
+    setVisibleParameterCount(PARAMETERS_PAGE_SIZE)
+    setVisibleOccurrenceCount(OCCURRENCES_PAGE_SIZE)
+    setExpandedOccurrenceIds(new Set())
     closeOccurrence()
     setCameraActive(true)
   }
@@ -856,41 +922,98 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
           </button>
         </div>
 
-        {parameters.length > 0 ? (
-          <div className="parameter-v2__grid">
-            {parameters.map((parameter) => {
-              const linkedComponent = (context.componentes ?? []).find(
-                (component) => component.id === parameter.componente_id,
-              )
-              const isComponent = Boolean(parameter.componente_id)
-              const targetLabel = isComponent
-                ? linkedComponent?.tag || linkedComponent?.nome || parameter.componente_id || 'Componente'
-                : 'Equipamento'
+        {/* FAB_CONTROL_PARAMETER_COMPACT_BLOCK_1 */}
+        <div className="parameter-v2__scope-row">
+          <label className="parameter-v2__scope">
+            <span>Exibindo</span>
+            {scannedComponentId ? (
+              <strong>
+                {context.componente?.tag || context.componente?.nome || scannedComponentId}
+              </strong>
+            ) : (
+              <select
+                value={parameterScope}
+                onChange={(event) => {
+                  setParameterScope(event.target.value)
+                  setVisibleParameterCount(PARAMETERS_PAGE_SIZE)
+                }}
+              >
+                <option value="EQUIPAMENTO">Equipamento</option>
+                {parameterComponents.map((component) => (
+                  <option key={component.id} value={component.id}>
+                    {component.tag || component.id} — {component.nome}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+          <span className="parameter-v2__scope-count">
+            {filteredParameters.length}
+          </span>
+        </div>
 
-              return (
-                <article className="parameter-v2__card" key={parameter.id}>
-                  <span className={isComponent ? 'parameter-v2__tag parameter-v2__tag--component' : 'parameter-v2__tag parameter-v2__tag--asset'}>
-                    {isComponent ? 'COMP' : 'EQUIP'}
-                  </span>
-                  <strong className="parameter-v2__name">{displayName(parameter.parametro)}</strong>
-                  <span className="parameter-v2__target" title={targetLabel}>{targetLabel}</span>
-                  <div className="parameter-v2__value">
-                    {parameter.valor ?? '—'} <small>{parameter.unidade || ''}</small>
-                  </div>
-                  <div className="parameter-v2__date" title="Último registro">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M5.5 9A8 8 0 0 1 19 7M18.5 15A8 8 0 0 1 5 17" />
-                    </svg>
-                    <span>{formatDate(parameter.registrado_em || parameter.criado_em)}</span>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
+        {filteredParameters.length > 0 ? (
+          <>
+            <div className="parameter-v2__grid">
+              {visibleParameters.map((parameter) => {
+                const linkedComponent = (context.componentes ?? []).find(
+                  (component) => component.id === parameter.componente_id,
+                )
+                const isComponent = Boolean(parameter.componente_id)
+                const targetLabel = isComponent
+                  ? linkedComponent?.tag || linkedComponent?.nome || parameter.componente_id || 'Componente'
+                  : 'Equipamento'
+
+                return (
+                  <article className="parameter-v2__card" key={parameter.id}>
+                    <span className={isComponent ? 'parameter-v2__tag parameter-v2__tag--component' : 'parameter-v2__tag parameter-v2__tag--asset'}>
+                      {isComponent ? 'COMP' : 'EQUIP'}
+                    </span>
+                    <strong className="parameter-v2__name">{displayName(parameter.parametro)}</strong>
+                    <span className="parameter-v2__target" title={targetLabel}>{targetLabel}</span>
+                    <div className="parameter-v2__value">
+                      {parameter.valor ?? '—'} <small>{parameter.unidade || ''}</small>
+                    </div>
+                    <div className="parameter-v2__date" title="Último registro">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M5.5 9A8 8 0 0 1 19 7M18.5 15A8 8 0 0 1 5 17" />
+                      </svg>
+                      <span>{formatDate(parameter.registrado_em || parameter.criado_em)}</span>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+
+            <div className="parameter-v2__progress">
+              <span>{visibleParameters.length} de {filteredParameters.length}</span>
+              {filteredParameters.length > PARAMETERS_PAGE_SIZE && (
+                <button
+                  type="button"
+                  aria-expanded={!hasMoreParameters}
+                  onClick={() =>
+                    setVisibleParameterCount((current) =>
+                      hasMoreParameters
+                        ? Math.min(current + PARAMETERS_PAGE_SIZE, filteredParameters.length)
+                        : PARAMETERS_PAGE_SIZE,
+                    )
+                  }
+                >
+                  {hasMoreParameters ? 'Ver mais' : 'Ver menos'}
+                </button>
+              )}
+            </div>
+          </>
         ) : (
-          <article className="empty-panel qr-empty-panel">
-            <strong>Nenhuma leitura registrada</strong>
-            <p>Use “Nova leitura” para incluir o primeiro parâmetro.</p>
+          <article className="empty-panel qr-empty-panel parameter-v2__empty">
+            <strong>Nenhuma leitura neste contexto</strong>
+            <p>
+              {scannedComponentId
+                ? 'Este componente ainda não possui parâmetros registrados.'
+                : parameterScope === 'EQUIPAMENTO'
+                  ? 'Selecione um componente ou registre uma leitura do equipamento.'
+                  : 'Este componente ainda não possui parâmetros registrados.'}
+            </p>
           </article>
         )}
 
@@ -977,6 +1100,12 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
                 )}
               </label>
 
+              {parameterError && (
+                <div className="parameter-v2__error" role="alert">
+                  {parameterError}
+                </div>
+              )}
+
               <div className="parameter-v2__actions">
                 <button type="button" onClick={closeParameterModal}>Cancelar</button>
                 <button type="submit" disabled={savingParameter || automaticHourMeter || (parameterTarget === 'COMPONENTE' && !componentId)}>
@@ -988,10 +1117,80 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         )}
       </section>
 
-      {(context.ocorrencias_abertas?.length ?? 0) > 0 && (
-        <section className="content-section">
-          <div className="section-heading"><div><h2>Ocorrências aguardando análise</h2><p>Registros enviados para gestão e administração.</p></div><span>{context.ocorrencias_abertas?.length ?? 0}</span></div>
-          <div className="history-list">{context.ocorrencias_abertas?.map((item) => <article className="history-card occurrence-card" key={item.id}><div><strong>{item.titulo}</strong><p>{item.descricao}</p><small>{item.tipo === 'COMPONENTE' ? `Componente · ${formatDate(item.criado_em)}` : `Equipamento geral · ${formatDate(item.criado_em)}`}</small></div><span className="history-status">{item.severidade}</span></article>)}</div>
+      {/* FAB_CONTROL_OCCURRENCE_COMPACT_BLOCK_2 */}
+      {openOccurrences.length > 0 && (
+        <section className="content-section occurrence-compact">
+          <div className="section-heading occurrence-compact__heading">
+            <div>
+              <h2>Ocorrências aguardando análise</h2>
+              <p>Registros enviados para gestão e administração.</p>
+            </div>
+            <span>{openOccurrences.length}</span>
+          </div>
+
+          <div className="occurrence-compact__list">
+            {visibleOccurrences.map((item) => {
+              const expanded = expandedOccurrenceIds.has(item.id)
+              const description = item.descricao || 'Sem descrição informada.'
+              const canExpand = description.length > 64
+              const visibleDescription =
+                canExpand && !expanded
+                  ? `${description.slice(0, 64).trimEnd()}…`
+                  : description
+
+              return (
+                /* FAB_CONTROL_OCCURRENCE_DETAILS_FIX_V3 */
+                <article className="occurrence-compact__card" key={item.id}>
+                  <div className="occurrence-compact__top">
+                    <strong>{item.titulo}</strong>
+                    <span className={`occurrence-compact__severity occurrence-compact__severity--${String(item.severidade || 'MEDIA').toLowerCase()}`}>
+                      {displayName(item.severidade || 'MEDIA')}
+                    </span>
+                  </div>
+
+                  <p className={expanded ? 'occurrence-compact__description is-expanded' : 'occurrence-compact__description'}>
+                    {visibleDescription}
+                  </p>
+
+                  <div className="occurrence-compact__footer">
+                    <small>
+                      {item.tipo === 'COMPONENTE' ? 'Componente' : 'Equipamento'}
+                      {' · '}
+                      {formatDate(item.criado_em)}
+                    </small>
+                    {canExpand && (
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={() => toggleOccurrenceDetails(item.id)}
+                      >
+                        {expanded ? 'Resumir' : 'Ver detalhes'}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+
+          <div className="occurrence-compact__progress">
+            <span>{visibleOccurrences.length} de {openOccurrences.length}</span>
+            {openOccurrences.length > OCCURRENCES_PAGE_SIZE && (
+              <button
+                type="button"
+                aria-expanded={!hasMoreOccurrences}
+                onClick={() =>
+                  setVisibleOccurrenceCount((current) =>
+                    hasMoreOccurrences
+                      ? Math.min(current + OCCURRENCES_PAGE_SIZE, openOccurrences.length)
+                      : OCCURRENCES_PAGE_SIZE,
+                  )
+                }
+              >
+                {hasMoreOccurrences ? 'Ver mais' : 'Ver menos'}
+              </button>
+            )}
+          </div>
         </section>
       )}
 
