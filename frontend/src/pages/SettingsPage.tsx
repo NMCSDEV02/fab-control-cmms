@@ -4,8 +4,15 @@ import { clearOperatorCache } from '../services/storage/operatorCache'
 export interface SettingsPageProps {
   apiOnline: boolean
   apiVersion: string
+  operatorName: string
+  operatorRegistration: string
+  operatorRole: string
+  operatorDepartment: string
+  operatorShift: string
+  sessionStartedAt: string
   onConfigurationSaved: () => void
   onTestConnection: () => Promise<void>
+  onLogout: () => void
 }
 
 type SyncResult = 'idle' | 'success' | 'error'
@@ -37,6 +44,18 @@ function formatDateTime(value: Date): string {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(value)
+}
+
+function formatSessionStartedAt(value: string): string {
+  if (!value) return 'Sessão atual'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? 'Sessão atual' : formatDateTime(parsed)
+}
+
+function getProfileInitials(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return 'OP'
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('')
 }
 
 function getExecutionMode(): string {
@@ -150,7 +169,14 @@ function initialDiagnostics(): DiagnosticSnapshot {
 export function SettingsPage({
   apiOnline,
   apiVersion,
+  operatorName,
+  operatorRegistration,
+  operatorRole,
+  operatorDepartment,
+  operatorShift,
+  sessionStartedAt,
   onTestConnection,
+  onLogout,
 }: SettingsPageProps) {
   const [testing, setTesting] = useState(false)
   const [diagnosing, setDiagnosing] = useState(false)
@@ -220,6 +246,13 @@ export function SettingsPage({
     }
   }
 
+  function requestLogout() {
+    const confirmed = window.confirm(
+      'Sair da conta deste operador? A interface será reiniciada e voltará para a identificação.',
+    )
+    if (confirmed) onLogout()
+  }
+
   const synchronizationOnline = apiOnline && deviceOnline
 
   return (
@@ -237,37 +270,61 @@ export function SettingsPage({
           <div className="settings-panel__heading">
             <div>
               <span className="settings-kicker">Conta</span>
-              <h2>Sessão do operador</h2>
+              <h2>Meu perfil</h2>
             </div>
-            <span className="status-chip">Homologação</span>
+            <span className="status-chip status-chip--online">Sessão ativa</span>
           </div>
 
           <div className="settings-profile">
-            <span className="settings-profile__avatar" aria-hidden="true">CA</span>
+            <span className="settings-profile__avatar" aria-hidden="true">
+              {getProfileInitials(operatorName)}
+            </span>
             <div>
-              <strong>Carlos</strong>
-              <p>Operador · Turno A</p>
+              <strong>{operatorName}</strong>
+              <p>{operatorRole} · {operatorShift}</p>
             </div>
           </div>
 
           <div className="settings-details">
             <div className="settings-detail-row">
-              <span>Perfil</span>
-              <strong>Operador</strong>
+              <span>Matrícula</span>
+              <strong>{operatorRegistration}</strong>
+            </div>
+            <div className="settings-detail-row">
+              <span>Cargo ou ocupação</span>
+              <strong>{operatorRole}</strong>
+            </div>
+            <div className="settings-detail-row">
+              <span>Setor</span>
+              <strong>{operatorDepartment}</strong>
             </div>
             <div className="settings-detail-row">
               <span>Turno atual</span>
-              <strong>Turno A</strong>
+              <strong>{operatorShift}</strong>
+            </div>
+            <div className="settings-detail-row">
+              <span>Sessão iniciada</span>
+              <strong>{formatSessionStartedAt(sessionStartedAt)}</strong>
             </div>
             <div className="settings-detail-row">
               <span>Autenticação</span>
-              <strong>Sessão local de homologação</strong>
+              <strong>Homologação local</strong>
             </div>
           </div>
 
           <p className="settings-pending-note">
-            Matrícula, sessão renovável e encerramento de sessão serão ativados no bloco de autenticação.
+            Nome, cargo, setor e turno serão preenchidos pela API após a autenticação real.
           </p>
+
+          <div className="settings-account-actions">
+            <button
+              type="button"
+              className="settings-logout-button"
+              onClick={requestLogout}
+            >
+              Sair da conta
+            </button>
+          </div>
         </article>
 
         <article className="settings-panel">
