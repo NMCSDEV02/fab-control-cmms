@@ -18,12 +18,7 @@ function cmmsOperacionalUiSchemaUpgrade110_(p, usuario){
   var ss = getSpreadsheet_();
   Object.keys(SH).forEach(function(name){ ensureSheet_(ss, name, SH[name]); });
 
-  upsert_("config", "chave", {
-    chave:"app.version",
-    valor:FAB.VERSION,
-    descricao:"Versão backend",
-    atualizado_em:now_()
-  });
+  syncReleaseVersionConfig_();
 
   upsert_("config", "chave", {
     chave:"ui.operacional.contrato",
@@ -288,7 +283,10 @@ function CMMS110_buildActionCard_(acao, auth){
     finalizacao = {ok:true, can_finalize:false, total:totalModelo, respondidos:0, pending_count:totalModelo, evidence_missing_count:0, blockers_count:0, pendentes:[], evidencias_pendentes:[], bloqueios:[]};
   }
 
-  var ui = CMMS110_uiState_(acao, ex, auth, finalizacao);
+  var disponibilidade = typeof disponibilidadeAcao120_ === "function"
+    ? disponibilidadeAcao120_(acao, ctx.os)
+    : null;
+  var ui = CMMS110_uiState_(acao, ex, auth, finalizacao, disponibilidade);
 
   return {
     acao:CMMS109_cleanAcao_(acao),
@@ -298,6 +296,7 @@ function CMMS110_buildActionCard_(acao, auth){
     plano:ctx.plano ? CMMS109_cleanPlano_(ctx.plano) : null,
     execucao:ex ? CMMS109_cleanExecucao_(ex) : null,
     finalizacao:finalizacao,
+    disponibilidade:disponibilidade,
     ui:ui,
     next_actions:CMMS110_nextActions_(ui)
   };
@@ -321,7 +320,10 @@ function CMMS110_buildActionScreen_(acao, auth, ex){
     checklist = {modelo:true, execucao_id:"", total:itensModelo.length, respondidos:0, pending_count:finalizacao.pending_count, evidence_missing_count:0, blockers_count:0, itens:itensModelo};
   }
 
-  var ui = CMMS110_uiState_(acao, ex, auth, finalizacao);
+  var disponibilidade = typeof disponibilidadeAcao120_ === "function"
+    ? disponibilidadeAcao120_(acao, ctx.os)
+    : null;
+  var ui = CMMS110_uiState_(acao, ex, auth, finalizacao, disponibilidade);
   var executor = ex && clean_(ex.operador_id)
     ? find_("usuarios", "id", ex.operador_id)
     : null;
@@ -339,6 +341,7 @@ function CMMS110_buildActionScreen_(acao, auth, ex){
     executor:executor ? {id:executor.id, nome:executor.nome, email:executor.email} : null,
     checklist:checklist,
     finalizacao:finalizacao,
+    disponibilidade:disponibilidade,
     ui:ui,
     next_actions:CMMS110_nextActions_(ui),
     contrato_lote:{
@@ -545,7 +548,7 @@ function CMMS110_compactFinalizacao_(validacao){
   };
 }
 
-function CMMS110_uiState_(acao, ex, auth, finalizacao){
+function CMMS110_uiState_(acao, ex, auth, finalizacao, disponibilidade){
   var st = upper_(acao && acao.status);
   var perfil = upper_(auth && auth.perfil);
   var userId = clean_(auth && auth.usuario_id);
@@ -562,9 +565,14 @@ function CMMS110_uiState_(acao, ex, auth, finalizacao){
   }
 
   if(st === ST.PENDENTE && !ex){
-    base.state = "AGUARDANDO_INICIO";
-    base.can_start = perfil === ROLE.OPERADOR;
-    base.message = "Ação pendente. Inicie para gerar execução e checklist operacional.";
+    disponibilidade = disponibilidade || (typeof disponibilidadeAcao120_ === "function"
+      ? disponibilidadeAcao120_(acao)
+      : {pode_iniciar:true, estado:"SEM_AGENDAMENTO", mensagem:"Ação pendente."});
+    base.state = disponibilidade.pode_iniciar ? "AGUARDANDO_INICIO" : disponibilidade.estado;
+    base.can_start = perfil === ROLE.OPERADOR && disponibilidade.pode_iniciar;
+    base.message = disponibilidade.pode_iniciar
+      ? "Ação pendente e disponível para início."
+      : disponibilidade.mensagem;
     return base;
   }
 

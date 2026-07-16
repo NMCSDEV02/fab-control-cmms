@@ -16,6 +16,11 @@ export interface HealthData {
   ok: boolean
   app: string
   version: string
+  release_version?: string
+  api_version?: string
+  schema_version?: string
+  contract_version?: string
+  frontend_version?: string
   spreadsheetId?: string
   serverTime?: string
 }

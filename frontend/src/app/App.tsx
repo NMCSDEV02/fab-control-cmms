@@ -6,13 +6,12 @@ import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
 import { OperatorHome } from '../pages/OperatorHome'
 import { LoginPage } from '../pages/LoginPage'
+import { revokeOperatorSession } from '../services/api/auth'
 import {
-  clearPreviewSession,
-  markExpiredPreviewSession,
-  readPreviewSession,
-  readPreviewSessionExpiresAt,
-  readPreviewSessionStartedAt,
-  savePreviewSession,
+  clearOperatorSession,
+  markExpiredOperatorSession,
+  readOperatorSession,
+  saveOperatorSession,
 } from '../services/auth/session'
 import { QrPage } from '../pages/QrPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -50,8 +49,6 @@ import type {
 import type { OperatorAction } from '../types/operator'
 
 type AppView = 'navigation' | 'action-detail' | 'checklist'
-
-const AUTH_PREVIEW_DURATION_MS = 8 * 60 * 60_000
 
 type RefreshOptions = { forceHealth?: boolean; silent?: boolean }
 type DetailLoadOptions = { forceNetwork?: boolean; background?: boolean }
@@ -227,9 +224,7 @@ function mergeEvidenceIntoDetail(
 }
 
 export function App() {
-  const [authPreviewRegistration, setAuthPreviewRegistration] = useState(readPreviewSession)
-  const [authPreviewStartedAt, setAuthPreviewStartedAt] = useState(readPreviewSessionStartedAt)
-  const [authPreviewExpiresAt, setAuthPreviewExpiresAt] = useState(readPreviewSessionExpiresAt)
+  const [operatorSession, setOperatorSession] = useState(readOperatorSession)
   const initialExecutionContextRef = useRef<StoredExecutionContext | null>(
     readActiveExecutionContext(),
   )
@@ -281,9 +276,9 @@ export function App() {
   const configured = hasApiConfiguration()
 
   useEffect(() => {
-    if (!authPreviewRegistration || !authPreviewExpiresAt) return
+    if (!operatorSession) return
 
-    const remainingSessionTime = authPreviewExpiresAt - Date.now()
+    const remainingSessionTime = operatorSession.expiresAt - Date.now()
     if (remainingSessionTime <= 0) {
       expireOperatorSession()
       return
@@ -291,7 +286,7 @@ export function App() {
 
     const timer = window.setTimeout(expireOperatorSession, remainingSessionTime)
     return () => window.clearTimeout(timer)
-  }, [authPreviewRegistration, authPreviewExpiresAt])
+  }, [operatorSession])
 
   useEffect(() => {
     actionDetailRef.current = actionDetail
@@ -399,8 +394,9 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    if (!operatorSession) return
     void refresh({ forceHealth: true })
-  }, [refresh, configurationRevision])
+  }, [refresh, configurationRevision, operatorSession?.token])
 
   useEffect(() => {
     const canRefreshHome = () =>
@@ -499,6 +495,8 @@ export function App() {
   }, [])
 
   useEffect(() => {
+  if (!operatorSession) return
+
   const stored =
     initialExecutionContextRef.current ?? readActiveExecutionContext()
 
@@ -527,7 +525,7 @@ export function App() {
       setView('action-detail')
     }
   })
-}, [configurationRevision, loadActionDetail])
+}, [configurationRevision, loadActionDetail, operatorSession?.token])
   function openActionById(actionId: string) {
     selectedActionIdRef.current = actionId
     setSelectedActionId(actionId)
@@ -821,17 +819,24 @@ export function App() {
   }
 
   function expireOperatorSession() {
-    markExpiredPreviewSession()
-    setAuthPreviewRegistration('')
-    setAuthPreviewStartedAt('')
-    setAuthPreviewExpiresAt(0)
+    markExpiredOperatorSession()
+    setOperatorSession(null)
     setSection('home')
     setView('navigation')
   }
 
-  function logoutOperator() {
-    clearPreviewSession()
-    window.location.reload()
+  async function logoutOperator() {
+    const token = operatorSession?.token ?? ''
+    try {
+      await revokeOperatorSession(token)
+    } catch {
+      // O encerramento local prevalece quando a API está indisponível.
+    } finally {
+      clearOperatorSession()
+      clearActiveExecutionContext()
+      setOperatorSession(null)
+      window.location.reload()
+    }
   }
 
   function changeSection(next: AppSection) {
@@ -840,16 +845,13 @@ export function App() {
     if (next === 'home') void refresh()
   }
 
-  if (!authPreviewRegistration) {
+  if (!operatorSession) {
     return (
       <LoginPage
-        onPreviewAuthenticated={(registration, options) => {
-          const startedAt = new Date().toISOString()
-          const expiresAt = Date.now() + (options?.expiresInMs ?? AUTH_PREVIEW_DURATION_MS)
-          savePreviewSession(registration, startedAt, expiresAt)
-          setAuthPreviewStartedAt(startedAt)
-          setAuthPreviewExpiresAt(expiresAt)
-          setAuthPreviewRegistration(registration)
+        onAuthenticated={(session) => {
+          saveOperatorSession(session)
+          setConnectionState('checking')
+          setOperatorSession(session)
         }}
       />
     )
@@ -889,8 +891,8 @@ export function App() {
     <div className="app-stage">
       <section className="app-frame">
         <AppHeader
-          operatorName="Operador"
-          shift={`Matrícula ${authPreviewRegistration}`}
+          operatorName={operatorSession.user.nome || 'Operador'}
+          shift={`Matrícula ${operatorSession.user.matricula}`}
           connectionState={connectionState}
         />
 
@@ -950,15 +952,15 @@ export function App() {
                 <SettingsPage
                     apiOnline={connectionState === 'online'}
                     apiVersion={apiVersion}
-                    operatorName="Operador"
-                    operatorRegistration={authPreviewRegistration}
-                    operatorRole="Operador"
+                    operatorName={operatorSession.user.nome || 'Operador'}
+                    operatorRegistration={operatorSession.user.matricula}
+                    operatorRole={operatorSession.user.perfil}
                     operatorDepartment="Não sincronizado"
                     operatorShift="Não sincronizado"
-                    sessionStartedAt={authPreviewStartedAt}
+                    sessionStartedAt={operatorSession.startedAt}
                     onConfigurationSaved={configurationSaved}
                     onTestConnection={testConnection}
-                    onLogout={logoutOperator}
+                    onLogout={() => void logoutOperator()}
                   />
               )}
             </>

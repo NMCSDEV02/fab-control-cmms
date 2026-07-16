@@ -1,0 +1,63 @@
+{
+  "manifestVersion": 1,
+  "release": "1.3.0",
+  "status": "auth-integration-homologated",
+  "components": {
+    "frontend": "1.3.0",
+    "backendApi": "1.3.0",
+    "apiContract": "1.3.0",
+    "spreadsheetSchema": "1.3.0"
+  },
+  "baseline": {
+    "backendFabVersion": "1.2.1-operador-finalizacao-operacional",
+    "appsScriptVersion": 49,
+    "sourceCaptureSha256": "69F3FBFF318ACF297DAE403D0C9A3E42F0431BA5E39E9481288B0C9F6C0E41DA"
+  },
+  "target": {
+    "backendSourceSha256": "D0C5D9207758FDF7EAC3F604920B6ACC2AF9CB40B159B0B4594875A291C4BB57",
+    "immutableAppsScriptVersion": 2,
+    "deploymentId": "AKfycbwc21jXAcku1bnoh_B_t23SY4SmNybqcbIHZOQQZKzh7BASmexA2k_ZGYMYtm5pFCKNDA",
+    "gitCommit": "2f24252"
+  },
+  "homologationGate": {
+    "requireExactVersionMatch": true,
+    "requireImmutableAppsScriptVersion": true,
+    "allowHeadDeployment": false,
+    "requireCleanGitTag": true
+  },
+  "features": {
+    "operatorAuthentication": {
+      "status": "homologated",
+      "identifier": "matricula",
+      "passwordStorage": "salted-iterative-sha256-with-script-property-pepper",
+      "firstAccessRequiredForLegacyPinUsers": true,
+      "maxInvalidAttempts": 5,
+      "temporaryLockMinutes": 15,
+      "sessionStorageOnly": true,
+      "remoteValidation": "approved",
+      "recoveryCooldownMinutes": 10,
+      "authSchemaMarker": "config:auth.schema.version",
+      "recoveryResponse": "non-enumerating-deterministic-reference",
+      "recoveryMinimumResponseMs": 200,
+      "startupVersionGate": "durable-until-compatible",
+      "postLoginRefresh": "immediate",
+      "executionRestoreRequiresSession": true,
+      "inMemoryTokenFallback": true,
+      "bootstrapEndpointInventory": "complete"
+    }
+  },
+  "homologationEvidence": {
+    "environment": "isolated",
+    "release": "1.3.0",
+    "immutableAppsScriptVersion": 2,
+    "sourceGitCommit": "2f24252",
+    "backendSourceSha256": "D0C5D9207758FDF7EAC3F604920B6ACC2AF9CB40B159B0B4594875A291C4BB57",
+    "health": "approved",
+    "bootstrap": "approved",
+    "authenticationApi": "approved",
+    "frontendIntegration": "approved",
+    "sessionStorageOnly": "approved",
+    "recoveryNonEnumeration": "approved",
+    "temporaryLock": "approved"
+  }
+}

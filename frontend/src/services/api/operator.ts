@@ -135,7 +135,7 @@ export function mapOperatorCard(card: RawOperatorCard): OperatorAction {
 }
 
 export async function getSystemHealth(signal?: AbortSignal): Promise<HealthData> {
-  const response = await callApi<{ ok: boolean; app: string; version: string; spreadsheetId?: string; serverTime?: string }>(
+  const response = await callApi<HealthData>(
     'sistema.health',
     {},
     signal,

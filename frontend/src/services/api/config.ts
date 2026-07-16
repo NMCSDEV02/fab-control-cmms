@@ -2,6 +2,8 @@ const API_URL_KEY = 'fab-control.api-url'
 const OPERATOR_TOKEN_SESSION_KEY = 'fab-control.operator-token'
 const LEGACY_OPERATOR_TOKEN_PERSISTENT_KEY = 'fab-control.operator-token-persistent'
 
+let inMemoryOperatorToken = ''
+
 function environmentOperatorToken(): string {
   return (import.meta.env.VITE_OPERATOR_TOKEN as string | undefined)?.trim() ?? ''
 }
@@ -56,12 +58,17 @@ export function saveApiUrl(value: string): void {
 
 export function getOperatorToken(): string {
   clearLegacyPersistentToken()
-  return readSessionStorage(OPERATOR_TOKEN_SESSION_KEY) || environmentOperatorToken()
+  return (
+    readSessionStorage(OPERATOR_TOKEN_SESSION_KEY) ||
+    inMemoryOperatorToken ||
+    environmentOperatorToken()
+  )
 }
 
 export function saveOperatorToken(value: string): void {
   clearLegacyPersistentToken()
-  writeSessionStorage(OPERATOR_TOKEN_SESSION_KEY, value.trim())
+  inMemoryOperatorToken = value.trim()
+  writeSessionStorage(OPERATOR_TOKEN_SESSION_KEY, inMemoryOperatorToken)
 }
 
 export function clearOperatorToken(): void {

@@ -1,22 +1,43 @@
-import { clearOperatorToken } from '../api/config'
+import type { OperatorSession } from '../api/auth'
+import {
+  clearOperatorToken,
+  getOperatorToken,
+  saveOperatorToken,
+} from '../api/config'
 
-const AUTH_PREVIEW_SESSION_KEY = 'fab-control.auth-preview-session'
-const AUTH_PREVIEW_STARTED_AT_KEY = 'fab-control.auth-preview-started-at'
-const AUTH_PREVIEW_EXPIRES_AT_KEY = 'fab-control.auth-preview-expires-at'
+const AUTH_SESSION_KEY = 'fab-control.auth-session'
 const AUTH_NOTICE_KEY = 'fab-control.auth-notice'
 const STARTUP_COMPLETED_KEY = 'fab-control.startup-completed'
 
+const LEGACY_PREVIEW_KEYS = [
+  'fab-control.auth-preview-session',
+  'fab-control.auth-preview-started-at',
+  'fab-control.auth-preview-expires-at',
+]
+
 export type AuthenticationNotice = 'session-expired'
 
-function removePreviewSessionData(): void {
-  window.sessionStorage.removeItem(AUTH_PREVIEW_SESSION_KEY)
-  window.sessionStorage.removeItem(AUTH_PREVIEW_STARTED_AT_KEY)
-  window.sessionStorage.removeItem(AUTH_PREVIEW_EXPIRES_AT_KEY)
+function removeSessionData(): void {
+  window.sessionStorage.removeItem(AUTH_SESSION_KEY)
+  for (const key of LEGACY_PREVIEW_KEYS) window.sessionStorage.removeItem(key)
 }
 
-export function markExpiredPreviewSession(): void {
+function isValidSession(value: unknown): value is OperatorSession {
+  if (!value || typeof value !== 'object') return false
+  const session = value as Partial<OperatorSession>
+  return Boolean(
+    session.token &&
+      session.startedAt &&
+      Number.isFinite(session.expiresAt) &&
+      session.user?.id &&
+      session.user?.matricula &&
+      session.user?.nome,
+  )
+}
+
+export function markExpiredOperatorSession(): void {
   try {
-    removePreviewSessionData()
+    removeSessionData()
     clearOperatorToken()
     window.sessionStorage.setItem(AUTH_NOTICE_KEY, 'session-expired')
   } catch {
@@ -24,73 +45,53 @@ export function markExpiredPreviewSession(): void {
   }
 }
 
-export function readPreviewSession(): string {
+export function readOperatorSession(): OperatorSession | null {
   try {
-    const registration =
-      window.sessionStorage.getItem(AUTH_PREVIEW_SESSION_KEY)?.trim() ?? ''
+    const raw = window.sessionStorage.getItem(AUTH_SESSION_KEY)
+    if (!raw) return null
 
-    if (!registration) return ''
-
-    const expiresAt = Number(
-      window.sessionStorage.getItem(AUTH_PREVIEW_EXPIRES_AT_KEY) ?? '0',
-    )
-
-    if (expiresAt > 0 && expiresAt <= Date.now()) {
-      markExpiredPreviewSession()
-      return ''
+    const parsed = JSON.parse(raw) as unknown
+    if (!isValidSession(parsed)) {
+      removeSessionData()
+      clearOperatorToken()
+      return null
     }
 
-    return registration
+    if (parsed.expiresAt <= Date.now()) {
+      markExpiredOperatorSession()
+      return null
+    }
+
+    const currentToken = getOperatorToken()
+    if (currentToken && currentToken !== parsed.token) {
+      removeSessionData()
+      clearOperatorToken()
+      return null
+    }
+
+    saveOperatorToken(parsed.token)
+    return parsed
   } catch {
-    return ''
+    removeSessionData()
+    clearOperatorToken()
+    return null
   }
 }
 
-export function readPreviewSessionStartedAt(): string {
+export function saveOperatorSession(session: OperatorSession): void {
   try {
-    const existing =
-      window.sessionStorage.getItem(AUTH_PREVIEW_STARTED_AT_KEY)?.trim() ?? ''
-
-    if (existing) return existing
-    if (!readPreviewSession()) return ''
-
-    const createdAt = new Date().toISOString()
-    window.sessionStorage.setItem(AUTH_PREVIEW_STARTED_AT_KEY, createdAt)
-    return createdAt
-  } catch {
-    return ''
-  }
-}
-
-export function readPreviewSessionExpiresAt(): number {
-  try {
-    const expiresAt = Number(
-      window.sessionStorage.getItem(AUTH_PREVIEW_EXPIRES_AT_KEY) ?? '0',
-    )
-    return Number.isFinite(expiresAt) ? expiresAt : 0
-  } catch {
-    return 0
-  }
-}
-
-export function savePreviewSession(
-  registration: string,
-  startedAt: string,
-  expiresAt: number,
-): void {
-  try {
-    window.sessionStorage.setItem(AUTH_PREVIEW_SESSION_KEY, registration)
-    window.sessionStorage.setItem(AUTH_PREVIEW_STARTED_AT_KEY, startedAt)
-    window.sessionStorage.setItem(AUTH_PREVIEW_EXPIRES_AT_KEY, String(expiresAt))
+    saveOperatorToken(session.token)
+    window.sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
     window.sessionStorage.removeItem(AUTH_NOTICE_KEY)
+    for (const key of LEGACY_PREVIEW_KEYS) window.sessionStorage.removeItem(key)
   } catch {
-    // A sessão de homologação continua em memória quando o storage está indisponível.
+    // A sessão continua em memória no componente atual.
   }
 }
 
-export function clearPreviewSession(): void {
+export function clearOperatorSession(): void {
   try {
-    removePreviewSessionData()
+    removeSessionData()
     clearOperatorToken()
     window.sessionStorage.removeItem(AUTH_NOTICE_KEY)
     window.sessionStorage.removeItem(STARTUP_COMPLETED_KEY)
@@ -111,7 +112,7 @@ export function markStartupCompleted(): void {
   try {
     window.sessionStorage.setItem(STARTUP_COMPLETED_KEY, '1')
   } catch {
-    // Sem impacto funcional; o pré-carregamento poderá repetir com storage bloqueado.
+    // Sem impacto funcional; o pré-carregamento poderá repetir.
   }
 }
 

@@ -349,6 +349,12 @@ function autorizarDriveEvidencias117_(){
   };
 }
 
+function testarAutorizacaoDrive117() {
+  const resultado = autorizarDriveEvidencias117_();
+  console.log(JSON.stringify(resultado));
+  return resultado;
+}
+
 function adminVerificarDriveEvidencias117_(p, auth){
   auth = auth || p.__auth || {};
   if(upper_(auth.perfil) !== ROLE.ADMIN){
@@ -367,7 +373,7 @@ function adminVerificarDriveEvidencias117_(p, auth){
 }
 
 function quantidadeEvidenciasRegistradas117_(checklistExecucaoId){
-  return rows_("evidencias", true).filter(function(evidencia){
+  return rows_("evidencias").filter(function(evidencia){
     return String(evidencia.checklist_execucao_id) === String(checklistExecucaoId) &&
       upper_(evidencia.tipo || "FOTO") === "FOTO";
   }).length;
@@ -403,7 +409,9 @@ function operadorUploadEvidenciaFoto116_(p, auth){
   requireExecucaoDoOperador1081_(ex, auth);
 
   var quantidadeConfigurada = evidenciaMinFotos116_(item);
-  var quantidadeRegistrada = quantidadeEvidenciasRegistradas117_(item.id);
+  var quantidadeRegistrada = clean_(item.evidencias_count) !== ""
+    ? Math.max(0, num_(item.evidencias_count, 0))
+    : quantidadeEvidenciasRegistradas117_(item.id);
   if(quantidadeConfigurada > 0 && quantidadeRegistrada >= quantidadeConfigurada){
     err_(
       "EVIDENCE_QUANTITY_REACHED",
@@ -428,11 +436,9 @@ function operadorUploadEvidenciaFoto116_(p, auth){
     }
     throw e;
   }
-  file.setDescription(
-    "FAB Control | ação "+acao.id+" | execução "+item.execucao_id+" | checklist "+item.id
-  );
-
-  var thumbnail = "https://drive.google.com/thumbnail?id="+encodeURIComponent(file.getId())+"&sz=w800";
+  var fileId = file.getId();
+  var fileUrl = file.getUrl();
+  var thumbnail = "https://drive.google.com/thumbnail?id="+encodeURIComponent(fileId)+"&sz=w800";
   var saved = operadorRegistrarEvidencia_({
     __auth:auth,
     acao_id:acao.id,
@@ -440,17 +446,18 @@ function operadorUploadEvidenciaFoto116_(p, auth){
     checklist_execucao_id:item.id,
     tipo:"FOTO",
     nome_arquivo:filename,
-    url:file.getUrl(),
+    url:fileUrl,
     observacao:clean_(p.observacao),
-    arquivo_id:file.getId(),
+    arquivo_id:fileId,
     mime_type:mime,
     tamanho_bytes:bytes.length,
-    thumbnail_url:thumbnail
+    thumbnail_url:thumbnail,
+    __quantidade_anterior:quantidadeRegistrada
   });
 
   saved.uploaded = true;
-  saved.arquivo_id = file.getId();
-  saved.url = file.getUrl();
+  saved.arquivo_id = fileId;
+  saved.url = fileUrl;
   saved.thumbnail_url = thumbnail;
   saved.mime_type = mime;
   saved.tamanho_bytes = bytes.length;
