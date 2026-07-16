@@ -32,6 +32,11 @@ for (const field of ["escopo","expira_ms","revogado_em","motivo_revogacao"]) {
   assert(config.includes('"' + field + '"'), 'campo de sessão ausente: ' + field)
 }
 
+const bootstrapStart = http.indexOf('function sistemaBootstrap_()')
+const bootstrapEnd = http.indexOf('function ensureAuthSchema_', bootstrapStart)
+assert(bootstrapStart >= 0 && bootstrapEnd > bootstrapStart, 'função sistema.bootstrap não localizada')
+const bootstrapSource = http.slice(bootstrapStart, bootstrapEnd)
+
 for (const action of [
   'auth.login',
   'auth.first_access.complete',
@@ -40,6 +45,7 @@ for (const action of [
 ]) {
   assert(config.includes('"' + action + '"'), 'ação pública ausente: ' + action)
   assert(http.includes('case "' + action + '"'), 'rota ausente: ' + action)
+  assert(bootstrapSource.includes('"' + action + '"'), 'endpoint ausente no bootstrap: ' + action)
 }
 
 assert(utils.includes('authCreatePasswordHash_'), 'hash forte não implementado')

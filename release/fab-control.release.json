@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "release": "1.3.0",
-  "status": "auth-integration-local",
+  "status": "auth-integration-homologation",
   "components": {
     "frontend": "1.3.0",
     "backendApi": "1.3.0",
@@ -14,7 +14,7 @@
     "sourceCaptureSha256": "69F3FBFF318ACF297DAE403D0C9A3E42F0431BA5E39E9481288B0C9F6C0E41DA"
   },
   "target": {
-    "backendSourceSha256": "2EC9860DB719A792BABE02B4B31294EE8952A7DF1B7DA07CE880059174B6C3AC",
+    "backendSourceSha256": "D0C5D9207758FDF7EAC3F604920B6ACC2AF9CB40B159B0B4594875A291C4BB57",
     "immutableAppsScriptVersion": null,
     "deploymentId": null,
     "gitCommit": null
@@ -42,7 +42,8 @@
       "startupVersionGate": "durable-until-compatible",
       "postLoginRefresh": "immediate",
       "executionRestoreRequiresSession": true,
-      "inMemoryTokenFallback": true
+      "inMemoryTokenFallback": true,
+      "bootstrapEndpointInventory": "complete"
     }
   }
 }
