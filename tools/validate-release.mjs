@@ -190,11 +190,93 @@ if (gitIsTracked(environmentRelative)) {
   fail('arquivo local de ambiente está rastreado pelo Git')
 }
 
-console.log('VALIDAÇÃO LOCAL DA RELEASE APROVADA — VALIDADOR V1.3')
+const environmentPath = path.join(root, environmentRelative)
+if (!fs.existsSync(environmentPath)) {
+  fail('arquivo local de ambiente ausente: ' + environmentRelative)
+}
+
+const environment = JSON.parse(read(environmentPath))
+const target = manifest.target || {}
+const authFeature = manifest.features?.operatorAuthentication || {}
+
+if (
+  !Number.isInteger(target.immutableAppsScriptVersion) ||
+  target.immutableAppsScriptVersion < 1
+) {
+  fail('target.immutableAppsScriptVersion inválido')
+}
+if (!target.deploymentId || String(target.deploymentId).toUpperCase() === 'HEAD') {
+  fail('target.deploymentId imutável ausente')
+}
+if (!target.gitCommit || !/^[0-9a-f]{7,40}$/i.test(target.gitCommit)) {
+  fail('target.gitCommit inválido')
+}
+if (authFeature.remoteValidation !== 'approved') {
+  fail('homologação remota da autenticação não está aprovada')
+}
+if (authFeature.status !== 'homologated') {
+  fail('status da autenticação não está homologated')
+}
+
+if (environment.environment !== 'homologation') {
+  fail('ambiente local não está identificado como homologation')
+}
+if (environment.release !== expected) {
+  fail('release do ambiente local divergente')
+}
+if (environment.immutableAppsScriptVersion !== target.immutableAppsScriptVersion) {
+  fail('versão imutável local divergente do manifesto')
+}
+if (environment.deploymentId !== target.deploymentId) {
+  fail('deployment local divergente do manifesto')
+}
+if (environment.gitCommit !== target.gitCommit) {
+  fail('commit homologado local divergente do manifesto')
+}
+if (environment.backendSourceSha256 !== aggregate) {
+  fail('hash homologado local divergente do backend')
+}
+if (environment.isolatedFromProduction !== true) {
+  fail('isolamento da planilha de homologação não confirmado')
+}
+if (
+  !environment.webAppUrl ||
+  !environment.webAppUrl.includes('/s/' + target.deploymentId + '/exec')
+) {
+  fail('URL imutável de homologação inválida')
+}
+
+for (const check of [
+  'health',
+  'bootstrap',
+  'firstAccess',
+  'normalLogin',
+  'authenticatedOperatorRead',
+  'sessionStoragePersistence',
+  'localStorageTokenAbsence',
+  'remoteLogout',
+  'invalidCredentials',
+  'recoveryExistingUser',
+  'recoveryUnknownUser',
+  'recoveryNonEnumeration',
+  'temporaryLock',
+  'frontendIntegration',
+]) {
+  if (environment.checks?.[check] !== 'approved') {
+    fail('evidência de homologação ausente: ' + check)
+  }
+}
+
+console.log('VALIDAÇÃO LOCAL DA RELEASE APROVADA — VALIDADOR V1.4')
 console.log('Release única: ' + expected)
 console.log('Componentes: frontend, backend API, contrato e schema')
 console.log('Arquivos backend: ' + sourceFiles.length)
 console.log('SHA256 agregado do backend: ' + aggregate)
 console.log('Hash conferido com release/fab-control.release.json')
 console.log('Metadados locais sensíveis: ignorados e não rastreados')
-console.log('Gate remoto: pendente de versão imutável, deployment e atualização da planilha')
+console.log(
+  'Gate remoto de homologação: APROVADO — Apps Script @' +
+    target.immutableAppsScriptVersion,
+)
+console.log('Deployment imutável e planilha isolada: conferidos')
+console.log('Gate de publicação: pendente de tag limpa e promoção controlada para produção')
