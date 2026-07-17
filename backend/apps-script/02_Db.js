@@ -56,7 +56,7 @@ function invalidateRuntimeCache_(){
   safeCacheRemove_(metaCacheKey_("warmup_status"));
 }
 
-function setupInicial(){ return setupCMMSCore(); }
+function setupInicial(){ return setupProductionSchema(); }
 
 function setupCMMSCore(){
   invalidateRuntimeCache_();
@@ -181,7 +181,37 @@ function deleteRow_(name, rowIndex){
   invalidateSheetCache_(name);
 }
 
+function upsertConfigText_(key, obj){
+  var old = find_("config", key, obj[key]);
+  var sh = sheet_("config");
+  var headers = headers_("config");
+  var rowIndex = old ? old.__rowIndex : sh.getLastRow() + 1;
+  var merged = Object.assign({}, old || {}, obj || {});
+  var valueIndex = headers.indexOf("valor");
+
+  if(valueIndex >= 0){
+    merged.valor = String(merged.valor == null ? "" : merged.valor);
+    sh.getRange(rowIndex, valueIndex + 1).setNumberFormat("@");
+  }
+
+  sh.getRange(rowIndex, 1, 1, headers.length).setValues([
+    headers.map(function(header){
+      return merged[header] === undefined ? "" : merged[header];
+    })
+  ]);
+
+  invalidateSheetCache_("config");
+  return old ? Object.assign({}, old, obj) : obj;
+}
+
 function upsert_(name, key, obj){
+  if(
+    name === "config" &&
+    Object.prototype.hasOwnProperty.call(obj || {}, "valor")
+  ){
+    return upsertConfigText_(key, obj);
+  }
+
   var old = find_(name, key, obj[key]);
   if(old){
     update_(name, old.__rowIndex, obj);
