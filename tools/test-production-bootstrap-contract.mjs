@@ -75,6 +75,14 @@ assert(adminBody.includes("adminCreatedAt"), "idempotência deve exigir a data d
 
 
 const diagnosisBody = functionBody(source, "diagnoseProductionReadiness");
+assert(
+  diagnosisBody.includes('["config", "usuarios", "sessoes", "audit_log"]'),
+  "sessões históricas revogadas não podem contar como dados operacionais"
+);
+assert(
+  diagnosisBody.includes("activeSessions > 0"),
+  "sessões ativas devem continuar bloqueando a prontidão"
+);
 [
   "append_(",
   "update_(",

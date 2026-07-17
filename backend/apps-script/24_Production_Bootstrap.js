@@ -543,7 +543,7 @@ function diagnoseProductionReadiness(){
   }).length;
 
   var operationalRows = expectedNames.reduce(function(total, name){
-    if(["config", "usuarios", "audit_log"].indexOf(name) >= 0) return total;
+    if(["config", "usuarios", "sessoes", "audit_log"].indexOf(name) >= 0) return total;
     return total + (rowCounts[name] || 0);
   }, 0);
 
