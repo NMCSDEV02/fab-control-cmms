@@ -56,7 +56,7 @@ function invalidateRuntimeCache_(){
   safeCacheRemove_(metaCacheKey_("warmup_status"));
 }
 
-function setupInicial(){ return setupCMMSCore(); }
+function setupInicial(){ return setupProductionSchema(); }
 
 function setupCMMSCore(){
   invalidateRuntimeCache_();

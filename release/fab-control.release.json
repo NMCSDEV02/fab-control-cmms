@@ -1,12 +1,12 @@
 {
   "manifestVersion": 1,
-  "release": "1.3.0",
-  "status": "auth-integration-homologated",
+  "release": "1.3.1",
+  "status": "production-bootstrap-local-validated",
   "components": {
-    "frontend": "1.3.0",
-    "backendApi": "1.3.0",
-    "apiContract": "1.3.0",
-    "spreadsheetSchema": "1.3.0"
+    "frontend": "1.3.1",
+    "backendApi": "1.3.1",
+    "apiContract": "1.3.1",
+    "spreadsheetSchema": "1.3.1"
   },
   "baseline": {
     "backendFabVersion": "1.2.1-operador-finalizacao-operacional",
@@ -14,10 +14,10 @@
     "sourceCaptureSha256": "69F3FBFF318ACF297DAE403D0C9A3E42F0431BA5E39E9481288B0C9F6C0E41DA"
   },
   "target": {
-    "backendSourceSha256": "D0C5D9207758FDF7EAC3F604920B6ACC2AF9CB40B159B0B4594875A291C4BB57",
-    "immutableAppsScriptVersion": 2,
-    "deploymentId": "AKfycbwc21jXAcku1bnoh_B_t23SY4SmNybqcbIHZOQQZKzh7BASmexA2k_ZGYMYtm5pFCKNDA",
-    "gitCommit": "2f24252"
+    "backendSourceSha256": "PENDING_AFTER_COMMIT",
+    "immutableAppsScriptVersion": null,
+    "deploymentId": null,
+    "gitCommit": "PENDING_AFTER_COMMIT"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -44,6 +44,16 @@
       "executionRestoreRequiresSession": true,
       "inMemoryTokenFallback": true,
       "bootstrapEndpointInventory": "complete"
+    },
+    "productionBootstrap": {
+      "status": "local-contract-approved",
+      "requiresEmptySpreadsheet": true,
+      "requiresConfiguredSpreadsheetId": true,
+      "demoSeeded": false,
+      "initialAdminFirstAccessRequired": true,
+      "temporaryPasswordDeletedAfterUse": true,
+      "readinessDiagnosticReadOnly": true,
+      "remoteValidation": "pending"
     }
   },
   "homologationEvidence": {
@@ -58,6 +68,17 @@
     "frontendIntegration": "approved",
     "sessionStorageOnly": "approved",
     "recoveryNonEnumeration": "approved",
-    "temporaryLock": "approved"
+    "temporaryLock": "approved",
+    "appliesToRelease": "1.3.0"
+  },
+  "candidateEvidence": {
+    "environment": "local",
+    "release": "1.3.1",
+    "sourceBaseTag": "v1.3.0",
+    "javascriptSyntax": "approved",
+    "authenticationContract": "approved",
+    "productionBootstrapContract": "approved",
+    "frontendBuild": "pending",
+    "remoteCanary": "pending"
   }
 }
