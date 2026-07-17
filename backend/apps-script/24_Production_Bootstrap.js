@@ -69,6 +69,25 @@ function productionConfigValueFromSpreadsheet_(ss, key){
   return found ? clean_(found.valor) : "";
 }
 
+function productionSpreadsheetDateMatchesVersion_(value, version){
+  var match = /^(\d{1,2})\.(\d{1,2})\.(\d{1,4})$/.exec(clean_(version));
+  if(!match) return false;
+
+  var day = Number(match[1]);
+  var month = Number(match[2]);
+  var yearPart = Number(match[3]);
+  if(day < 1 || day > 31 || month < 1 || month > 12 || yearPart < 0 || yearPart > 99){
+    return false;
+  }
+
+  var expected =
+    String(2000 + yearPart) + "-" +
+    String(month).padStart(2, "0") + "-" +
+    String(day).padStart(2, "0");
+
+  return clean_(value).slice(0, 10) === expected;
+}
+
 function productionSheetHasAnyValue_(sheet){
   if(!sheet) return false;
   var values = sheet.getDataRange().getDisplayValues();
@@ -195,14 +214,17 @@ function setupProductionSchema(){
     var existingMarker = productionConfigValueFromSpreadsheet_(ss, PRODUCTION_BOOTSTRAP.MARKER_KEY);
 
     if(existingMarker){
-      if(existingMarker !== FAB_RELEASE_VERSION){
+      if(existingMarker === FAB_RELEASE_VERSION){
+        return Object.assign({already_initialized:true}, diagnoseProductionReadiness());
+      }
+
+      if(!productionSpreadsheetDateMatchesVersion_(existingMarker, FAB_RELEASE_VERSION)){
         err_(
           "PRODUCTION_BOOTSTRAP_VERSION_MISMATCH",
           "A planilha já foi inicializada por outra versão: " + existingMarker,
           409
         );
       }
-      return Object.assign({already_initialized:true}, diagnoseProductionReadiness());
     }
 
     assertSpreadsheetEmptyForProductionBootstrap_(ss);
