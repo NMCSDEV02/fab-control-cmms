@@ -119,8 +119,8 @@ const sourceFiles = fs
   .filter((name) => name.endsWith('.js') || name === 'appsscript.json')
   .sort()
 
-if (sourceFiles.length !== 25) {
-  fail('quantidade de fontes backend = ' + sourceFiles.length + '; esperado 25')
+if (sourceFiles.length !== 26) {
+  fail('quantidade de fontes backend = ' + sourceFiles.length + '; esperado 26')
 }
 
 if (fs.readdirSync(backend).some((name) => name.endsWith('.gs'))) {
@@ -198,6 +198,8 @@ if (!fs.existsSync(environmentPath)) {
 const environment = JSON.parse(read(environmentPath))
 const target = manifest.target || {}
 const authFeature = manifest.features?.operatorAuthentication || {}
+const bootstrapFeature = manifest.features?.productionBootstrap || {}
+const canaryEvidence = manifest.canaryEvidence || {}
 
 if (
   !Number.isInteger(target.immutableAppsScriptVersion) ||
@@ -216,6 +218,12 @@ if (authFeature.remoteValidation !== 'approved') {
 }
 if (authFeature.status !== 'homologated') {
   fail('status da autenticação não está homologated')
+}
+if (bootstrapFeature.remoteValidation !== 'approved') {
+  fail('homologação remota do bootstrap não está aprovada')
+}
+if (bootstrapFeature.status !== 'canary-homologated') {
+  fail('status do bootstrap não está canary-homologated')
 }
 
 if (environment.environment !== 'homologation') {
@@ -249,25 +257,94 @@ if (
 for (const check of [
   'health',
   'bootstrap',
-  'firstAccess',
-  'normalLogin',
-  'authenticatedOperatorRead',
-  'sessionStoragePersistence',
-  'localStorageTokenAbsence',
+  'permanentAdminLogin',
+  'authenticatedAdminRead',
   'remoteLogout',
-  'invalidCredentials',
-  'recoveryExistingUser',
-  'recoveryUnknownUser',
-  'recoveryNonEnumeration',
-  'temporaryLock',
-  'frontendIntegration',
+  'revokedTokenRejected',
+  'readinessAfterRevokedSessions',
+  'frontendBuild',
 ]) {
   if (environment.checks?.[check] !== 'approved') {
     fail('evidência de homologação ausente: ' + check)
   }
 }
 
-console.log('VALIDAÇÃO LOCAL DA RELEASE APROVADA — VALIDADOR V1.4')
+const bootstrapPhase = environment.bootstrapPhase || {}
+if (bootstrapPhase.immutableAppsScriptVersion !== 2) {
+  fail('fase local de bootstrap não está vinculada ao Apps Script @2')
+}
+if (bootstrapPhase.gitCommit !== 'a30a7ea') {
+  fail('commit local da fase de bootstrap divergente')
+}
+if (bootstrapPhase.deploymentId !== 'AKfycbyU6MBRAmtSrmBcZ1H1UruWquMCJoy95jgz_9SF9rJGDWmebb68HHF5DWl1dL2H4dtF') {
+  fail('deployment local da fase de bootstrap divergente')
+}
+for (const check of [
+  'productionSchema',
+  'initialAdminBootstrap',
+  'temporaryPasswordCleared',
+  'firstAccess',
+]) {
+  if (bootstrapPhase.checks?.[check] !== 'approved') {
+    fail('evidência local da fase de bootstrap ausente: ' + check)
+  }
+}
+
+if (canaryEvidence.environment !== 'isolated') {
+  fail('manifesto não confirma isolamento do canário')
+}
+if (canaryEvidence.release !== expected) {
+  fail('release da evidência canária divergente')
+}
+if (canaryEvidence.backendSourceSha256 !== aggregate) {
+  fail('hash da evidência canária divergente')
+}
+
+const manifestBootstrapPhase =
+  canaryEvidence.phases?.bootstrapAndFirstAccess || {}
+if (manifestBootstrapPhase.immutableAppsScriptVersion !== 2) {
+  fail('manifesto não vincula o bootstrap à versão @2')
+}
+if (manifestBootstrapPhase.sourceGitCommit !== 'a30a7ea') {
+  fail('manifesto possui commit incorreto para a fase de bootstrap')
+}
+if (manifestBootstrapPhase.deploymentId !== 'AKfycbyU6MBRAmtSrmBcZ1H1UruWquMCJoy95jgz_9SF9rJGDWmebb68HHF5DWl1dL2H4dtF') {
+  fail('manifesto possui deployment incorreto para a fase de bootstrap')
+}
+
+const manifestFinalPhase = canaryEvidence.phases?.finalCandidate || {}
+if (
+  manifestFinalPhase.immutableAppsScriptVersion !==
+  target.immutableAppsScriptVersion
+) {
+  fail('fase final do manifesto diverge da versão-alvo')
+}
+if (manifestFinalPhase.sourceGitCommit !== target.gitCommit) {
+  fail('fase final do manifesto diverge do commit-alvo')
+}
+if (manifestFinalPhase.deploymentId !== target.deploymentId) {
+  fail('fase final do manifesto diverge do deployment-alvo')
+}
+
+const legacyEvidence = manifest.homologationEvidence || {}
+if (legacyEvidence.appliesToRelease !== '1.3.0') {
+  fail('evidência legada não está vinculada à release 1.3.0')
+}
+for (const check of [
+  'health',
+  'bootstrap',
+  'authenticationApi',
+  'frontendIntegration',
+  'sessionStorageOnly',
+  'recoveryNonEnumeration',
+  'temporaryLock',
+]) {
+  if (legacyEvidence[check] !== 'approved') {
+    fail('evidência legada ausente: ' + check)
+  }
+}
+
+console.log('VALIDAÇÃO LOCAL DA RELEASE APROVADA — VALIDADOR V1.6')
 console.log('Release única: ' + expected)
 console.log('Componentes: frontend, backend API, contrato e schema')
 console.log('Arquivos backend: ' + sourceFiles.length)

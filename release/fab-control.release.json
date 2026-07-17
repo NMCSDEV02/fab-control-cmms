@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "release": "1.3.1",
-  "status": "production-bootstrap-local-validated",
+  "status": "production-bootstrap-canary-homologated",
   "components": {
     "frontend": "1.3.1",
     "backendApi": "1.3.1",
@@ -14,10 +14,10 @@
     "sourceCaptureSha256": "69F3FBFF318ACF297DAE403D0C9A3E42F0431BA5E39E9481288B0C9F6C0E41DA"
   },
   "target": {
-    "backendSourceSha256": "PENDING_AFTER_COMMIT",
-    "immutableAppsScriptVersion": null,
-    "deploymentId": null,
-    "gitCommit": "PENDING_AFTER_COMMIT"
+    "backendSourceSha256": "5ADCA155756E1E2AF22AC18D9601BC439F8558E47948AFFB9CFD5B905EB896CC",
+    "immutableAppsScriptVersion": 3,
+    "deploymentId": "AKfycbwlwv8vWkiaGR2HlK5-eIrwC_Ltha1qrH6n-kMsPb3bukqL33qxQtszSIM-unq1tbWKJw",
+    "gitCommit": "84f9c1b"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -46,14 +46,14 @@
       "bootstrapEndpointInventory": "complete"
     },
     "productionBootstrap": {
-      "status": "local-contract-approved",
+      "status": "canary-homologated",
       "requiresEmptySpreadsheet": true,
       "requiresConfiguredSpreadsheetId": true,
       "demoSeeded": false,
       "initialAdminFirstAccessRequired": true,
       "temporaryPasswordDeletedAfterUse": true,
       "readinessDiagnosticReadOnly": true,
-      "remoteValidation": "pending"
+      "remoteValidation": "approved"
     }
   },
   "homologationEvidence": {
@@ -72,13 +72,44 @@
     "appliesToRelease": "1.3.0"
   },
   "candidateEvidence": {
-    "environment": "local",
+    "environment": "isolated",
     "release": "1.3.1",
     "sourceBaseTag": "v1.3.0",
     "javascriptSyntax": "approved",
     "authenticationContract": "approved",
     "productionBootstrapContract": "approved",
     "frontendBuild": "approved",
-    "remoteCanary": "pending"
+    "remoteCanary": "approved"
+  },
+  "canaryEvidence": {
+    "environment": "isolated",
+    "release": "1.3.1",
+    "backendSourceSha256": "5ADCA155756E1E2AF22AC18D9601BC439F8558E47948AFFB9CFD5B905EB896CC",
+    "phases": {
+      "bootstrapAndFirstAccess": {
+        "immutableAppsScriptVersion": 2,
+        "sourceGitCommit": "a30a7ea",
+        "deploymentId": "AKfycbyU6MBRAmtSrmBcZ1H1UruWquMCJoy95jgz_9SF9rJGDWmebb68HHF5DWl1dL2H4dtF",
+        "productionSchema": "approved",
+        "initialAdminBootstrap": "approved",
+        "temporaryPasswordCleared": "approved",
+        "firstAccess": "approved"
+      },
+      "finalCandidate": {
+        "immutableAppsScriptVersion": 3,
+        "sourceGitCommit": "84f9c1b",
+        "deploymentId": "AKfycbwlwv8vWkiaGR2HlK5-eIrwC_Ltha1qrH6n-kMsPb3bukqL33qxQtszSIM-unq1tbWKJw",
+        "health": "approved",
+        "bootstrap": "approved",
+        "permanentAdminLogin": "approved",
+        "authenticatedAdminRead": "approved",
+        "remoteLogout": "approved",
+        "revokedTokenRejected": "approved",
+        "readinessAfterRevokedSessions": "approved",
+        "activeSessions": 0,
+        "operationalRows": 0,
+        "syntheticRows": 0
+      }
+    }
   }
 }

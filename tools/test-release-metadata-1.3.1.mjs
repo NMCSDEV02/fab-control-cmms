@@ -36,9 +36,10 @@ assert(
 
 assert(manifest.release === "1.3.1", "manifesto não declara 1.3.1");
 assert(
-  manifest.status === "production-bootstrap-local-validated",
-  "status do candidato incorreto"
+  manifest.status === "production-bootstrap-canary-homologated",
+  "status canário do candidato incorreto"
 );
+
 for(const component of [
   "frontend",
   "backendApi",
@@ -52,24 +53,21 @@ for(const component of [
 }
 
 assert(
-  manifest.target?.backendSourceSha256 === "PENDING_AFTER_COMMIT",
-  "hash remoto não deve ser inventado antes do commit"
+  manifest.target?.backendSourceSha256 === "5ADCA155756E1E2AF22AC18D9601BC439F8558E47948AFFB9CFD5B905EB896CC",
+  "hash final do backend incorreto"
+);
+assert(manifest.target?.gitCommit === "84f9c1b", "commit-fonte final incorreto");
+assert(
+  manifest.target?.immutableAppsScriptVersion === 3,
+  "versão imutável final incorreta"
 );
 assert(
-  manifest.target?.gitCommit === "PENDING_AFTER_COMMIT",
-  "commit remoto não deve ser inventado antes do commit"
-);
-assert(
-  manifest.target?.immutableAppsScriptVersion === null,
-  "versão imutável deve permanecer pendente"
-);
-assert(
-  manifest.target?.deploymentId === null,
-  "deployment deve permanecer pendente"
+  manifest.target?.deploymentId === "AKfycbwlwv8vWkiaGR2HlK5-eIrwC_Ltha1qrH6n-kMsPb3bukqL33qxQtszSIM-unq1tbWKJw",
+  "deployment final incorreto"
 );
 
 const bootstrap = manifest.features?.productionBootstrap;
-assert(bootstrap?.status === "local-contract-approved", "bootstrap sem aprovação local");
+assert(bootstrap?.status === "canary-homologated", "bootstrap sem homologação canária");
 assert(bootstrap?.requiresEmptySpreadsheet === true, "gate de planilha vazia ausente");
 assert(bootstrap?.demoSeeded === false, "manifesto permite seed Demo");
 assert(
@@ -77,8 +75,8 @@ assert(
   "diagnóstico não está marcado como somente leitura"
 );
 assert(
-  bootstrap?.remoteValidation === "pending",
-  "homologação remota não pode estar aprovada ainda"
+  bootstrap?.remoteValidation === "approved",
+  "homologação remota do bootstrap não está aprovada"
 );
 
 assert(
@@ -87,17 +85,72 @@ assert(
 );
 assert(
   manifest.candidateEvidence?.release === "1.3.1",
-  "evidência local do candidato ausente"
+  "evidência do candidato ausente"
 );
 assert(
   manifest.candidateEvidence?.frontendBuild === "approved",
   "build do frontend deve estar aprovado"
 );
-
 assert(
-  manifest.candidateEvidence?.remoteCanary === "pending",
-  "canário remoto não pode estar aprovado ainda"
+  manifest.candidateEvidence?.remoteCanary === "approved",
+  "canário remoto não está aprovado"
 );
+
+const canary = manifest.canaryEvidence;
+assert(canary?.environment === "isolated", "canário não está isolado");
+assert(canary?.release === "1.3.1", "release canária incorreta");
+assert(canary?.backendSourceSha256 === "5ADCA155756E1E2AF22AC18D9601BC439F8558E47948AFFB9CFD5B905EB896CC", "evidência do hash ausente");
+
+const bootstrapPhase = canary?.phases?.bootstrapAndFirstAccess;
+assert(
+  bootstrapPhase?.immutableAppsScriptVersion === 2,
+  "fase de bootstrap deve permanecer vinculada à versão @2"
+);
+assert(
+  bootstrapPhase?.sourceGitCommit === "a30a7ea",
+  "commit da fase de bootstrap incorreto"
+);
+assert(
+  bootstrapPhase?.deploymentId === "AKfycbyU6MBRAmtSrmBcZ1H1UruWquMCJoy95jgz_9SF9rJGDWmebb68HHF5DWl1dL2H4dtF",
+  "deployment da fase de bootstrap incorreto"
+);
+for(const check of [
+  "productionSchema",
+  "initialAdminBootstrap",
+  "temporaryPasswordCleared",
+  "firstAccess"
+]){
+  assert(
+    bootstrapPhase?.[check] === "approved",
+    "evidência da fase de bootstrap ausente: " + check
+  );
+}
+
+const finalPhase = canary?.phases?.finalCandidate;
+assert(
+  finalPhase?.immutableAppsScriptVersion === 3,
+  "fase final deve estar vinculada à versão @3"
+);
+assert(finalPhase?.sourceGitCommit === "84f9c1b", "commit da fase final incorreto");
+assert(finalPhase?.deploymentId === "AKfycbwlwv8vWkiaGR2HlK5-eIrwC_Ltha1qrH6n-kMsPb3bukqL33qxQtszSIM-unq1tbWKJw", "deployment da fase final incorreto");
+for(const check of [
+  "health",
+  "bootstrap",
+  "permanentAdminLogin",
+  "authenticatedAdminRead",
+  "remoteLogout",
+  "revokedTokenRejected",
+  "readinessAfterRevokedSessions"
+]){
+  assert(
+    finalPhase?.[check] === "approved",
+    "evidência da fase final ausente: " + check
+  );
+}
+
+assert(finalPhase?.activeSessions === 0, "canário possui sessão ativa");
+assert(finalPhase?.operationalRows === 0, "canário possui dados operacionais");
+assert(finalPhase?.syntheticRows === 0, "canário possui dados sintéticos");
 
 assert(snapshot.release === "1.3.1", "snapshot não declara release 1.3.1");
 assert(snapshot.schemaVersion === "1.3.1", "snapshot não declara schema 1.3.1");
@@ -112,3 +165,4 @@ assert(
 );
 
 console.log("TESTE DOS METADADOS DA RELEASE 1.3.1 APROVADO");
+console.log("Evidências canárias vinculadas às versões @2 e @3 corretas");
