@@ -90,6 +90,11 @@ assert(
   "evidência local do candidato ausente"
 );
 assert(
+  manifest.candidateEvidence?.frontendBuild === "approved",
+  "build do frontend deve estar aprovado"
+);
+
+assert(
   manifest.candidateEvidence?.remoteCanary === "pending",
   "canário remoto não pode estar aprovado ainda"
 );

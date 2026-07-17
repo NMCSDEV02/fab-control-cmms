@@ -78,7 +78,7 @@
     "javascriptSyntax": "approved",
     "authenticationContract": "approved",
     "productionBootstrapContract": "approved",
-    "frontendBuild": "pending",
+    "frontendBuild": "approved",
     "remoteCanary": "pending"
   }
 }
