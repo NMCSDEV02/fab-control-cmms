@@ -57,7 +57,14 @@ const adminBody = functionBody(source, "bootstrapProductionAdmin");
 assert(adminBody.includes('perfil:ROLE.ADMIN'), "administrador inicial deve ter perfil ADMIN");
 assert(adminBody.includes('primeiro_acesso:"SIM"'), "primeiro acesso obrigatório ausente");
 assert(adminBody.includes("authCreatePasswordHash_"), "senha temporária deve ser armazenada com hash seguro");
-assert(adminBody.includes("deleteProperty"), "senha temporária deve ser removida das Script Properties");
+const clearPasswordBody = functionBody(
+  source,
+  "productionClearTemporaryAdminPassword_"
+);
+assert(
+  clearPasswordBody.includes("deleteProperty"),
+  "senha temporária deve ser removida das Script Properties"
+);
 assert(!adminBody.includes("pin_hash:hashPin_"), "bootstrap não deve criar PIN legado");
 const existingUsersCheck = adminBody.indexOf('var users = rows_("usuarios", true);');
 const credentialLoad = adminBody.indexOf("productionAdminConfig_(options)");
@@ -86,5 +93,51 @@ assert(!source.includes('"1234"'), "senha de demonstração não pode existir no
 assert(!source.includes("admin@fabcontrol.local"), "usuário Demo não pode existir no bootstrap");
 assert(!source.includes("gestor@fabcontrol.local"), "usuário Demo não pode existir no bootstrap");
 assert(!source.includes("operador@fabcontrol.local"), "usuário Demo não pode existir no bootstrap");
+
+const safeGateBody = functionBody(source, "assertSpreadsheetEmptyForProductionBootstrap_");
+assert(
+  safeGateBody.includes("productionAllowedBootstrapConfigKeys_"),
+  "recuperação de schema parcial seguro ausente"
+);
+assert(
+  safeGateBody.includes('name !== "config"'),
+  "somente config pode conter linhas parciais controladas"
+);
+assert(
+  source.includes("PRODUCTION_BOOTSTRAP_LOCKED"),
+  "lock concorrente do bootstrap ausente"
+);
+assert(
+  setupBody.includes("productionWithBootstrapLock_"),
+  "setupProductionSchema deve usar lock"
+);
+assert(
+  setupBody.lastIndexOf("PRODUCTION_BOOTSTRAP.MARKER_KEY") >
+    setupBody.lastIndexOf("PRODUCTION_BOOTSTRAP.INITIALIZED_AT_KEY"),
+  "marcador final deve ser gravado somente após a configuração"
+);
+assert(
+  adminBody.includes("productionWithBootstrapLock_"),
+  "bootstrapProductionAdmin deve usar lock"
+);
+assert(
+  adminBody.includes("productionAdminIdentityMatches_"),
+  "recuperação de administrador parcial ausente"
+);
+assert(
+  adminBody.includes("productionClearTemporaryAdminPassword_"),
+  "caminho idempotente deve remover a senha temporária"
+);
+assert(
+  adminBody.includes("productionEnsureAdminAudit_"),
+  "caminho idempotente deve reparar a auditoria"
+);
+
+const finalizerBody = functionBody(source, "productionFinalizeAdminBootstrap_");
+assert(
+  finalizerBody.indexOf("productionClearTemporaryAdminPassword_") <
+    finalizerBody.indexOf("productionEnsureAdminAudit_"),
+  "senha temporária deve ser removida antes da auditoria final"
+);
 
 console.log("TESTE DO BOOTSTRAP SEGURO DE PRODUÇÃO APROVADO");

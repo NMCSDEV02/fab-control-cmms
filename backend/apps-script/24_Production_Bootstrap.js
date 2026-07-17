@@ -77,15 +77,88 @@ function productionSheetHasAnyValue_(sheet){
   });
 }
 
+function productionWithBootstrapLock_(callback){
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(30000)){
+    err_(
+      "PRODUCTION_BOOTSTRAP_LOCKED",
+      "Outro bootstrap de produção está em andamento.",
+      409
+    );
+  }
+
+  try {
+    return callback();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function productionAllowedBootstrapConfigKeys_(){
+  return [
+    "release.version",
+    "app.version",
+    "api.version",
+    "schema.version",
+    "contract.version",
+    "frontend.version",
+    "app.environment",
+    PRODUCTION_BOOTSTRAP.MARKER_KEY,
+    PRODUCTION_BOOTSTRAP.STATUS_KEY,
+    PRODUCTION_BOOTSTRAP.INITIALIZED_AT_KEY,
+    PRODUCTION_BOOTSTRAP.ADMIN_CREATED_AT_KEY
+  ];
+}
+
 function assertSpreadsheetEmptyForProductionBootstrap_(ss){
-  var populated = ss.getSheets().filter(productionSheetHasAnyValue_).map(function(sheet){
-    return sheet.getName();
+  var allowedConfigKeys = productionAllowedBootstrapConfigKeys_();
+  var violations = [];
+
+  ss.getSheets().forEach(function(sheet){
+    var name = sheet.getName();
+    var isSchemaSheet = Object.prototype.hasOwnProperty.call(SH, name);
+
+    if(!isSchemaSheet){
+      if(productionSheetHasAnyValue_(sheet)){
+        violations.push(name + ": aba não prevista preenchida");
+      }
+      return;
+    }
+
+    var actualHeader = productionTrimmedHeader_(sheet);
+    var expectedHeader = SH[name];
+    if(actualHeader.length && actualHeader.join("|") !== expectedHeader.join("|")){
+      violations.push(name + ": cabeçalho divergente");
+      return;
+    }
+
+    if(sheet.getLastRow() < 2) return;
+
+    if(name !== "config"){
+      violations.push(name + ": possui linhas de dados");
+      return;
+    }
+
+    var seen = {};
+    productionRowsDirect_(sheet).forEach(function(row){
+      var key = clean_(row.chave);
+      if(!key || allowedConfigKeys.indexOf(key) < 0){
+        violations.push(name + ": chave não permitida " + (key || "<vazia>"));
+        return;
+      }
+      if(seen[key]){
+        violations.push(name + ": chave duplicada " + key);
+        return;
+      }
+      seen[key] = true;
+    });
   });
 
-  if(populated.length){
+  if(violations.length){
     err_(
       "PRODUCTION_BOOTSTRAP_REQUIRES_EMPTY_SPREADSHEET",
-      "Bootstrap bloqueado. A planilha contém dados nas abas: " + populated.join(", "),
+      "Bootstrap bloqueado. A planilha contém dados ou estrutura não segura: " +
+        violations.join("; "),
       409
     );
   }
@@ -116,54 +189,56 @@ function productionUpsertConfig_(key, value, description){
 }
 
 function setupProductionSchema(){
-  invalidateRuntimeCache_();
-  var ss = getConfiguredSpreadsheetStrict_();
-  var existingMarker = productionConfigValueFromSpreadsheet_(ss, PRODUCTION_BOOTSTRAP.MARKER_KEY);
+  return productionWithBootstrapLock_(function(){
+    invalidateRuntimeCache_();
+    var ss = getConfiguredSpreadsheetStrict_();
+    var existingMarker = productionConfigValueFromSpreadsheet_(ss, PRODUCTION_BOOTSTRAP.MARKER_KEY);
 
-  if(existingMarker){
-    if(existingMarker !== FAB_RELEASE_VERSION){
-      err_(
-        "PRODUCTION_BOOTSTRAP_VERSION_MISMATCH",
-        "A planilha já foi inicializada por outra versão: " + existingMarker,
-        409
-      );
+    if(existingMarker){
+      if(existingMarker !== FAB_RELEASE_VERSION){
+        err_(
+          "PRODUCTION_BOOTSTRAP_VERSION_MISMATCH",
+          "A planilha já foi inicializada por outra versão: " + existingMarker,
+          409
+        );
+      }
+      return Object.assign({already_initialized:true}, diagnoseProductionReadiness());
     }
-    return Object.assign({already_initialized:true}, diagnoseProductionReadiness());
-  }
 
-  assertSpreadsheetEmptyForProductionBootstrap_(ss);
+    assertSpreadsheetEmptyForProductionBootstrap_(ss);
 
-  Object.keys(SH).forEach(function(name){
-    ensureSheet_(ss, name, SH[name]);
+    Object.keys(SH).forEach(function(name){
+      ensureSheet_(ss, name, SH[name]);
+    });
+    removeEmptyNonSchemaSheets_(ss);
+
+    syncReleaseVersionConfig_();
+    productionUpsertConfig_("app.environment", PRODUCTION_BOOTSTRAP.ENVIRONMENT, "Ambiente operacional");
+    productionUpsertConfig_(
+      PRODUCTION_BOOTSTRAP.STATUS_KEY,
+      "SCHEMA_READY",
+      "Estado do bootstrap de produção"
+    );
+    productionUpsertConfig_(
+      PRODUCTION_BOOTSTRAP.INITIALIZED_AT_KEY,
+      now_(),
+      "Data de inicialização do schema de produção"
+    );
+    productionUpsertConfig_(
+      PRODUCTION_BOOTSTRAP.MARKER_KEY,
+      FAB_RELEASE_VERSION,
+      "Versão do bootstrap seguro de produção"
+    );
+
+    invalidateRuntimeCache_();
+
+    return Object.assign({
+      initialized:true,
+      spreadsheetId:ss.getId(),
+      sheets:Object.keys(SH).length,
+      demo_seeded:false
+    }, diagnoseProductionReadiness());
   });
-  removeEmptyNonSchemaSheets_(ss);
-
-  syncReleaseVersionConfig_();
-  productionUpsertConfig_("app.environment", PRODUCTION_BOOTSTRAP.ENVIRONMENT, "Ambiente operacional");
-  productionUpsertConfig_(
-    PRODUCTION_BOOTSTRAP.MARKER_KEY,
-    FAB_RELEASE_VERSION,
-    "Versão do bootstrap seguro de produção"
-  );
-  productionUpsertConfig_(
-    PRODUCTION_BOOTSTRAP.STATUS_KEY,
-    "SCHEMA_READY",
-    "Estado do bootstrap de produção"
-  );
-  productionUpsertConfig_(
-    PRODUCTION_BOOTSTRAP.INITIALIZED_AT_KEY,
-    now_(),
-    "Data de inicialização do schema de produção"
-  );
-
-  invalidateRuntimeCache_();
-
-  return Object.assign({
-    initialized:true,
-    spreadsheetId:ss.getId(),
-    sheets:Object.keys(SH).length,
-    demo_seeded:false
-  }, diagnoseProductionReadiness());
 }
 
 function productionAdminConfig_(options){
@@ -221,76 +296,56 @@ function assertProductionSchemaReadyForAdmin_(diagnosis){
   }
 }
 
-function bootstrapProductionAdmin(options){
-  invalidateRuntimeCache_();
-  getConfiguredSpreadsheetStrict_();
+function productionAdminRowReady_(admin){
+  return !!admin &&
+    upper_(admin.perfil) === ROLE.ADMIN &&
+    upper_(admin.status) === ST.ATIVO &&
+    clean_(admin.senha_hash) !== "";
+}
 
-  var diagnosis = diagnoseProductionReadiness();
-  assertProductionSchemaReadyForAdmin_(diagnosis);
+function productionAdminIdentityMatches_(existing, configured){
+  return productionAdminRowReady_(existing) &&
+    upper_(existing.primeiro_acesso) === "SIM" &&
+    clean_(existing.id) === clean_(configured.id) &&
+    clean_(existing.email).toLowerCase() === clean_(configured.email).toLowerCase() &&
+    clean_(existing.matricula || existing.id) === clean_(configured.matricula);
+}
 
-  var users = rows_("usuarios", true);
-  if(users.length){
-    var existing = users.length === 1 ? users[0] : null;
-    var bootstrapStatus = productionConfigValueFromSpreadsheet_(
-      getConfiguredSpreadsheetStrict_(),
-      PRODUCTION_BOOTSTRAP.STATUS_KEY
-    );
-    var adminCreatedAt = productionConfigValueFromSpreadsheet_(
-      getConfiguredSpreadsheetStrict_(),
-      PRODUCTION_BOOTSTRAP.ADMIN_CREATED_AT_KEY
-    );
+function productionAdminAuditExists_(adminId){
+  var ss = getConfiguredSpreadsheetStrict_();
+  var rows = productionRowsDirect_(ss.getSheetByName("audit_log"));
+  return rows.some(function(row){
+    return clean_(row.acao) === "PRODUCTION_ADMIN_BOOTSTRAPPED" &&
+      clean_(row.entidade) === "usuarios" &&
+      clean_(row.entidade_id) === clean_(adminId);
+  });
+}
 
-    if(
-      bootstrapStatus === "ADMIN_READY" &&
-      adminCreatedAt &&
-      existing &&
-      upper_(existing.perfil) === ROLE.ADMIN &&
-      upper_(existing.status) === ST.ATIVO
-    ){
-      return Object.assign({
-        already_created:true,
-        admin:{
-          id:clean_(existing.id),
-          nome:clean_(existing.nome),
-          email:clean_(existing.email),
-          matricula:clean_(existing.matricula || existing.id),
-          perfil:upper_(existing.perfil),
-          primeiro_acesso:clean_(existing.primeiro_acesso)
-        }
-      }, diagnoseProductionReadiness());
-    }
+function productionEnsureAdminAudit_(admin){
+  if(productionAdminAuditExists_(admin.id)) return false;
 
-    err_(
-      "PRODUCTION_ADMIN_BOOTSTRAP_BLOCKED",
-      "Bootstrap bloqueado porque a aba usuarios já contém registros.",
-      409
-    );
-  }
+  audit_(
+    {usuario_id:clean_(admin.id), perfil:ROLE.ADMIN},
+    "PRODUCTION_ADMIN_BOOTSTRAPPED",
+    "usuarios",
+    clean_(admin.id),
+    null,
+    {
+      matricula:clean_(admin.matricula || admin.id),
+      primeiro_acesso:"SIM"
+    },
+    "APPS_SCRIPT_BOOTSTRAP"
+  );
+  return true;
+}
 
-  var admin = productionAdminConfig_(options);
-  validateProductionAdminConfig_(admin);
+function productionClearTemporaryAdminPassword_(){
+  PropertiesService.getScriptProperties().deleteProperty(
+    PRODUCTION_BOOTSTRAP.ADMIN_PROPERTIES.senhaTemporaria
+  );
+}
 
-  var now = now_();
-  append_("usuarios", fit_("usuarios", {
-    id:admin.id,
-    nome:admin.nome,
-    email:admin.email,
-    perfil:ROLE.ADMIN,
-    status:ST.ATIVO,
-    pin_hash:"",
-    criado_em:now,
-    atualizado_em:now,
-    matricula:admin.matricula,
-    senha_hash:authCreatePasswordHash_(admin.senhaTemporaria),
-    primeiro_acesso:"SIM",
-    tentativas_login:0,
-    bloqueado_ate:"",
-    ultimo_login_em:"",
-    senha_atualizada_em:"",
-    recuperacao_referencia:"",
-    recuperacao_solicitada_em:""
-  }));
-
+function productionFinalizeAdminBootstrap_(admin, createdAt){
   productionUpsertConfig_(
     PRODUCTION_BOOTSTRAP.STATUS_KEY,
     "ADMIN_READY",
@@ -298,38 +353,115 @@ function bootstrapProductionAdmin(options){
   );
   productionUpsertConfig_(
     PRODUCTION_BOOTSTRAP.ADMIN_CREATED_AT_KEY,
-    now,
+    createdAt,
     "Data de criação do administrador inicial"
   );
 
-  audit_(
-    {usuario_id:admin.id, perfil:ROLE.ADMIN},
-    "PRODUCTION_ADMIN_BOOTSTRAPPED",
-    "usuarios",
-    admin.id,
-    null,
-    {matricula:admin.matricula, primeiro_acesso:"SIM"},
-    "APPS_SCRIPT_BOOTSTRAP"
-  );
-
-  PropertiesService.getScriptProperties().deleteProperty(
-    PRODUCTION_BOOTSTRAP.ADMIN_PROPERTIES.senhaTemporaria
-  );
-
+  productionClearTemporaryAdminPassword_();
+  productionEnsureAdminAudit_(admin);
   invalidateRuntimeCache_();
+}
 
-  return Object.assign({
-    created:true,
-    temporary_password_cleared:true,
-    admin:{
+function productionAdminSummary_(admin){
+  return {
+    id:clean_(admin.id),
+    nome:clean_(admin.nome),
+    email:clean_(admin.email),
+    matricula:clean_(admin.matricula || admin.id),
+    perfil:ROLE.ADMIN,
+    primeiro_acesso:clean_(admin.primeiro_acesso || "SIM")
+  };
+}
+
+function bootstrapProductionAdmin(options){
+  return productionWithBootstrapLock_(function(){
+    invalidateRuntimeCache_();
+    var ss = getConfiguredSpreadsheetStrict_();
+
+    var diagnosis = diagnoseProductionReadiness();
+    assertProductionSchemaReadyForAdmin_(diagnosis);
+
+    var users = rows_("usuarios", true);
+    if(users.length){
+      var existing = users.length === 1 ? users[0] : null;
+      var bootstrapStatus = productionConfigValueFromSpreadsheet_(
+        ss,
+        PRODUCTION_BOOTSTRAP.STATUS_KEY
+      );
+      var adminCreatedAt = productionConfigValueFromSpreadsheet_(
+        ss,
+        PRODUCTION_BOOTSTRAP.ADMIN_CREATED_AT_KEY
+      );
+
+      if(
+        bootstrapStatus === "ADMIN_READY" &&
+        adminCreatedAt &&
+        productionAdminRowReady_(existing)
+      ){
+        productionClearTemporaryAdminPassword_();
+        productionEnsureAdminAudit_(existing);
+        invalidateRuntimeCache_();
+
+        return Object.assign({
+          already_created:true,
+          temporary_password_cleared:true,
+          admin:productionAdminSummary_(existing)
+        }, diagnoseProductionReadiness());
+      }
+
+      var recoveryAdmin = productionAdminConfig_(options);
+      if(existing && productionAdminIdentityMatches_(existing, recoveryAdmin)){
+        productionFinalizeAdminBootstrap_(
+          existing,
+          clean_(existing.criado_em) || now_()
+        );
+
+        return Object.assign({
+          recovered:true,
+          temporary_password_cleared:true,
+          admin:productionAdminSummary_(existing)
+        }, diagnoseProductionReadiness());
+      }
+
+      err_(
+        "PRODUCTION_ADMIN_BOOTSTRAP_BLOCKED",
+        "Bootstrap bloqueado porque a aba usuarios já contém registros não recuperáveis.",
+        409
+      );
+    }
+
+    var admin = productionAdminConfig_(options);
+    validateProductionAdminConfig_(admin);
+
+    var createdAt = now_();
+    append_("usuarios", fit_("usuarios", {
       id:admin.id,
       nome:admin.nome,
       email:admin.email,
-      matricula:admin.matricula,
       perfil:ROLE.ADMIN,
-      primeiro_acesso:"SIM"
-    }
-  }, diagnoseProductionReadiness());
+      status:ST.ATIVO,
+      pin_hash:"",
+      criado_em:createdAt,
+      atualizado_em:createdAt,
+      matricula:admin.matricula,
+      senha_hash:authCreatePasswordHash_(admin.senhaTemporaria),
+      primeiro_acesso:"SIM",
+      tentativas_login:0,
+      bloqueado_ate:"",
+      ultimo_login_em:"",
+      senha_atualizada_em:"",
+      recuperacao_referencia:"",
+      recuperacao_solicitada_em:""
+    }));
+
+    productionFinalizeAdminBootstrap_(admin, createdAt);
+
+    return Object.assign({
+      created:true,
+      temporary_password_cleared:true,
+      admin:productionAdminSummary_(admin)
+    }, diagnoseProductionReadiness());
+  });
 }
 
 function productionSyntheticRowCount_(ss){
