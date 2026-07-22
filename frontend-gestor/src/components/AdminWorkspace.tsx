@@ -1,7 +1,7 @@
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
-import { HomeIcon, SettingsIcon, ShieldIcon, UsersIcon } from './Icons'
+import { AssetIcon, CheckIcon, HomeIcon, SettingsIcon, ShieldIcon, UsersIcon, WrenchIcon } from './Icons'
 
 interface AdminWorkspaceProps {
   session: GestorSession
@@ -19,6 +19,11 @@ const MODULES: Array<{
   Icon: typeof HomeIcon
 }> = [
   { id: 'overview', label: 'Dashboard técnico', description: 'Visão consolidada', Icon: HomeIcon },
+  { id: 'structure', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: AssetIcon },
+  { id: 'assets', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: WrenchIcon },
+  { id: 'checklists', label: 'Construtor de checklist', description: 'Modelos e roteamento', Icon: CheckIcon },
+  { id: 'maintenance', label: 'Planos programados', description: 'Gatilhos e recorrências', Icon: SettingsIcon },
+  { id: 'inventory', label: 'Materiais e peças', description: 'Estoque técnico', Icon: AssetIcon },
   { id: 'imports', label: 'Implantação e importação', description: 'Modelos de planilhas', Icon: SettingsIcon },
   { id: 'configuration', label: 'Motor de configuração', description: 'Runtime versionado', Icon: SettingsIcon },
   { id: 'users', label: 'Usuários e perfis', description: 'Identidades e acessos', Icon: UsersIcon },
@@ -30,6 +35,31 @@ const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; sub
     eyebrow: 'CENTRO DE COMANDO',
     title: 'Visão geral administrativa',
     subtitle: 'Controle a configuração, identidades e políticas que governam toda a operação.',
+  },
+  structure: {
+    eyebrow: 'ESTRUTURA ORGANIZACIONAL',
+    title: 'Plantas, setores e linhas',
+    subtitle: 'Cadastre a hierarquia fabril com seleção assistida e vínculos validados pelo servidor.',
+  },
+  assets: {
+    eyebrow: 'CADASTRO TÉCNICO',
+    title: 'Equipamentos e componentes',
+    subtitle: 'Organize TAGs, criticidade, saúde e componentes por equipamento sem repetir informações.',
+  },
+  checklists: {
+    eyebrow: 'AUTORIA E GOVERNANÇA',
+    title: 'Construtor de checklist',
+    subtitle: 'Monte rotinas dinâmicas e envie ao filtro técnico antes da liberação ao Operador.',
+  },
+  maintenance: {
+    eyebrow: 'PROGRAMAÇÃO',
+    title: 'Planos de manutenção',
+    subtitle: 'Defina gatilhos, recorrência, bloqueio e parada. Novos planos permanecem em rascunho.',
+  },
+  inventory: {
+    eyebrow: 'ALMOXARIFADO TÉCNICO',
+    title: 'Materiais e peças',
+    subtitle: 'Cadastre itens de consumo e acompanhe saldo e estoque mínimo para as execuções.',
   },
   imports: {
     eyebrow: 'IMPLANTAÇÃO E GOVERNANÇA DE DADOS',

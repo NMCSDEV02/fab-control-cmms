@@ -4647,6 +4647,583 @@ p {
   background: #eceff3;
 }
 
+.admin-catalog-workspace,
+.admin-checklist-workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.admin-catalog-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.admin-catalog-summary > button {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 70px;
+  padding: 12px 14px;
+  border: 1px solid #d7e1ec;
+  border-radius: 12px;
+  color: #52657c;
+  background: #fff;
+  text-align: left;
+}
+
+.admin-catalog-summary > button:hover,
+.admin-catalog-summary > button.is-active {
+  border-color: #82aaf7;
+  color: #1f5bd5;
+  background: #f2f6ff;
+}
+
+.admin-catalog-summary > button svg {
+  width: 23px;
+  flex: 0 0 auto;
+}
+
+.admin-catalog-summary > button span {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-catalog-summary > button strong {
+  color: #172b48;
+  font-size: 1.18rem;
+}
+
+.admin-catalog-summary > button small {
+  color: #718096;
+  font-weight: 750;
+}
+
+.admin-catalog-summary .admin-catalog-import {
+  border-style: dashed;
+  color: #fff;
+  background: #235fda;
+}
+
+.admin-catalog-summary .admin-catalog-import strong,
+.admin-catalog-summary .admin-catalog-import small {
+  color: inherit;
+}
+
+.admin-catalog-panel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #d8e2ed;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgb(35 58 91 / 5%);
+}
+
+.admin-catalog-panel > header,
+.admin-catalog-panel > header > div:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-catalog-panel > header h2,
+.admin-checklist-library h2,
+.admin-checklist-builder h2,
+.admin-checklist-items h3 {
+  margin: 3px 0;
+  color: #172b48;
+}
+
+.admin-catalog-panel > header p,
+.admin-checklist-builder > header p,
+.admin-checklist-items header p {
+  color: #708198;
+  font-size: 0.78rem;
+}
+
+.admin-catalog-panel button,
+.admin-checklist-workspace button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  color: #486079;
+  background: #f5f8fb;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.admin-catalog-panel button:hover,
+.admin-checklist-workspace button:hover {
+  border-color: #9bb9ef;
+  color: #1d5cd7;
+}
+
+.admin-catalog-panel .primary-button,
+.admin-checklist-workspace .primary-button {
+  border-color: #2862df;
+  color: #fff;
+  background: #2862df;
+}
+
+.admin-plan-rule,
+.admin-checklist-lock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #cfe0ff;
+  border-radius: 10px;
+  color: #315d9d;
+  background: #f2f7ff;
+}
+
+.admin-plan-rule svg,
+.admin-checklist-lock svg {
+  width: 21px;
+  flex: 0 0 auto;
+}
+
+.admin-plan-rule span,
+.admin-checklist-lock span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-plan-rule small,
+.admin-checklist-lock small {
+  color: #657b98;
+}
+
+.admin-catalog-search,
+.admin-checklist-library > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 0 11px;
+  border: 1px solid #d8e1ec;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.admin-catalog-search svg,
+.admin-checklist-library > label svg {
+  width: 17px;
+  color: #75869c;
+}
+
+.admin-catalog-search input,
+.admin-checklist-library > label input {
+  width: 100%;
+  min-height: 39px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.admin-catalog-table {
+  overflow: auto;
+  max-height: calc(100vh - 380px);
+  border: 1px solid #e0e7ef;
+  border-radius: 10px;
+}
+
+.admin-catalog-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.admin-catalog-table th,
+.admin-catalog-table td {
+  max-width: 230px;
+  padding: 10px 9px;
+  overflow: hidden;
+  border-bottom: 1px solid #e8edf3;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.admin-catalog-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #61738b;
+  background: #f5f8fb;
+  font-size: 0.58rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-catalog-chip,
+.admin-workflow-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #49627f;
+  background: #e9eef4;
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.admin-catalog-chip--ativo,
+.admin-catalog-chip--validado,
+.admin-workflow-chip--validado,
+.admin-workflow-chip--ativo {
+  color: #1b704c;
+  background: #e2f5eb;
+}
+
+.admin-catalog-chip--rascunho,
+.admin-workflow-chip--rascunho {
+  color: #4b6590;
+  background: #e9f0fc;
+}
+
+.admin-catalog-chip--em_validacao_gestao,
+.admin-workflow-chip--em_validacao_gestao {
+  color: #8a5b11;
+  background: #fff1cf;
+}
+
+.admin-catalog-chip--devolvido_correcao,
+.admin-workflow-chip--devolvido_correcao {
+  color: #a04d37;
+  background: #ffebe5;
+}
+
+.admin-catalog-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgb(13 26 45 / 58%);
+  backdrop-filter: blur(3px);
+}
+
+.admin-catalog-dialog > section {
+  width: min(860px, 95vw);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 25%);
+}
+
+.admin-catalog-dialog > section > header,
+.admin-catalog-dialog > section > footer {
+  position: sticky;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  background: #fff;
+}
+
+.admin-catalog-dialog > section > header {
+  top: 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.admin-catalog-dialog > section > footer {
+  bottom: 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.admin-catalog-dialog > section > footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-catalog-form,
+.admin-checklist-plan-form,
+.admin-checklist-item-form,
+.admin-checklist-routing > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-catalog-form {
+  padding: 20px;
+}
+
+.admin-catalog-form label,
+.admin-checklist-plan-form label,
+.admin-checklist-item-form label,
+.admin-checklist-routing label {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  color: #4f627a;
+  font-size: 0.65rem;
+  font-weight: 850;
+}
+
+.admin-catalog-form input,
+.admin-catalog-form select,
+.admin-checklist-workspace input,
+.admin-checklist-workspace select,
+.admin-checklist-workspace textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #d5deea;
+  border-radius: 8px;
+  color: #263c59;
+  background: #fff;
+  font: inherit;
+  font-weight: 600;
+}
+
+.admin-catalog-form small,
+.admin-checklist-workspace label small {
+  color: #7c8ca1;
+  font-size: 0.58rem;
+  font-weight: 600;
+}
+
+.admin-checklist-layout {
+  display: grid;
+  grid-template-columns: 265px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-checklist-library,
+.admin-checklist-builder {
+  min-width: 0;
+  border: 1px solid #d8e2ed;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.admin-checklist-library {
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 110px);
+  padding: 14px;
+}
+
+.admin-checklist-library > header,
+.admin-checklist-builder > header,
+.admin-checklist-items > header,
+.admin-checklist-routing > header,
+.admin-checklist-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-checklist-library > header button {
+  padding: 6px;
+}
+
+.admin-checklist-library > header svg {
+  width: 18px;
+}
+
+.admin-checklist-new {
+  width: 100%;
+}
+
+.admin-checklist-models {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  overflow: auto;
+  max-height: calc(100vh - 280px);
+}
+
+.admin-checklist-models > button {
+  display: grid;
+  gap: 7px;
+  min-height: 0;
+  padding: 11px;
+  text-align: left;
+}
+
+.admin-checklist-models > button.is-active {
+  border-color: #79a4f6;
+  background: #eef4ff;
+}
+
+.admin-checklist-models > button span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-checklist-models > button strong {
+  color: #223854;
+}
+
+.admin-checklist-models > button small,
+.admin-checklist-models > button b {
+  color: #75869b;
+  font-size: 0.6rem;
+}
+
+.admin-checklist-builder {
+  padding: 18px;
+}
+
+.admin-checklist-plan-form,
+.admin-checklist-item,
+.admin-checklist-routing {
+  margin: 16px 0 0;
+  padding: 15px;
+  border: 1px solid #dce4ed;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.admin-checklist-plan-form legend {
+  padding: 0 7px;
+  color: #486079;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.admin-checklist-plan-form .is-wide,
+.admin-checklist-item-form .is-wide,
+.admin-checklist-routing .is-wide {
+  grid-column: 1 / -1;
+}
+
+.admin-checklist-items {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.admin-checklist-item {
+  margin-top: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.admin-checklist-item > header {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f6f8fb;
+}
+
+.admin-checklist-item > header > b {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: #1d5cd7;
+  background: #e5edff;
+}
+
+.admin-checklist-item > header > span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-checklist-item > header small {
+  color: #718096;
+}
+
+.admin-checklist-item > header > div {
+  display: flex;
+  gap: 4px;
+}
+
+.admin-checklist-item > header button {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.admin-checklist-item-form {
+  padding: 13px;
+}
+
+.admin-checklist-item-form textarea,
+.admin-checklist-routing textarea {
+  resize: vertical;
+}
+
+.admin-checklist-routing {
+  border-color: #bed3fb;
+  background: #f3f7ff;
+}
+
+.admin-checklist-routing > header {
+  justify-content: flex-start;
+  margin-bottom: 13px;
+}
+
+.admin-checklist-routing > header svg {
+  width: 24px;
+  color: #245fd7;
+}
+
+.admin-checklist-routing > header span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-checklist-routing > header small {
+  color: #607695;
+}
+
+.admin-checklist-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 18px -18px -18px;
+  padding: 13px 18px;
+  border-top: 1px solid #dae3ed;
+  border-radius: 0 0 14px 14px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 -8px 20px rgb(34 56 86 / 6%);
+}
+
+.admin-checklist-actions > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 540px;
+  color: #61758f;
+}
+
+.admin-checklist-actions > span svg {
+  width: 20px;
+  flex: 0 0 auto;
+  color: #27845e;
+}
+
+.admin-checklist-actions > div {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-checklist-workspace fieldset:disabled {
+  opacity: 0.78;
+}
+
 @media (max-width: 1120px) {
   .admin-command-shell {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -4685,6 +5262,22 @@ p {
 
   .admin-import-batch-list article {
     grid-template-columns: 125px minmax(180px, 1fr) repeat(3, 60px) 78px;
+  }
+
+  .admin-checklist-layout {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .admin-checklist-plan-form,
+  .admin-checklist-item-form,
+  .admin-checklist-routing > div {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-checklist-plan-form .is-wide,
+  .admin-checklist-item-form .is-wide,
+  .admin-checklist-routing .is-wide {
+    grid-column: auto;
   }
 }
 

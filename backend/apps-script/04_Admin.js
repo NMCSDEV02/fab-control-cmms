@@ -505,6 +505,73 @@ function adminSalvar_(p){
   return {saved:true, mode:"insert", entidade:ent, row:adminSanitizeEntityRow_(sh, row)};
 }
 
+function adminAssertEntityReferences_(ent, row){
+  if(ent === "setores" && !find_("plantas", "id", row.planta_id)){
+    err_("ENTITY_REFERENCE_INVALID", "Planta não encontrada: "+row.planta_id, 400);
+  }
+  if(ent === "linhas" && !find_("setores", "id", row.setor_id)){
+    err_("ENTITY_REFERENCE_INVALID", "Setor não encontrado: "+row.setor_id, 400);
+  }
+  if(ent === "ativos" && !find_("linhas", "id", row.linha_id)){
+    err_("ENTITY_REFERENCE_INVALID", "Linha não encontrada: "+row.linha_id, 400);
+  }
+  if(ent === "componentes" && !find_("ativos", "id", row.ativo_id)){
+    err_("ENTITY_REFERENCE_INVALID", "Ativo não encontrado: "+row.ativo_id, 400);
+  }
+  if(ent === "planos"){
+    if(!find_("ativos", "id", row.ativo_id)) err_("ENTITY_REFERENCE_INVALID", "Ativo não encontrado: "+row.ativo_id, 400);
+    if(row.componente_id){
+      var component = find_("componentes", "id", row.componente_id);
+      if(!component || String(component.ativo_id) !== String(row.ativo_id)){
+        err_("ENTITY_REFERENCE_INVALID", "Componente não pertence ao ativo informado: "+row.componente_id, 400);
+      }
+    }
+  }
+  if(ent === "plano_itens"){
+    var plan = find_("planos_manutencao", "id", row.plano_id);
+    if(!plan) err_("ENTITY_REFERENCE_INVALID", "Plano não encontrado: "+row.plano_id, 400);
+    if(upper_(plan.status) === ST.ATIVO || upper_(plan.workflow_status) === ST.VALIDADO){
+      err_("ENTITY_PROTECTED_PLAN", "O plano validado não pode receber alterações diretas. Crie uma revisão.", 409);
+    }
+  }
+}
+
+function adminProtectManualPlan_(ent, row){
+  if(ent !== "planos") return row;
+  var old = row.id ? find_("planos_manutencao", "id", row.id) : null;
+  if(old && (upper_(old.status) === ST.ATIVO || upper_(old.workflow_status) === ST.VALIDADO || upper_(old.workflow_status) === ST.EM_VALIDACAO_GESTAO)){
+    err_("ENTITY_PROTECTED_PLAN", "O plano em validação ou validado não pode ser alterado diretamente. Crie uma revisão.", 409);
+  }
+  row.status = ST.INATIVO;
+  row.workflow_status = ST.RASCUNHO;
+  row.validado_gestao = "NAO";
+  row.validado_por = "";
+  row.validado_em = "";
+  return row;
+}
+
+function adminSalvarSeguro_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["entidade","dados"]);
+  var ent = clean_(p.entidade);
+  if(ent === "usuarios") return adminUsuariosSalvar_(p, auth);
+  var sheetName = ADMIN_ENT[ent];
+  if(!sheetName) err_("ENTITY_INVALID", "Entidade inválida: "+ent, 400);
+  var normalized = adminProtectManualPlan_(ent, normalizeEnt_(ent, p.dados || {}));
+  adminAssertEntityReferences_(ent, normalized);
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(10000)) err_("ADMIN_WRITE_BUSY", "Outra alteração administrativa está em andamento.", 409);
+  try{
+    var old = normalized.id ? find_(sheetName, "id", normalized.id) : null;
+    var before = old ? adminSanitizeEntityRow_(sheetName, old) : null;
+    var result = adminSalvar_({entidade:ent, dados:normalized, __auth:auth});
+    audit_(auth, old ? "ADMIN_ENTITY_UPDATED" : "ADMIN_ENTITY_CREATED", sheetName, result.row.id, before, result.row, clean_(p.user_agent));
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function normalizeEnt_(ent,d){
   var o = Object.assign({}, d);
 

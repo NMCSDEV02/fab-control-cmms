@@ -64,7 +64,7 @@ function route_(action, p, req){
     case "admin.resumo_cache": return adminResumoCache_(p);
     case "admin.listar": return adminListar_(p);
     case "admin.obter": return adminObter_(p);
-    case "admin.salvar": return adminSalvar_(p);
+    case "admin.salvar": return adminSalvarSeguro_(p, p.__auth);
     case "admin.usuarios.listar": return adminUsuariosListar_(p, p.__auth);
     case "admin.usuarios.salvar": return adminUsuariosSalvar_(p, p.__auth);
     case "admin.usuarios.desbloquear": return adminUsuariosDesbloquear_(p, p.__auth);
