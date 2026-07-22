@@ -18,6 +18,6 @@ Thumbs.db
 mockups/*.zip
 
 # FAB Control local deployment metadata
-**/.clasp.json
+**/.clasp*.json
 **/.clasprc.json
 release/fab-control.environment.local.json

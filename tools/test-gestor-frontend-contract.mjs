@@ -41,8 +41,8 @@ for (const action of requiredActions) {
 assert(packageJson.name === 'fab-control-gestor-web', 'Pacote do gestor com nome inesperado.')
 assert(packageJson.version === '1.4.0', 'Versão do pacote do gestor deve ser 1.4.0.')
 assert(
-  gestorRelease.includes("API_COMPATIBLE_RELEASE = '1.3.1'"),
-  'Contrato compatível da API deve permanecer explícito em 1.3.1.',
+  gestorRelease.includes("API_COMPATIBLE_RELEASE = '1.4.0'"),
+  'Contrato compatível da API deve permanecer explícito em 1.4.0.',
 )
 
 console.log('TESTE DO CONTRATO FRONTEND GESTOR APROVADO')

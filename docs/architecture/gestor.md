@@ -2,7 +2,7 @@
 
 ## Escopo 1.4.0
 
-O frontend do gestor é uma aplicação independente em `frontend-gestor/`, compatível com o contrato backend 1.3.1.
+O frontend do gestor é uma aplicação independente em `frontend-gestor/`, compatível com o contrato backend 1.4.0.
 
 Fluxos implementados:
 

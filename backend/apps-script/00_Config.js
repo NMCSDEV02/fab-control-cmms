@@ -1,4 +1,4 @@
-const FAB_RELEASE_VERSION = "1.3.1";
+const FAB_RELEASE_VERSION = "1.4.0";
 
 const FAB = {
   APP_NAME: "FAB Control",

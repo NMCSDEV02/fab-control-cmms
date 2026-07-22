@@ -31,7 +31,7 @@ function functionBody(text, functionName){
   assert(false, "corpo incompleto: " + functionName);
 }
 
-assert(config.includes('const FAB_RELEASE_VERSION = "1.3.1";'), "backend deve declarar a versão 1.3.1");
+assert(config.includes('const FAB_RELEASE_VERSION = "1.4.0";'), "backend deve declarar a versão 1.4.0");
 
 assert(
   db.includes("function setupInicial(){ return setupProductionSchema(); }"),
