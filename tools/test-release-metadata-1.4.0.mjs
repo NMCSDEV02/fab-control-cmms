@@ -25,8 +25,14 @@ assert(config.includes(`const FAB_RELEASE_VERSION = "${release}";`), 'backend fo
 assert(operatorPackage.version === release, 'frontend do operador fora da versão 1.4.0')
 assert(managerPackage.version === release, 'frontend do gestor fora da versão 1.4.0')
 assert(manifest.release === release, 'manifesto fora da versão 1.4.0')
-assert(manifest.status === 'canary-homologated', 'status canário incorreto')
-assert(manifest.promotionEligible === true, 'canário homologado deve estar elegível')
+assert(
+  ['canary-published-authenticated-validation-pending', 'canary-homologated'].includes(manifest.status),
+  'status canário incorreto',
+)
+assert(
+  manifest.promotionEligible === (manifest.status === 'canary-homologated'),
+  'elegibilidade incompatível com o status do canário',
+)
 
 for (const [component, version] of Object.entries(manifest.components)) {
   assert(version === release, `componente fora da versão 1.4.0: ${component}`)
@@ -38,9 +44,9 @@ assert(production.release === '1.3.1', 'produção não permaneceu em 1.3.1')
 assert(production.health === 'approved-unchanged', 'produção não foi reconfirmada')
 assert(production.deploymentId !== target.deploymentId, 'deployment canário não está isolado')
 assert(production.spreadsheetId !== target.spreadsheetId, 'planilha canária não está isolada')
-assert(target.immutableAppsScriptVersion === 3, 'versão imutável canária incorreta')
+assert(target.immutableAppsScriptVersion === 4, 'versão imutável canária incorreta')
 assert(target.deploymentId !== 'HEAD', 'deployment canário não pode usar HEAD')
-assert(target.sourceGitCommit === 'e72c9b7', 'commit-fonte canário incorreto')
+assert(target.sourceGitCommit === '7c98eac', 'commit-fonte canário incorreto')
 
 const checks = manifest.canaryEvidence?.checks
 for (const check of [
@@ -64,12 +70,13 @@ for (const check of [
   'remoteLogout',
   'revokedTokenRejected',
 ]) {
-  assert(checks?.[check] === 'approved', `evidência autenticada ausente: ${check}`)
+  const expected = manifest.promotionEligible ? 'approved' : 'pending'
+  assert(checks?.[check] === expected, `evidência autenticada deveria ser ${expected}: ${check}`)
 }
 
 assert(snapshot.release === release, 'snapshot fora da versão 1.4.0')
 assert(snapshot.schemaVersion === release, 'schema fora da versão 1.4.0')
-assert(snapshot.declaredSheetCount === 32, 'quantidade de abas alterada')
+assert(snapshot.declaredSheetCount === 42, 'quantidade de abas alterada')
 
 console.log('TESTE DOS METADADOS DA RELEASE 1.4.0 APROVADO')
-console.log('Canário publicado, isolado, autenticado e elegível para promoção controlada')
+console.log('Canário publicado e isolado; elegibilidade segue o gate autenticado')

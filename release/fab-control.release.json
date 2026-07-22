@@ -1,8 +1,8 @@
 {
   "manifestVersion": 2,
   "release": "1.4.0",
-  "status": "canary-homologated",
-  "promotionEligible": true,
+  "status": "canary-published-authenticated-validation-pending",
+  "promotionEligible": false,
   "components": {
     "frontend": "1.4.0",
     "frontendGestor": "1.4.0",
@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "76C28480EBEE263EC718BEC7BE3284CF011E29FE397A7BAE623E586619338FE9",
-    "immutableAppsScriptVersion": 3,
+    "backendSourceSha256": "636C67E0B4E94E97BDE56E68E81CE5FDECBB56FCB8A48C0E3A1083150475E324",
+    "immutableAppsScriptVersion": 4,
     "deploymentId": "AKfycbywPPX6r0erhRswSkTFHLDWi0or6dQYJZM5n_QAfmLAVvacKiDULQBS6e7cMx33mMCZVQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "e72c9b7"
+    "sourceGitCommit": "7c98eac"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -46,12 +46,17 @@
       "remoteAuthenticatedValidation": "approved"
     },
     "managerAdministration": {
-      "status": "homologated",
+      "status": "canary-authenticated-validation-pending",
       "userManagement": "implemented",
       "profileManagement": "implemented",
       "permissionMatrix": "implemented",
+      "technicalAreasAndRoles": "implemented",
+      "technicalRouting": "implemented",
+      "internalVersionedSignature": "implemented",
+      "occurrenceAnalysis": "implemented",
+      "technicalKpis": "implemented",
       "remoteAccessControlValidation": "approved",
-      "remoteAuthenticatedValidation": "approved"
+      "remoteAuthenticatedValidation": "pending"
     },
     "productionBootstrap": {
       "status": "canary-homologated",
@@ -73,20 +78,22 @@
     "productionBootstrapContract": "approved",
     "operatorFrontendBuild": "approved",
     "managerFrontendBuild": "approved",
-    "remoteCanary": "approved"
+    "technicalWorkflowContract": "approved",
+    "technicalWorkflowE2E": "approved",
+    "remoteCanary": "public-contract-approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "76C28480EBEE263EC718BEC7BE3284CF011E29FE397A7BAE623E586619338FE9",
-    "immutableAppsScriptVersion": 3,
-    "sourceGitCommit": "e72c9b7",
+    "backendSourceSha256": "636C67E0B4E94E97BDE56E68E81CE5FDECBB56FCB8A48C0E3A1083150475E324",
+    "immutableAppsScriptVersion": 4,
+    "sourceGitCommit": "7c98eac",
     "deploymentId": "AKfycbywPPX6r0erhRswSkTFHLDWi0or6dQYJZM5n_QAfmLAVvacKiDULQBS6e7cMx33mMCZVQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
       "bootstrap": "approved",
-      "declaredSheets": 32,
+      "declaredSheets": 42,
       "userAdminEndpointDeclared": "approved",
       "permissionsEndpointDeclared": "approved",
       "unknownLoginRejected": "approved",
@@ -94,11 +101,13 @@
       "usersRequiresAuthentication": "approved",
       "invalidPermissionTokenRejected": "approved",
       "productionDeploymentUnchanged": "approved",
-      "permanentAdminLogin": "approved",
-      "authenticatedAdminRead": "approved",
-      "authenticatedPermissionMatrixRead": "approved",
-      "remoteLogout": "approved",
-      "revokedTokenRejected": "approved"
+      "technicalWorkflowEndpointDeclared": "approved",
+      "technicalKpiEndpointDeclared": "approved",
+      "permanentAdminLogin": "pending",
+      "authenticatedAdminRead": "pending",
+      "authenticatedPermissionMatrixRead": "pending",
+      "remoteLogout": "pending",
+      "revokedTokenRejected": "pending"
     }
   },
   "legacyEvidence": {

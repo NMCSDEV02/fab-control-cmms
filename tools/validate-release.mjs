@@ -203,7 +203,7 @@ assert(canary.sourceGitCommit === target.sourceGitCommit, 'commit da evidência 
 assert(canary.deploymentId === target.deploymentId, 'deployment da evidência divergente')
 assert(canary.spreadsheetId === target.spreadsheetId, 'planilha da evidência divergente')
 requireChecks(canary.checks, publicChecks)
-assert(canary.checks?.declaredSheets === 32, 'quantidade de abas declaradas divergente')
+assert(canary.checks?.declaredSheets === 42, 'quantidade de abas declaradas divergente')
 assert(canary.checks?.productionDeploymentUnchanged === 'approved', 'produção não foi reconfirmada')
 
 const authenticatedChecks = [
