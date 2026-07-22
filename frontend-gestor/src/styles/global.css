@@ -5497,6 +5497,234 @@ p {
   font: inherit;
 }
 
+.admin-interventions-workspace {
+  display: grid;
+  gap: 15px;
+  min-width: 0;
+}
+
+.admin-intervention-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-intervention-metrics article {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 70px;
+  padding: 12px 14px;
+  border: 1px solid #d8e2ed;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.admin-intervention-metrics svg {
+  width: 23px;
+  color: #2862df;
+}
+
+.admin-intervention-metrics span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-intervention-metrics strong {
+  color: #1c324f;
+  font-size: 1.15rem;
+}
+
+.admin-intervention-metrics small {
+  color: #74859a;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.admin-intervention-panel {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid #d8e2ed;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgb(35 58 91 / 5%);
+}
+
+.admin-intervention-panel > header,
+.admin-intervention-panel > header > div:last-child {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.admin-intervention-panel h2 {
+  margin: 3px 0;
+  color: #172b48;
+}
+
+.admin-intervention-panel > header p {
+  color: #718096;
+  font-size: 0.72rem;
+}
+
+.admin-intervention-panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #d6e0eb;
+  border-radius: 8px;
+  color: #4a607a;
+  background: #f5f8fb;
+  font-size: 0.67rem;
+  font-weight: 850;
+}
+
+.admin-intervention-panel button svg {
+  width: 16px;
+}
+
+.admin-intervention-panel .primary-button {
+  border-color: #2862df;
+  color: #fff;
+  background: #2862df;
+}
+
+.admin-intervention-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 9px;
+  margin: 14px 0;
+}
+
+.admin-intervention-filters label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #d8e2ed;
+  border-radius: 8px;
+}
+
+.admin-intervention-filters svg {
+  width: 17px;
+  color: #75869b;
+}
+
+.admin-intervention-filters input,
+.admin-intervention-filters select {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 9px;
+  border: 1px solid #d8e2ed;
+  border-radius: 8px;
+  outline: 0;
+}
+
+.admin-intervention-filters label input {
+  padding: 0;
+  border: 0;
+}
+
+.admin-intervention-table {
+  overflow: auto;
+  max-height: calc(100vh - 410px);
+  border: 1px solid #e0e7ef;
+  border-radius: 10px;
+}
+
+.admin-intervention-table > div,
+.admin-intervention-table > article {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.35fr) minmax(140px, 1fr) 80px minmax(130px, 0.9fr) 125px 120px;
+  align-items: center;
+  gap: 8px;
+  min-width: 950px;
+  padding: 10px;
+  border-bottom: 1px solid #e7edf3;
+}
+
+.admin-intervention-table > div {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #65788f;
+  background: #f5f8fb;
+  font-size: 0.54rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-intervention-table > article > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.admin-intervention-table > article b {
+  width: fit-content;
+  color: #2b61bd;
+  font-size: 0.56rem;
+}
+
+.admin-intervention-table > article strong,
+.admin-intervention-table > article small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-intervention-table > article strong {
+  color: #273d59;
+  font-size: 0.66rem;
+}
+
+.admin-intervention-table > article small {
+  color: #7a8b9f;
+  font-size: 0.57rem;
+}
+
+.admin-intervention-table i,
+.admin-intervention-table em {
+  width: fit-content;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #4f627a;
+  background: #e9eef4;
+  font-size: 0.54rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.admin-intervention-table i.is-alta,
+.admin-intervention-table i.is-critica,
+.admin-intervention-table em.is-devolvida_admin {
+  color: #a34c34;
+  background: #ffebe4;
+}
+
+.admin-intervention-table em.is-aguardando_validacao {
+  color: #8b5b12;
+  background: #fff1d0;
+}
+
+.admin-intervention-table em.is-aberta,
+.admin-intervention-table em.is-finalizada {
+  color: #1d714f;
+  background: #e3f5eb;
+}
+
+.admin-intervention-actions {
+  display: flex !important;
+  grid-template-columns: none !important;
+  flex-direction: row;
+  gap: 5px !important;
+}
+
 @media (max-width: 1120px) {
   .admin-command-shell {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -5559,6 +5787,10 @@ p {
 
   .admin-technical-columns {
     grid-template-columns: 1fr;
+  }
+
+  .admin-intervention-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

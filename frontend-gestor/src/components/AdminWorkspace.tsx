@@ -25,6 +25,7 @@ const MODULES: Array<{
   { id: 'maintenance', label: 'Planos programados', description: 'Gatilhos e recorrências', Icon: SettingsIcon },
   { id: 'inventory', label: 'Materiais e peças', description: 'Estoque técnico', Icon: AssetIcon },
   { id: 'workforce', label: 'Áreas e cargos', description: 'Filtros e assinaturas', Icon: UsersIcon },
+  { id: 'operations', label: 'Intervenções e OS', description: 'Criar, validar e liberar', Icon: WrenchIcon },
   { id: 'imports', label: 'Implantação e importação', description: 'Modelos de planilhas', Icon: SettingsIcon },
   { id: 'configuration', label: 'Motor de configuração', description: 'Runtime versionado', Icon: SettingsIcon },
   { id: 'users', label: 'Usuários e perfis', description: 'Identidades e acessos', Icon: UsersIcon },
@@ -66,6 +67,11 @@ const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; sub
     eyebrow: 'ESTRUTURA TÉCNICA',
     title: 'Áreas e cargos especialistas',
     subtitle: 'Defina os destinos do fluxo, os cargos de cada área e quem pode assinar uma liberação.',
+  },
+  operations: {
+    eyebrow: 'PLANEJAMENTO OPERACIONAL',
+    title: 'Intervenções e ordens de serviço',
+    subtitle: 'Crie rascunhos e encaminhe ao filtro técnico; o Operador só recebe a ação depois da liberação.',
   },
   imports: {
     eyebrow: 'IMPLANTAÇÃO E GOVERNANÇA DE DADOS',

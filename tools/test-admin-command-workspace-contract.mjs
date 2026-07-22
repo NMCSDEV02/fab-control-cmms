@@ -16,9 +16,12 @@ const checklist = read('frontend-gestor/src/components/AdminChecklistBuilder.tsx
 const checklistApi = read('frontend-gestor/src/services/api/checklists.ts')
 const adminApi = read('frontend-gestor/src/services/api/admin.ts')
 const technicalStructure = read('frontend-gestor/src/components/AdminTechnicalStructure.tsx')
+const interventions = read('frontend-gestor/src/components/AdminInterventionsWorkspace.tsx')
+const interventionsApi = read('frontend-gestor/src/services/api/interventions.ts')
+const interventionsBackend = read('backend/apps-script/28_Admin_Intervencoes.js')
 const styles = read('frontend-gestor/src/styles/global.css')
 
-for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'imports', 'configuration', 'users', 'permissions']) {
+for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
   assert(page.includes(`tab === '${moduleId}'`), `módulo sem conteúdo: ${moduleId}`)
 }
@@ -54,9 +57,17 @@ for (const action of ['admin.areas_tecnicas.listar', 'admin.areas_tecnicas.salva
 assert(technicalStructure.includes('Área técnica *'), 'cargo não usa dropdown de área')
 assert(technicalStructure.includes('Pode assinar documentos'), 'permissão de assinatura não é assistida')
 assert(technicalStructure.includes("editor.kind === 'role'"), 'formulário de cargo não é protegido por tipo')
+for (const action of ['admin.intervencoes.listar', 'admin.intervencoes.salvar', 'admin.intervencoes.enviar_validacao']) {
+  assert(interventionsApi.includes(`'${action}'`), `cliente de intervenção não usa ${action}`)
+  assert(router.includes(`case "${action}"`), `rota de intervenção ausente: ${action}`)
+}
+assert(interventions.includes('Área responsável *'), 'intervenção não usa dropdown de área')
+assert(interventions.includes('routeRoles'), 'cargo da intervenção não é filtrado pela área')
+assert(interventionsBackend.includes('O rascunho não cria os_acoes'), 'rascunho pode vazar ao Operador')
+assert(interventionsBackend.indexOf('append_("os_acoes"') > interventionsBackend.indexOf('adminIntervencaoLiberarOperacao_'), 'ação não está restrita à liberação')
 assert(styles.includes('.admin-checklist-layout'), 'construtor sem layout de Command Workspace')
 assert(styles.includes('.admin-catalog-dialog'), 'cadastro sem formulário administrativo')
 
 console.log('CONTRATO DO COMMAND WORKSPACE APROVADO')
-console.log('10 módulos funcionais, cadastros assistidos e construtor de checklist conferidos')
+console.log('11 módulos funcionais, cadastros assistidos, checklist e intervenções conferidos')
 console.log('Vínculos, concorrência, auditoria e workflow Admin -> Gestor -> Operador protegidos')

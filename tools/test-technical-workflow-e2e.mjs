@@ -26,6 +26,11 @@ const context = vm.createContext({
       return `${String(sequence).padStart(8, '0')}-aaaa-bbbb-cccc-dddddddddddd`
     },
   },
+  LockService: {
+    getScriptLock() {
+      return { tryLock() { return true }, releaseLock() {} }
+    },
+  },
 })
 
 vm.runInContext(
@@ -33,6 +38,7 @@ vm.runInContext(
     read('backend/apps-script/00_Config.js'),
     read('backend/apps-script/01_Utils.js'),
     read('backend/apps-script/25_Workflow_Tecnico_KPI.js'),
+    read('backend/apps-script/28_Admin_Intervencoes.js'),
     `
       var TEST_DB = {
         usuarios: [
@@ -53,7 +59,10 @@ vm.runInContext(
         demandas_tecnicas: [], demanda_tramitacoes: [], assinaturas_tecnicas: [],
         analises_tecnicas: [], notificacoes: [], audit_log: [],
         ocorrencias_operacionais: [{id:'OCR-1',ativo_id:'ATV-1',componente_id:'CMP-1',titulo:'Vibracao',descricao:'Vibracao elevada',severidade:'ALTA',status:'AGUARDANDO_ANALISE',__rowIndex:2}],
-        planos_manutencao: [{id:'PLN-1',nome:'Inspecao critica',status:'INATIVO',workflow_status:'EM_VALIDACAO_GESTAO',__rowIndex:2}]
+        planos_manutencao: [{id:'PLN-1',nome:'Inspecao critica',status:'INATIVO',workflow_status:'EM_VALIDACAO_GESTAO',__rowIndex:2}],
+        ativos: [{id:'ATV-1',tag:'EQ-01',nome:'Prensa 01',status:'OPERANDO',__rowIndex:2}],
+        componentes: [{id:'CMP-1',ativo_id:'ATV-1',tag:'MOTOR',nome:'Motor principal',status:'ATIVO',__rowIndex:2}],
+        ordens_servico: [], os_acoes: [], historico: []
       };
       function technicalEnsureSchema_(){}
       function rows_(name){ return TEST_DB[name] || []; }
@@ -63,6 +72,11 @@ vm.runInContext(
       function update_(name, rowIndex, patch){ var row = rows_(name).find(function(item){ return item.__rowIndex === rowIndex; }); if(!row) throw new Error('Linha ausente: '+name+'#'+rowIndex); Object.assign(row, patch); }
       function configurationRuntimeValue_(key, fallback){ return fallback; }
       function audit_(){}
+      function getSpreadsheet_(){ return {}; }
+      function ensureSheet_(){}
+      function adminRequireIdentityAdmin_(auth){ if(upper_(auth && auth.perfil) !== ROLE.ADMIN) err_('FORBIDDEN_ADMIN_REQUIRED','Somente ADMIN.',403); }
+      function normalizaModoParadaManutencao115_(value){ var mode=upper_(value||'DECISAO_EXECUTOR'); return ['OBRIGATORIA','SEM_PARADA','DECISAO_EXECUTOR'].indexOf(mode)>=0?mode:'DECISAO_EXECUTOR'; }
+      function hist_(data){ append_('historico', fit_('historico', Object.assign({id:uuid_('HIS'),criado_em:now_()},data))); }
     `,
   ].join('\n'),
   context,
@@ -95,6 +109,24 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
   }}, quality);
   gestorAnaliseEnviarAdmin_({analise_id:analysis.analise.id}, quality);
 
+  var interventionSaved = adminIntervencaoSalvar_({dados:{
+    ativo_id:'ATV-1',componente_id:'CMP-1',tipo:'CORRETIVA',titulo:'Corrigir vibracao',
+    descricao:'Inspecionar acoplamento e corrigir desalinhamento.',prioridade:'ALTA',
+    modo_parada_manutencao:'OBRIGATORIA'
+  }}, admin);
+  var actionsBeforeRelease = rows_('os_acoes').length;
+  var interventionSent = adminIntervencaoEnviarValidacao_({
+    intervencao_id:interventionSaved.intervencao.id,area_atual_id:'AREA-MANUTENCAO',
+    cargo_atual_id:'CARGO-MANUTENCAO',comentario:'Validar risco e liberar execucao.',
+    exige_assinatura:'NAO',exige_segregacao:'SIM'
+  }, admin);
+  var interventionDecision = gestorDemandaDecidir_({
+    demanda_id:interventionSent.demanda.id,decisao:'LIBERAR_OPERACAO',
+    parecer:'Intervencao segura e liberada para o operador.'
+  }, maintenance);
+  var interventionOrder = find_('ordens_servico','id',interventionSaved.intervencao.id);
+  var interventionAction = rows_('os_acoes').find(function(item){ return String(item.os_id) === String(interventionOrder.id); });
+
   return {
     demandId:demandId,
     qualityQueueBefore:qualityQueueBefore.length,
@@ -104,10 +136,14 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
     demand:find_('demandas_tecnicas','id',demandId),
     plan:find_('planos_manutencao','id','PLN-1'),
     signatures:rows_('assinaturas_tecnicas'),
-    transitions:rows_('demanda_tramitacoes'),
+    transitions:rows_('demanda_tramitacoes').filter(function(item){ return String(item.demanda_id) === String(demandId); }),
     analysis:find_('analises_tecnicas','id',analysis.analise.id),
     occurrence:find_('ocorrencias_operacionais','id','OCR-1'),
-    adminNotifications:rows_('notificacoes').filter(function(item){ return item.usuario_id === 'USR-ADMIN'; })
+    adminNotifications:rows_('notificacoes').filter(function(item){ return item.usuario_id === 'USR-ADMIN'; }),
+    actionsBeforeRelease:actionsBeforeRelease,
+    interventionDecision:interventionDecision,
+    interventionOrder:interventionOrder,
+    interventionAction:interventionAction
   };
 })())`, context))
 
@@ -122,7 +158,13 @@ assert(result.plan.status === 'ATIVO' && result.plan.workflow_status === 'VALIDA
 assert(result.analysis.status === 'ENVIADA_ADMIN', 'análise de ocorrência não chegou ao administrador')
 assert(result.occurrence.status === 'ANALISADA_TECNICAMENTE', 'ocorrência não foi encerrada pela análise')
 assert(result.adminNotifications.length >= 2, 'administrador não recebeu decisão e análise')
+assert(result.actionsBeforeRelease === 0, 'rascunho administrativo apareceu ao Operador antes da validação')
+assert(result.interventionDecision.demanda.status === 'LIBERADA_OPERACAO', 'intervenção não recebeu liberação técnica')
+assert(result.interventionOrder.status === 'ABERTA', 'OS não foi aberta depois da liberação')
+assert(result.interventionAction.status === 'PENDENTE', 'ação não chegou ao Operador depois da liberação')
+assert(result.interventionAction.modo_parada_manutencao === 'OBRIGATORIA', 'modo de parada não foi preservado')
 
 console.log('FLUXO TÉCNICO E2E EM MEMÓRIA APROVADO')
 console.log('ADMIN → QUALIDADE (assinatura) → MANUTENÇÃO (liberação) → OPERADOR')
 console.log('OPERADOR (ocorrência) → GESTOR (análise) → ADMIN')
+console.log('ADMIN (intervenção) → GESTOR (liberação) → OPERADOR (ação pendente)')

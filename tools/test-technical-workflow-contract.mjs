@@ -22,6 +22,8 @@ const workflow = read('backend/apps-script/25_Workflow_Tecnico_KPI.js')
 const gestorApi = read('frontend-gestor/src/services/api/gestor.ts')
 const validations = read('frontend-gestor/src/pages/ValidationsPage.tsx')
 const dashboard = read('frontend-gestor/src/pages/DashboardPage.tsx')
+const interventionsApi = read('frontend-gestor/src/services/api/interventions.ts')
+const interventionsBackend = read('backend/apps-script/28_Admin_Intervencoes.js')
 
 const requiredSheets = [
   'areas_tecnicas',
@@ -49,6 +51,9 @@ const requiredActions = [
   'cmms.kpis_tecnicos',
   'admin.demandas_tecnicas.enviar',
   'admin.analises_tecnicas.converter',
+  'admin.intervencoes.listar',
+  'admin.intervencoes.salvar',
+  'admin.intervencoes.enviar_validacao',
   'gestor.contexto_tecnico',
   'gestor.demandas.listar',
   'gestor.demandas.assumir',
@@ -64,6 +69,10 @@ for (const action of requiredActions) {
   assert(config.includes(`"${action}"`), `permissão ausente: ${action}`)
 }
 
+for (const action of requiredActions.filter((action) => action.startsWith('admin.intervencoes.'))) {
+  assert(interventionsApi.includes(`'${action}'`), `cliente de intervenção não usa ${action}`)
+}
+
 for (const action of requiredActions.filter((action) => action.startsWith('gestor.') || action === 'cmms.kpis_tecnicos')) {
   assert(gestorApi.includes(`'${action}'`), `cliente gestor não usa ${action}`)
 }
@@ -76,6 +85,8 @@ assert(dashboard.includes('SLA resolução'), 'painel não exibe SLA')
 assert(dashboard.includes("'Aguardando dados'"), 'OEE sem amostra não é diferenciado de zero')
 assert(workflow.includes('TECH_SIGNATURE_SEGREGATION'), 'segregação de assinatura ausente')
 assert(workflow.includes('payload_hash'), 'assinatura não está vinculada ao hash do payload')
+assert(interventionsBackend.includes('ADMIN_INTERVENTION_WAITING'), 'intervenção não possui estado de validação')
+assert(interventionsBackend.includes('adminIntervencaoLiberarOperacao_'), 'liberação técnica não cria ação operacional')
 
 const context = vm.createContext({ console })
 vm.runInContext(

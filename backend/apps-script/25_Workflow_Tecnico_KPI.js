@@ -561,6 +561,16 @@ function technicalApplyApprovedEntity_(demand, identity){
       });
     }
   }
+  if(type === "ORDEM_SERVICO_RASCUNHO" && typeof adminIntervencaoLiberarOperacao_ === "function"){
+    adminIntervencaoLiberarOperacao_(demand, identity);
+  }
+}
+
+function technicalApplyReturnedEntity_(demand, identity){
+  var type = upper_(demand.entidade_tipo);
+  if(type === "ORDEM_SERVICO_RASCUNHO" && typeof adminIntervencaoDevolver_ === "function"){
+    adminIntervencaoDevolver_(demand, identity);
+  }
 }
 
 function gestorDemandaDecidir_(p, auth){
@@ -588,9 +598,10 @@ function gestorDemandaDecidir_(p, auth){
     status:status, primeiro_atendimento_em:clean_(demand.primeiro_atendimento_em) || now_(),
     concluido_em:now_(), atualizado_em:now_()
   };
+  if(decision !== "DEVOLVER_ADMIN") technicalApplyApprovedEntity_(demand, identity);
   update_("demandas_tecnicas", demand.__rowIndex, patch);
   technicalAppendTransition_(Object.assign({}, demand, patch), "DECIDIDA", identity, {}, decision, p.parecer, p.motivo);
-  if(decision !== "DEVOLVER_ADMIN") technicalApplyApprovedEntity_(demand, identity);
+  if(decision === "DEVOLVER_ADMIN") technicalApplyReturnedEntity_(demand, identity);
   technicalNotify_({perfil:ROLE.ADMIN}, "DECISAO_TECNICA", demand.titulo, "DecisÃ£o: " + decision + ". Parecer: " + clean_(p.parecer), "demandas_tecnicas", demand.id, demand.prioridade);
   audit_(auth, "TECH_DEMAND_DECIDED", "demandas_tecnicas", demand.id, strip_(demand), Object.assign({}, strip_(demand), patch), clean_(p.user_agent));
   return {decided:true, decisao:decision, demanda:technicalDemandPublic_(Object.assign({}, demand, patch))};
