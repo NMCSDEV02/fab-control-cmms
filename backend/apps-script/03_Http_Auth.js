@@ -62,6 +62,13 @@ function route_(action, p, req){
     case "admin.listar": return adminListar_(p);
     case "admin.obter": return adminObter_(p);
     case "admin.salvar": return adminSalvar_(p);
+    case "admin.usuarios.listar": return adminUsuariosListar_(p, p.__auth);
+    case "admin.usuarios.salvar": return adminUsuariosSalvar_(p, p.__auth);
+    case "admin.usuarios.desbloquear": return adminUsuariosDesbloquear_(p, p.__auth);
+    case "admin.usuarios.redefinir_senha": return adminUsuariosRedefinirSenha_(p, p.__auth);
+    case "admin.usuarios.revogar_sessoes": return adminUsuariosRevogarSessoes_(p, p.__auth);
+    case "admin.permissoes.obter": return adminPermissoesObter_(p, p.__auth);
+    case "admin.permissoes.salvar": return adminPermissoesSalvar_(p, p.__auth);
     case "admin.gerar_qr": return adminGerarQr_(p);
     case "admin.criar_demo": return adminCriarDemo_(p);
     case "admin.recalcular_ativo": return adminRecalcularAtivo_(p);
@@ -171,7 +178,7 @@ function sistemaBootstrap_(){
     serverTime:now_(),
     sheets:Object.keys(SH),
     endpoints:[
-      "auth.login","auth.first_access.complete","auth.recovery.request","auth.logout","sistema.warmup","cmms.schema_upgrade","cmms.paradas_operacionais_schema_upgrade","cmms.horimetro_evidencias_schema_upgrade","cmms.catalogo_checklist_schema_upgrade","cmms.operador_visual_schema_upgrade","cmms.tela_operador_schema_upgrade","cmms.operador_ui_schema_upgrade","cmms.operacional_ui_schema_upgrade","cmms.contrato_frontend_schema_upgrade","cmms.frontend_contract_schema_upgrade","cmms.execucao_checklist_schema_upgrade","cmms.auditoria_operador_schema_upgrade","admin.resumo","admin.resumo_cache","admin.listar","admin.salvar","admin.gerar_qr","admin.criar_demo","admin.recalcular_ativo",
+      "auth.login","auth.first_access.complete","auth.recovery.request","auth.logout","sistema.warmup","cmms.schema_upgrade","cmms.paradas_operacionais_schema_upgrade","cmms.horimetro_evidencias_schema_upgrade","cmms.catalogo_checklist_schema_upgrade","cmms.operador_visual_schema_upgrade","cmms.tela_operador_schema_upgrade","cmms.operador_ui_schema_upgrade","cmms.operacional_ui_schema_upgrade","cmms.contrato_frontend_schema_upgrade","cmms.frontend_contract_schema_upgrade","cmms.execucao_checklist_schema_upgrade","cmms.auditoria_operador_schema_upgrade","admin.resumo","admin.resumo_cache","admin.listar","admin.salvar","admin.usuarios.listar","admin.usuarios.salvar","admin.usuarios.desbloquear","admin.usuarios.redefinir_senha","admin.usuarios.revogar_sessoes","admin.permissoes.obter","admin.permissoes.salvar","admin.gerar_qr","admin.criar_demo","admin.recalcular_ativo",
       "admin.salvar_modelo_checklist","admin.registrar_horimetro_telemetria","admin.reiniciar_contador_servico","admin.verificar_drive_evidencias","admin.gerar_acao_teste_checklist","admin.corrigir_auditoria_execucao_operador","admin.enviar_modelo_checklist_validacao","admin.detalhe_modelo_checklist","admin.listar_modelos_checklist","admin.modelos_devolvidos","admin.corrigir_modelo_checklist","admin.criar_revisao_modelo_checklist",
       "operador.home","operador.painel","operador.minhas_acoes","operador.tela_acao","operador.estado_acao","operador.salvar_checklist_lote","operador.contexto_qr_fast","operador.contexto_qr","operador.historico_qr","operador.parada_ativa","operador.iniciar_parada","operador.finalizar_parada","operador.registrar_ocorrencia","operador.iniciar_acao","operador.listar_checklist_execucao","operador.detalhar_checklist_execucao","operador.validar_finalizacao_acao","operador.salvar_checklist_item","operador.registrar_evidencia","operador.upload_evidencia_foto","operador.finalizar_acao",
       "gestor.auditoria_execucao_checklist","gestor.listar_paradas","gestor.listar_ocorrencias","gestor.modelos_em_validacao","gestor.listar_modelos_checklist","gestor.detalhe_modelo_checklist","gestor.validar_modelo_checklist","gestor.listar_acoes","gestor.detalhe_acao_fast","gestor.detalhe_acao","gestor.validar_acao",

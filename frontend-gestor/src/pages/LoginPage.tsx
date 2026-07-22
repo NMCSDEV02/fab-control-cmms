@@ -4,6 +4,7 @@ import { API_COMPATIBLE_RELEASE, APP_RELEASE_VERSION } from '../release'
 import {
   completeFirstAccess,
   loginGestor,
+  requestPasswordRecovery,
   type GestorSession,
 } from '../services/api/auth'
 import { ApiRequestError } from '../services/api/client'
@@ -13,7 +14,7 @@ export interface LoginPageProps {
   onAuthenticated: (session: GestorSession) => void
 }
 
-type LoginView = 'login' | 'first-access'
+type LoginView = 'login' | 'first-access' | 'recovery'
 
 function passwordMeetsRules(password: string): boolean {
   return (
@@ -32,6 +33,8 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [changeToken, setChangeToken] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
+  const [recoveryRegistration, setRecoveryRegistration] = useState('')
+  const [recoveryReference, setRecoveryReference] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showConnection, setShowConnection] = useState(() => !getApiUrl())
   const [error, setError] = useState('')
@@ -165,6 +168,34 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     }
   }
 
+  async function submitRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    clearFeedback()
+    setRecoveryReference('')
+    const normalizedRegistration = recoveryRegistration.trim()
+    if (!normalizedRegistration) {
+      setError('Informe sua matrícula para solicitar a recuperação.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const result = await requestPasswordRecovery(normalizedRegistration)
+      setRecoveryReference(result.request_id)
+      setMessage(
+        result.message ?? 'Solicitação registrada. Informe a referência ao administrador.',
+      )
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível registrar a recuperação de acesso.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <main className="auth-shell">
       <section className="auth-panel" aria-labelledby="auth-title">
@@ -194,7 +225,6 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
                 value={registration}
                 onChange={(event) => setRegistration(event.target.value)}
                 autoComplete="username"
-                inputMode="numeric"
                 disabled={submitting}
               />
             </label>
@@ -216,8 +246,24 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
             <button className="primary-button" type="submit" disabled={submitting}>
               {submitting ? 'Entrando…' : 'Entrar'}
             </button>
+
+            <button
+              className="auth-link-button"
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                clearFeedback()
+                setRecoveryRegistration(registration)
+                setRecoveryReference('')
+                setView('recovery')
+              }}
+            >
+              Esqueci minha senha
+            </button>
           </form>
-        ) : (
+        ) : null}
+
+        {view === 'first-access' ? (
           <form className="auth-form" onSubmit={submitFirstAccess}>
             <div className="first-access-summary">
               Primeiro acesso da matrícula <strong>{firstAccessRegistration}</strong>
@@ -270,7 +316,56 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
               </button>
             </div>
           </form>
-        )}
+        ) : null}
+
+        {view === 'recovery' ? (
+          <form className="auth-form" onSubmit={submitRecovery}>
+            <div className="first-access-summary">
+              Registre a solicitação para que um administrador valide sua identidade e defina uma senha temporária.
+            </div>
+
+            <label>
+              Matrícula
+              <input
+                value={recoveryRegistration}
+                onChange={(event) => setRecoveryRegistration(event.target.value)}
+                autoComplete="username"
+                disabled={submitting || Boolean(recoveryReference)}
+                autoFocus
+              />
+            </label>
+
+            {message ? <p className="feedback feedback--success">{message}</p> : null}
+            {recoveryReference ? (
+              <div className="recovery-reference">
+                <span>Referência da solicitação</span>
+                <strong>{recoveryReference}</strong>
+              </div>
+            ) : null}
+            {error ? <p className="feedback feedback--error">{error}</p> : null}
+
+            <div className="auth-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={submitting}
+                onClick={() => {
+                  setView('login')
+                  setError('')
+                  setMessage('')
+                  setRecoveryReference('')
+                }}
+              >
+                Voltar
+              </button>
+              {!recoveryReference ? (
+                <button className="primary-button" type="submit" disabled={submitting}>
+                  {submitting ? 'Registrando…' : 'Solicitar recuperação'}
+                </button>
+              ) : null}
+            </div>
+          </form>
+        ) : null}
 
         <footer className="auth-footer">
           <span>Aplicativo {APP_RELEASE_VERSION} · API compatível {API_COMPATIBLE_RELEASE}</span>

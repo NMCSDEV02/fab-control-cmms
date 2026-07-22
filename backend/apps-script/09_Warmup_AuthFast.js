@@ -39,6 +39,13 @@ function getCachedAuthSession_(token){
 
 function ensurePermission_(perfil, action){
   perfil = upper_(perfil);
+  var configuredDecision = typeof adminPermissionDecision_ === "function"
+    ? adminPermissionDecision_(perfil, action)
+    : null;
+  if(configuredDecision === true) return true;
+  if(configuredDecision === false){
+    err_("FORBIDDEN", "Perfil "+perfil+" sem permissão configurada para "+action, 403);
+  }
   var lista = (PERM && PERM[perfil]) ? PERM[perfil] : [];
   if(lista.indexOf(action) >= 0) return true;
 

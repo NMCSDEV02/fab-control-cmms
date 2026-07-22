@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0] - Em desenvolvimento
+
+- Adicionado frontend React + TypeScript do gestor e administrador.
+- Adicionadas validações de execução e modelos técnicos de checklist.
+- Adicionada gestão segura de usuários, perfis, bloqueios, sessões e recuperação de acesso.
+- Adicionada matriz auditável de capacidades para gestor e operador.
+- Removida a exposição de hashes de PIN e senha nas consultas administrativas.
+
 ## [0.1.0]
 
 - Estrutura inicial criada.

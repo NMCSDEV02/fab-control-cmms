@@ -1,6 +1,6 @@
 import type { GestorSection } from '../components/AppNavigation'
 import { ApiConnectionPanel } from '../components/ApiConnectionPanel'
-import { AssetIcon, SettingsIcon, ValidationIcon } from '../components/Icons'
+import { AssetIcon, SettingsIcon, UsersIcon, ValidationIcon } from '../components/Icons'
 import { API_COMPATIBLE_RELEASE, APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 
@@ -19,6 +19,7 @@ function formatDate(value: string): string {
 }
 
 export function MorePage({ session, onNavigate }: MorePageProps) {
+  const isAdmin = session.user.perfil.trim().toUpperCase() === 'ADMIN'
   return (
     <main className="content more-page">
       <section className="page-heading">
@@ -38,6 +39,12 @@ export function MorePage({ session, onNavigate }: MorePageProps) {
           <span className="more-card__icon"><AssetIcon /></span>
           <span><strong>Biblioteca de ativos</strong><small>Consulta segura de equipamentos e componentes.</small></span>
         </button>
+        {isAdmin ? (
+          <button className="more-card" type="button" onClick={() => onNavigate('admin')}>
+            <span className="more-card__icon"><UsersIcon /></span>
+            <span><strong>Usuários e permissões</strong><small>Perfis, sessões, recuperação de acesso e matriz de capacidades.</small></span>
+          </button>
+        ) : null}
         <article className="more-card more-card--static">
           <span className="more-card__icon"><SettingsIcon /></span>
           <span><strong>Escopo deste incremento</strong><small>Solicitações técnicas, OEE real e turnos serão liberados após os contratos backend correspondentes.</small></span>

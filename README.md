@@ -13,7 +13,7 @@ Sistema CMMS industrial para operação, manutenção, PCM e gestão.
 
 ```text
 frontend/   Aplicação web responsiva do operador
-frontend-gestor/ Aplicação web responsiva do gestor e supervisor técnico
+frontend-gestor/ Aplicação web responsiva do gestor, supervisor técnico e administrador
 backend/    API, regras de negócio e integração com o banco
 docs/       Arquitetura, padrões e contratos
 mockups/    Referências visuais aprovadas

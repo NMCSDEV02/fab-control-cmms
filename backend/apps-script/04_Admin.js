@@ -3,6 +3,410 @@ const ADMIN_ENT = {
   materiais:"materiais", planos:"planos_manutencao", plano_itens:"plano_itens", usuarios:"usuarios"
 };
 
+const ADMIN_PERMISSION_CONFIG_KEY = "permissions.matrix.capabilities.v1";
+const ADMIN_PERMISSION_CAPABILITIES = [
+  {
+    id:"CONSULTAR_OPERACAO",
+    nome:"Consultar operação",
+    descricao:"Visualiza fila, detalhes e checklist sem autorizar alterações administrativas.",
+    perfis:[ROLE.GESTOR, ROLE.OPERADOR],
+    padrao:[ROLE.GESTOR, ROLE.OPERADOR],
+    acoes:["operador.home","operador.painel","operador.minhas_acoes","operador.tela_acao","operador.estado_acao","operador.listar_checklist_execucao","operador.detalhar_checklist_execucao","operador.validar_finalizacao_acao"]
+  },
+  {
+    id:"EXECUTAR_MANUTENCAO",
+    nome:"Executar manutenção",
+    descricao:"Inicia e finaliza ações, responde checklist e registra evidências, materiais e parâmetros.",
+    perfis:[ROLE.OPERADOR],
+    padrao:[ROLE.OPERADOR],
+    acoes:["operador.iniciar_acao","operador.salvar_checklist_item","operador.salvar_checklist_lote","operador.finalizar_acao","operador.registrar_evidencia","operador.upload_evidencia_foto","operador.registrar_material","operador.registrar_parametro","lock.status","lock.adquirir","lock.heartbeat","lock.liberar","telemetria.iniciar","telemetria.evento","telemetria.finalizar"]
+  },
+  {
+    id:"REGISTRAR_OCORRENCIAS",
+    nome:"Registrar ocorrências",
+    descricao:"Registra anormalidades operacionais vinculadas a ativos e componentes.",
+    perfis:[ROLE.OPERADOR],
+    padrao:[ROLE.OPERADOR],
+    acoes:["operador.registrar_ocorrencia"]
+  },
+  {
+    id:"CONTROLAR_PARADAS",
+    nome:"Controlar paradas",
+    descricao:"Consulta, inicia e encerra paradas de equipamento durante a operação.",
+    perfis:[ROLE.OPERADOR],
+    padrao:[ROLE.OPERADOR],
+    acoes:["operador.parada_ativa","operador.iniciar_parada","operador.finalizar_parada"]
+  },
+  {
+    id:"MONITORAR_OPERACAO",
+    nome:"Monitorar operação",
+    descricao:"Acompanha ações, paradas e ocorrências consolidadas no painel gerencial.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["gestor.listar_acoes","gestor.listar_paradas","gestor.listar_ocorrencias","gestor.detalhe_acao","gestor.detalhe_acao_fast"]
+  },
+  {
+    id:"VALIDAR_EXECUCOES",
+    nome:"Validar execuções",
+    descricao:"Audita checklists e aprova ou reprova execuções concluídas.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["gestor.auditoria_execucao_checklist","gestor.validar_acao"]
+  },
+  {
+    id:"VALIDAR_MODELOS",
+    nome:"Validar modelos",
+    descricao:"Consulta, aprova ou devolve modelos técnicos de checklist.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["gestor.modelos_em_validacao","gestor.listar_modelos_checklist","gestor.detalhe_modelo_checklist","gestor.validar_modelo_checklist"]
+  },
+  {
+    id:"CONSULTAR_ATIVOS",
+    nome:"Consultar ativos",
+    descricao:"Permite leitura do catálogo técnico de ativos e componentes.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["admin.listar","admin.obter"]
+  },
+  {
+    id:"VER_INDICADORES",
+    nome:"Visualizar indicadores",
+    descricao:"Exibe KPIs operacionais disponíveis no contrato atual.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["cmms.kpis_base"]
+  },
+  {
+    id:"GERENCIAR_SESSOES_OPERACIONAIS",
+    nome:"Gerenciar sessões operacionais",
+    descricao:"Configura colaboração e libera bloqueios de execução.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["gestor.configurar_sessoes","gestor.adicionar_colaborador","gestor.liberar_locks"]
+  }
+];
+
+function adminRequireIdentityAdmin_(auth){
+  if(upper_(auth && auth.perfil) !== ROLE.ADMIN){
+    err_("FORBIDDEN_ADMIN_REQUIRED", "Gestão de identidades exige perfil ADMIN.", 403);
+  }
+}
+
+function adminSanitizeEntityRow_(sheetName, row){
+  var safe = strip_(row);
+  if(sheetName === "usuarios"){
+    delete safe.pin_hash;
+    delete safe.senha_hash;
+  }
+  return safe;
+}
+
+function adminPublicUser_(user, activeSessions){
+  var safe = adminSanitizeEntityRow_("usuarios", user);
+  safe.sessoes_ativas = num_(activeSessions, 0);
+  safe.recuperacao_pendente = !!clean_(safe.recuperacao_referencia);
+  return safe;
+}
+
+function adminActiveSessionCounts_(){
+  var counts = {};
+  rows_("sessoes", true).forEach(function(session){
+    if(upper_(session.status) !== ST.ATIVO) return;
+    if(authSessionExpiryMs_(session) <= Date.now()) return;
+    var userId = clean_(session.usuario_id);
+    if(!userId) return;
+    counts[userId] = num_(counts[userId], 0) + 1;
+  });
+  return counts;
+}
+
+function adminRevokeUserSessions_(userId, reason){
+  var revoked = 0;
+  rows_("sessoes", true).forEach(function(session){
+    if(String(session.usuario_id) !== String(userId)) return;
+    if(upper_(session.status) !== ST.ATIVO) return;
+    authRevokeSession_(session, reason || "ADMIN_REVOKED");
+    revoked++;
+  });
+  return revoked;
+}
+
+function adminAssertUserUniqueness_(data, currentId){
+  var email = clean_(data.email).toLowerCase();
+  var registration = upper_(data.matricula);
+  var conflict = rows_("usuarios", true).find(function(user){
+    if(currentId && String(user.id) === String(currentId)) return false;
+    return clean_(user.email).toLowerCase() === email || upper_(user.matricula || user.id) === registration;
+  });
+  if(!conflict) return;
+  if(clean_(conflict.email).toLowerCase() === email){
+    err_("USER_EMAIL_EXISTS", "Já existe um usuário com este e-mail.", 409);
+  }
+  err_("USER_REGISTRATION_EXISTS", "Já existe um usuário com esta matrícula.", 409);
+}
+
+function adminAssertUserPayload_(data){
+  req_(data, ["nome","email","matricula","perfil"]);
+  var email = clean_(data.email).toLowerCase();
+  var registration = clean_(data.matricula);
+  var profile = upper_(data.perfil);
+  var status = upper_(data.status || ST.ATIVO);
+  if(clean_(data.nome).length < 3) err_("USER_NAME_INVALID", "Informe o nome completo do usuário.", 400);
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) err_("USER_EMAIL_INVALID", "Informe um e-mail válido.", 400);
+  if(!/^[A-Za-z0-9._-]{3,40}$/.test(registration)) err_("USER_REGISTRATION_INVALID", "A matrícula deve ter de 3 a 40 caracteres alfanuméricos.", 400);
+  if([ROLE.ADMIN, ROLE.GESTOR, ROLE.OPERADOR].indexOf(profile) < 0) err_("USER_PROFILE_INVALID", "Perfil de usuário inválido.", 400);
+  if([ST.ATIVO, ST.INATIVO].indexOf(status) < 0) err_("USER_STATUS_INVALID", "Status de usuário inválido.", 400);
+  return {email:email, matricula:registration, perfil:profile, status:status};
+}
+
+function adminAssertAdminContinuity_(oldUser, nextProfile, nextStatus){
+  if(!oldUser || upper_(oldUser.perfil) !== ROLE.ADMIN) return;
+  if(nextProfile === ROLE.ADMIN && nextStatus === ST.ATIVO) return;
+  var activeAdmins = rows_("usuarios", true).filter(function(user){
+    return upper_(user.perfil) === ROLE.ADMIN && upper_(user.status) === ST.ATIVO;
+  });
+  if(activeAdmins.length <= 1){
+    err_("LAST_ADMIN_REQUIRED", "O último administrador ativo não pode ser removido ou inativado.", 409);
+  }
+}
+
+function adminUsuariosListar_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  var search = clean_(p.busca).toLowerCase();
+  var profile = upper_(p.perfil);
+  var status = upper_(p.status);
+  var counts = adminActiveSessionCounts_();
+  var users = rows_("usuarios", true).filter(function(user){
+    if(profile && upper_(user.perfil) !== profile) return false;
+    if(status && upper_(user.status) !== status) return false;
+    if(!search) return true;
+    return [user.id,user.nome,user.email,user.matricula,user.perfil].some(function(value){
+      return clean_(value).toLowerCase().indexOf(search) >= 0;
+    });
+  }).sort(function(a,b){
+    return clean_(a.nome).localeCompare(clean_(b.nome));
+  });
+  var limit = Math.max(1, Math.min(num_(p.limite, 300), 500));
+  return {
+    total:users.length,
+    usuarios:users.slice(0, limit).map(function(user){
+      return adminPublicUser_(user, counts[user.id]);
+    })
+  };
+}
+
+function adminUsuariosSalvar_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["dados"]);
+  var data = Object.assign({}, p.dados || {});
+  var normalized = adminAssertUserPayload_(data);
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(10000)) err_("ADMIN_WRITE_BUSY", "Outra alteração administrativa está em andamento.", 409);
+  try{
+    var requestedId = clean_(data.id);
+    var old = requestedId ? find_("usuarios", "id", requestedId) : null;
+    if(requestedId && !old) err_("NOT_FOUND", "Usuário não encontrado.", 404);
+    adminAssertUserUniqueness_(normalized, old && old.id);
+    if(old){
+      var self = String(old.id) === String(auth.usuario_id);
+      if(self && (normalized.perfil !== upper_(old.perfil) || normalized.status !== upper_(old.status))){
+        err_("SELF_PROFILE_CHANGE_BLOCKED", "Você não pode alterar o próprio perfil ou status nesta sessão.", 409);
+      }
+      adminAssertAdminContinuity_(old, normalized.perfil, normalized.status);
+      var before = adminPublicUser_(old, 0);
+      var patch = {
+        nome:clean_(data.nome),
+        email:normalized.email,
+        matricula:normalized.matricula,
+        perfil:normalized.perfil,
+        status:normalized.status,
+        atualizado_em:now_()
+      };
+      update_("usuarios", old.__rowIndex, patch);
+      var securityChanged = normalized.perfil !== upper_(old.perfil) || normalized.status !== upper_(old.status);
+      var revoked = securityChanged ? adminRevokeUserSessions_(old.id, "IDENTITY_CHANGED") : 0;
+      var saved = Object.assign({}, old, patch);
+      audit_(auth, "ADMIN_USER_UPDATED", "usuarios", old.id, before, adminPublicUser_(saved, 0), clean_(p.user_agent));
+      return {saved:true, mode:"update", usuario:adminPublicUser_(saved, 0), sessoes_revogadas:revoked};
+    }
+
+    var temporaryPassword = String(data.senha_temporaria || p.senha_temporaria || "");
+    var policy = authPasswordPolicy_(temporaryPassword);
+    if(!policy.ok) err_(policy.code, policy.message, 400);
+    var userId = clean_(data.id) || eid_("USR", normalized.matricula);
+    if(find_("usuarios", "id", userId)) err_("USER_ID_EXISTS", "Já existe um usuário com este identificador.", 409);
+    var created = fit_("usuarios", {
+      id:userId,
+      nome:clean_(data.nome),
+      email:normalized.email,
+      perfil:normalized.perfil,
+      status:normalized.status,
+      pin_hash:"",
+      matricula:normalized.matricula,
+      senha_hash:authCreatePasswordHash_(temporaryPassword),
+      primeiro_acesso:"SIM",
+      tentativas_login:0,
+      bloqueado_ate:"",
+      ultimo_login_em:"",
+      senha_atualizada_em:now_(),
+      recuperacao_referencia:"",
+      recuperacao_solicitada_em:"",
+      criado_em:now_(),
+      atualizado_em:now_()
+    });
+    append_("usuarios", created);
+    audit_(auth, "ADMIN_USER_CREATED", "usuarios", created.id, null, adminPublicUser_(created, 0), clean_(p.user_agent));
+    return {saved:true, mode:"insert", usuario:adminPublicUser_(created, 0), sessoes_revogadas:0};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminUsuariosDesbloquear_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["usuario_id"]);
+  var user = find_("usuarios", "id", p.usuario_id);
+  if(!user) err_("NOT_FOUND", "Usuário não encontrado.", 404);
+  var before = adminPublicUser_(user, 0);
+  var patch = {tentativas_login:0, bloqueado_ate:"", atualizado_em:now_()};
+  update_("usuarios", user.__rowIndex, patch);
+  audit_(auth, "ADMIN_USER_UNLOCKED", "usuarios", user.id, before, adminPublicUser_(Object.assign({}, user, patch), 0), clean_(p.user_agent));
+  return {unlocked:true, usuario_id:user.id};
+}
+
+function adminUsuariosRedefinirSenha_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["usuario_id","senha_temporaria"]);
+  var user = find_("usuarios", "id", p.usuario_id);
+  if(!user) err_("NOT_FOUND", "Usuário não encontrado.", 404);
+  if(String(user.id) === String(auth.usuario_id)) err_("SELF_PASSWORD_RESET_BLOCKED", "Use o fluxo de alteração da própria senha.", 409);
+  var policy = authPasswordPolicy_(p.senha_temporaria);
+  if(!policy.ok) err_(policy.code, policy.message, 400);
+  var patch = {
+    senha_hash:authCreatePasswordHash_(p.senha_temporaria),
+    pin_hash:"",
+    primeiro_acesso:"SIM",
+    tentativas_login:0,
+    bloqueado_ate:"",
+    recuperacao_referencia:"",
+    recuperacao_solicitada_em:"",
+    senha_atualizada_em:now_(),
+    atualizado_em:now_()
+  };
+  update_("usuarios", user.__rowIndex, patch);
+  var revoked = adminRevokeUserSessions_(user.id, "PASSWORD_RESET_BY_ADMIN");
+  audit_(auth, "ADMIN_USER_PASSWORD_RESET", "usuarios", user.id, {primeiro_acesso:user.primeiro_acesso}, {primeiro_acesso:"SIM", sessoes_revogadas:revoked}, clean_(p.user_agent));
+  return {password_reset:true, usuario_id:user.id, primeiro_acesso:true, sessoes_revogadas:revoked};
+}
+
+function adminUsuariosRevogarSessoes_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["usuario_id"]);
+  var user = find_("usuarios", "id", p.usuario_id);
+  if(!user) err_("NOT_FOUND", "Usuário não encontrado.", 404);
+  if(String(user.id) === String(auth.usuario_id)) err_("SELF_SESSION_REVOKE_BLOCKED", "Use o botão Sair para encerrar a própria sessão.", 409);
+  var revoked = adminRevokeUserSessions_(user.id, "ADMIN_REVOKED");
+  audit_(auth, "ADMIN_USER_SESSIONS_REVOKED", "usuarios", user.id, null, {sessoes_revogadas:revoked}, clean_(p.user_agent));
+  return {revoked:true, usuario_id:user.id, sessoes_revogadas:revoked};
+}
+
+function adminPermissionStoredMatrix_(){
+  var row = find_("config", "chave", ADMIN_PERMISSION_CONFIG_KEY);
+  if(!row || !clean_(row.valor)) return {};
+  try{
+    var parsed = JSON.parse(clean_(row.valor));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch(e){
+    return {};
+  }
+}
+
+function adminCapabilityEnabled_(capability, profile, matrix){
+  profile = upper_(profile);
+  var profileMatrix = matrix && matrix[profile];
+  if(profileMatrix && Object.prototype.hasOwnProperty.call(profileMatrix, capability.id)){
+    return bool_(profileMatrix[capability.id]);
+  }
+  return capability.padrao.indexOf(profile) >= 0;
+}
+
+function adminPermissionDecision_(profile, action){
+  profile = upper_(profile);
+  if(profile === ROLE.ADMIN) return null;
+  var applicable = ADMIN_PERMISSION_CAPABILITIES.filter(function(capability){
+    return capability.perfis.indexOf(profile) >= 0 && capability.acoes.indexOf(action) >= 0;
+  });
+  if(!applicable.length) return null;
+  var matrix = adminPermissionStoredMatrix_();
+  return applicable.some(function(capability){
+    return adminCapabilityEnabled_(capability, profile, matrix);
+  });
+}
+
+function adminPermissionProfile_(profile, matrix){
+  profile = upper_(profile);
+  return {
+    perfil:profile,
+    editavel:profile !== ROLE.ADMIN,
+    capacidades:ADMIN_PERMISSION_CAPABILITIES.filter(function(capability){
+      return capability.perfis.indexOf(profile) >= 0;
+    }).map(function(capability){
+      return {
+        id:capability.id,
+        nome:capability.nome,
+        descricao:capability.descricao,
+        permitido:adminCapabilityEnabled_(capability, profile, matrix),
+        padrao:capability.padrao.indexOf(profile) >= 0,
+        acoes:capability.acoes.slice()
+      };
+    })
+  };
+}
+
+function adminPermissoesObter_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  var matrix = adminPermissionStoredMatrix_();
+  return {
+    chave:ADMIN_PERMISSION_CONFIG_KEY,
+    perfis:[
+      {perfil:ROLE.ADMIN, editavel:false, capacidades:[], acesso_total:true},
+      adminPermissionProfile_(ROLE.GESTOR, matrix),
+      adminPermissionProfile_(ROLE.OPERADOR, matrix)
+    ]
+  };
+}
+
+function adminPermissoesSalvar_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["perfil","permissoes"]);
+  var profile = upper_(p.perfil);
+  if([ROLE.GESTOR, ROLE.OPERADOR].indexOf(profile) < 0){
+    err_("PERMISSION_PROFILE_LOCKED", "A matriz do perfil informado não pode ser alterada.", 409);
+  }
+  if(!p.permissoes || typeof p.permissoes !== "object" || Array.isArray(p.permissoes)){
+    err_("PERMISSION_MATRIX_INVALID", "A matriz de permissões é inválida.", 400);
+  }
+  var matrix = adminPermissionStoredMatrix_();
+  var before = Object.assign({}, matrix[profile] || {});
+  var allowedIds = ADMIN_PERMISSION_CAPABILITIES.filter(function(capability){
+    return capability.perfis.indexOf(profile) >= 0;
+  }).map(function(capability){ return capability.id; });
+  var next = {};
+  allowedIds.forEach(function(id){
+    if(Object.prototype.hasOwnProperty.call(p.permissoes, id)) next[id] = bool_(p.permissoes[id]);
+  });
+  matrix[profile] = next;
+  upsertConfigText_("chave", {
+    chave:ADMIN_PERMISSION_CONFIG_KEY,
+    valor:JSON.stringify(matrix),
+    descricao:"Matriz configurável de capacidades por perfil",
+    atualizado_em:now_()
+  });
+  audit_(auth, "ADMIN_PERMISSIONS_UPDATED", "config", ADMIN_PERMISSION_CONFIG_KEY+":"+profile, before, next, clean_(p.user_agent));
+  return {saved:true, perfil:profile, matriz:adminPermissionProfile_(profile, matrix)};
+}
+
 function adminResumo_(){
   return {
     version:FAB.VERSION,
@@ -26,7 +430,7 @@ function adminListar_(p){
   var ent = clean_(p.entidade);
   var sh = ADMIN_ENT[ent];
   if(!sh) err_("ENTITY_INVALID","Entidade inválida: "+ent,400);
-  var r = rows_(sh).map(function(x){ x = strip_(x); if(sh === "usuarios") delete x.pin_hash; return x; });
+  var r = rows_(sh).map(function(x){ return adminSanitizeEntityRow_(sh, x); });
   if(p.filtro_campo) r = r.filter(function(x){ return String(x[p.filtro_campo]) === String(p.filtro_valor); });
   return {entidade:ent, total:r.length, rows:r.slice(0, Math.min(num_(p.limite,300),500))};
 }
@@ -37,8 +441,7 @@ function adminObter_(p){
   if(!sh) err_("ENTITY_INVALID","Entidade inválida.",400);
   var r = find_(sh,"id",p.id);
   if(!r) err_("NOT_FOUND","Registro não encontrado.",404);
-  r = strip_(r);
-  if(sh === "usuarios") delete r.pin_hash;
+  r = adminSanitizeEntityRow_(sh, r);
   return {entidade:p.entidade, row:r};
 }
 
@@ -47,18 +450,19 @@ function adminSalvar_(p){
   var ent = clean_(p.entidade);
   var sh = ADMIN_ENT[ent];
   if(!sh) err_("ENTITY_INVALID","Entidade inválida: "+ent,400);
+  if(ent === "usuarios") return adminUsuariosSalvar_(p, p.__auth || {});
   var row = normalizeEnt_(ent, p.dados || {});
   var old = row.id ? find_(sh,"id",row.id) : null;
   if(old){
     row.criado_em = old.criado_em || row.criado_em || now_();
     row.atualizado_em = now_();
     update_(sh, old.__rowIndex, row);
-    return {saved:true, mode:"update", entidade:ent, row:strip_(Object.assign({}, old, row))};
+    return {saved:true, mode:"update", entidade:ent, row:adminSanitizeEntityRow_(sh, Object.assign({}, old, row))};
   }
   row.criado_em = row.criado_em || now_();
   row.atualizado_em = now_();
   append_(sh, row);
-  return {saved:true, mode:"insert", entidade:ent, row:strip_(row)};
+  return {saved:true, mode:"insert", entidade:ent, row:adminSanitizeEntityRow_(sh, row)};
 }
 
 function normalizeEnt_(ent,d){
@@ -89,7 +493,7 @@ function normalizeEnt_(ent,d){
     req_(d,["plano_id","titulo"]); o.id=clean_(d.id)||eid_("PIT",d.plano_id+"-"+(d.ordem||1)+"-"+d.titulo); o.ordem=num_(d.ordem,1); o.tipo_resposta=normalizaTipoChecklist_(d.tipo_resposta||"OK_NOK"); o.obrigatorio=bool_(d.obrigatorio===undefined?"SIM":d.obrigatorio)?"SIM":"NAO"; o.evidencia_obrigatoria=bool_(d.evidencia_obrigatoria===undefined?"NAO":d.evidencia_obrigatoria)?"SIM":"NAO"; o.parametro_nome=clean_(d.parametro_nome); o.valor_esperado=clean_(d.valor_esperado); o.opcoes_json=normalizaOpcoesJson_(d.opcoes||d.opcoes_json); o.bloqueia_finalizacao=bool_(d.bloqueia_finalizacao)?"SIM":"NAO"; o.categoria=upper_(d.categoria||"OPERACIONAL"); o.peso=num_(d.peso,1); o.status=upper_(d.status||ST.ATIVO); o.validacao_regra=clean_(d.validacao_regra);
   }
   if(ent === "usuarios"){
-    req_(d,["nome","email","perfil"]); o.email=clean_(d.email).toLowerCase(); o.perfil=upper_(d.perfil); o.status=upper_(d.status||ST.ATIVO); o.id=clean_(d.id)||eid_("USR",o.email.split("@")[0]); if(d.pin) o.pin_hash=hashPin_(d.pin); var old=find_("usuarios","id",o.id); if(!o.pin_hash && old) o.pin_hash=old.pin_hash; if(!o.pin_hash) err_("PIN_REQUIRED","PIN obrigatório para novo usuário.",400);
+    err_("USER_ENDPOINT_REQUIRED", "Use o endpoint administrativo dedicado para usuários.", 400);
   }
 
   return fit_(shForEnt_(ent), o);

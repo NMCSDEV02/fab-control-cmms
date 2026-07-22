@@ -4,6 +4,7 @@ import {
   type GestorSection,
 } from '../components/AppNavigation'
 import { AssetsPage } from '../pages/AssetsPage'
+import { AdminPage } from '../pages/AdminPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { LoginPage } from '../pages/LoginPage'
 import { MorePage } from '../pages/MorePage'
@@ -28,6 +29,7 @@ export function App() {
   const [section, setSection] = useState<GestorSection>('home')
   const [validationCount, setValidationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
+  const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
 
   const expireSession = useCallback(() => {
     markExpiredGestorSession()
@@ -144,6 +146,9 @@ export function App() {
         {section === 'assets' ? (
           <AssetsPage onSessionExpired={expireSession} />
         ) : null}
+        {section === 'admin' && isAdmin ? (
+          <AdminPage session={session} onSessionExpired={expireSession} />
+        ) : null}
         {section === 'more' ? (
           <MorePage session={session} onNavigate={handleNavigate} />
         ) : null}
@@ -152,6 +157,7 @@ export function App() {
       <AppNavigation
         active={section}
         validationCount={validationCount}
+        showAdmin={isAdmin}
         onNavigate={handleNavigate}
       />
     </div>

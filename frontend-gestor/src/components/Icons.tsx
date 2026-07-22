@@ -124,3 +124,30 @@ export function SettingsIcon(props: IconProps) {
     </IconBase>
   )
 }
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="9" cy="8" r="4" />
+      <path d="M2.5 21a6.5 6.5 0 0 1 13 0M16 4.5a4 4 0 0 1 0 7.5M17 15a6 6 0 0 1 4.5 6" />
+    </IconBase>
+  )
+}
+
+export function ShieldIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 3 4.5 6v5.5c0 4.6 3.1 7.8 7.5 9.5 4.4-1.7 7.5-4.9 7.5-9.5V6L12 3Z" />
+      <path d="m8.5 12 2.2 2.2 4.8-5" />
+    </IconBase>
+  )
+}
+
+export function KeyIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="8" cy="15" r="4" />
+      <path d="m11 12 8-8M16 7l2 2M14 9l2 2" />
+    </IconBase>
+  )
+}

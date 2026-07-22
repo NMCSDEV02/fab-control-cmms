@@ -10,6 +10,10 @@ Aplicação React + TypeScript do gestor do Fab Control.
 - validação de modelos técnicos de checklist;
 - monitoramento de paradas e ocorrências;
 - consulta de ativos e componentes;
+- recuperação de senha com referência não enumerável;
+- cadastro e edição de usuários pelo administrador;
+- desbloqueio, redefinição de senha temporária e revogação de sessões;
+- matriz auditável de capacidades para `GESTOR` e `OPERADOR`;
 - configuração validada do endpoint da API.
 
 ## Configuração local
@@ -29,4 +33,5 @@ npm ci
 npm run typecheck
 npm run build
 node ../tools/test-gestor-frontend-contract.mjs
+node ../tools/test-admin-identity-contract.mjs
 ```

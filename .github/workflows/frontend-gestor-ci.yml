@@ -33,3 +33,4 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: node ../tools/test-gestor-frontend-contract.mjs
+      - run: node ../tools/test-admin-identity-contract.mjs
