@@ -3,8 +3,9 @@ import {
   AppNavigation,
   type GestorSection,
 } from '../components/AppNavigation'
+import { AdminWorkspace } from '../components/AdminWorkspace'
 import { AssetsPage } from '../pages/AssetsPage'
-import { AdminPage } from '../pages/AdminPage'
+import type { AdminModule } from '../pages/AdminPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { LoginPage } from '../pages/LoginPage'
 import { MorePage } from '../pages/MorePage'
@@ -27,6 +28,7 @@ import {
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
   const [section, setSection] = useState<GestorSection>('home')
+  const [adminModule, setAdminModule] = useState<AdminModule>('overview')
   const [validationCount, setValidationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
   const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
@@ -67,6 +69,7 @@ export function App() {
     saveGestorSession(nextSession)
     setSession(nextSession)
     setSection('home')
+    setAdminModule('overview')
   }
 
   function handleNavigate(nextSection: GestorSection) {
@@ -92,6 +95,19 @@ export function App() {
 
   if (!session) {
     return <LoginPage onAuthenticated={handleAuthenticated} />
+  }
+
+  if (isAdmin) {
+    return (
+      <AdminWorkspace
+        session={session}
+        activeModule={adminModule}
+        loggingOut={loggingOut}
+        onModuleChange={setAdminModule}
+        onSessionExpired={expireSession}
+        onLogout={() => void handleLogout()}
+      />
+    )
   }
 
   return (
@@ -146,9 +162,6 @@ export function App() {
         {section === 'assets' ? (
           <AssetsPage onSessionExpired={expireSession} />
         ) : null}
-        {section === 'admin' && isAdmin ? (
-          <AdminPage session={session} onSessionExpired={expireSession} />
-        ) : null}
         {section === 'more' ? (
           <MorePage session={session} onNavigate={handleNavigate} />
         ) : null}
@@ -157,7 +170,7 @@ export function App() {
       <AppNavigation
         active={section}
         validationCount={validationCount}
-        showAdmin={isAdmin}
+        showAdmin={false}
         onNavigate={handleNavigate}
       />
     </div>

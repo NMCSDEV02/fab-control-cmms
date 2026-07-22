@@ -64,7 +64,7 @@ assert(!admin.includes('PIN_REQUIRED'), 'fluxo legado de criação por PIN conti
 
 assert(login.includes('requestPasswordRecovery'), 'tela de recuperação de senha ausente')
 assert(login.includes("view === 'recovery'"), 'estado visual de recuperação ausente')
-assert(app.includes("section === 'admin' && isAdmin"), 'bloqueio visual por perfil ADMIN ausente')
+assert(app.includes('if (isAdmin) {') && app.includes('<AdminWorkspace'), 'shell exclusivo por perfil ADMIN ausente')
 assert(adminPage.includes('currentUserId={session.user.id}'), 'proteção visual da própria conta ausente')
 assert(adminPage.includes('saveAdminPermissionProfile'), 'matriz não pode ser salva pela interface')
 

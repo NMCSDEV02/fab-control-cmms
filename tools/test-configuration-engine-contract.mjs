@@ -17,6 +17,8 @@ const workflow = read('backend/apps-script/25_Workflow_Tecnico_KPI.js')
 const adminApi = read('frontend-gestor/src/services/api/admin.ts')
 const panel = read('frontend-gestor/src/components/ConfigurationEnginePanel.tsx')
 const adminPage = read('frontend-gestor/src/pages/AdminPage.tsx')
+const app = read('frontend-gestor/src/app/App.tsx')
+const adminWorkspace = read('frontend-gestor/src/components/AdminWorkspace.tsx')
 
 for (const sheet of ['configuracao_versoes', 'configuracao_rascunhos']) {
   assert(config.includes(`${sheet}: [`), `schema ausente: ${sheet}`)
@@ -65,6 +67,13 @@ assert(panel.includes('Núcleo protegido'), 'interface não comunica a proteçã
 assert(panel.includes('Histórico imutável'), 'interface não expõe histórico versionado')
 assert(panel.includes('Rollback gera uma nova versão'), 'interface não explica rollback imutável')
 assert(adminPage.includes('Command Workspace'), 'workspace administrativo ausente')
+assert(app.includes("if (isAdmin) {"), 'perfil ADMIN não possui desvio estrutural próprio')
+assert(app.includes('<AdminWorkspace'), 'shell administrativo dedicado não é renderizado')
+assert(app.indexOf('if (isAdmin) {') < app.indexOf('<div className="app-shell">'), 'shell do gestor é montado antes da separação do ADMIN')
+assert(adminWorkspace.includes('admin-command-sidebar'), 'sidebar administrativa persistente ausente')
+assert(adminWorkspace.includes('AdminPage') && adminWorkspace.includes('embedded'), 'módulos administrativos não estão embutidos no workspace')
+assert(!adminWorkspace.includes('AppNavigation'), 'workspace administrativo reutiliza navegação móvel do gestor')
+assert(!adminWorkspace.includes('Visão do gestor'), 'workspace administrativo mantém identidade visual do gestor')
 
 console.log('CONTRATO DO MOTOR DE CONFIGURAÇÃO APROVADO')
 console.log(`${actions.length} rotas administrativas e 2 tabelas versionadas conferidas`)

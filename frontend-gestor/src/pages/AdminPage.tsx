@@ -22,9 +22,12 @@ import type {
 interface AdminPageProps {
   session: GestorSession
   onSessionExpired: () => void
+  activeModule?: AdminModule
+  embedded?: boolean
+  onModuleChange?: (module: AdminModule) => void
 }
 
-type AdminTab = 'configuration' | 'users' | 'permissions'
+export type AdminModule = 'overview' | 'configuration' | 'users' | 'permissions'
 type EditablePermissionProfile = 'GESTOR' | 'OPERADOR'
 
 const PROFILE_LABELS: Record<AdminUserProfile, string> = {
@@ -54,8 +57,19 @@ function normalizeAttempts(user: AdminUser): number {
   return Number.isFinite(value) ? value : 0
 }
 
-export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
-  const [tab, setTab] = useState<AdminTab>('configuration')
+export function AdminPage({
+  session,
+  onSessionExpired,
+  activeModule,
+  embedded = false,
+  onModuleChange,
+}: AdminPageProps) {
+  const [internalModule, setInternalModule] = useState<AdminModule>('overview')
+  const tab = activeModule ?? internalModule
+  const setTab = (module: AdminModule) => {
+    setInternalModule(module)
+    onModuleChange?.(module)
+  }
   const [users, setUsers] = useState<AdminUser[]>([])
   const [permissionMatrix, setPermissionMatrix] = useState<AdminPermissionMatrix | null>(null)
   const [selectedPermissionProfile, setSelectedPermissionProfile] = useState<EditablePermissionProfile>('GESTOR')
@@ -228,34 +242,35 @@ export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
   }
 
   if (loading) {
-    return <main className="content"><div className="dashboard-loading">Carregando administração…</div></main>
+    return <div className="dashboard-loading">Carregando administração…</div>
   }
 
   return (
-    <main className="content admin-page">
-      <section className="admin-mobile-block">
-        <ShieldIcon />
-        <h1>Command Workspace</h1>
-        <p>O ambiente administrativo foi protegido para uso em computador. Acesse em uma tela com pelo menos 901 px de largura.</p>
-      </section>
-      <section className="page-heading">
-        <div>
-          <span className="eyebrow">ADMINISTRAÇÃO E SEGURANÇA</span>
-          <h1>Command Workspace</h1>
-          <p>Configuração versionada, identidades e capacidades com proteção de runtime e trilha de auditoria.</p>
-        </div>
-        {tab !== 'configuration' ? (
-          <button className="icon-text-button" type="button" disabled={refreshing} onClick={() => void refresh('Dados administrativos atualizados.') }>
-            <RefreshIcon />
-            {refreshing ? 'Atualizando…' : 'Atualizar'}
-          </button>
-        ) : null}
-      </section>
+    <main className={embedded ? 'admin-workspace-module' : 'content admin-page'}>
+      {!embedded ? (
+        <>
+          <section className="admin-mobile-block">
+            <ShieldIcon />
+            <h1>Command Workspace</h1>
+            <p>O ambiente administrativo foi protegido para uso em computador. Acesse em uma tela com pelo menos 901 px de largura.</p>
+          </section>
+          <section className="page-heading">
+            <div>
+              <span className="eyebrow">ADMINISTRAÇÃO E SEGURANÇA</span>
+              <h1>Command Workspace</h1>
+              <p>Configuração versionada, identidades e capacidades com proteção de runtime e trilha de auditoria.</p>
+            </div>
+          </section>
+        </>
+      ) : null}
 
       {error ? <div className="dashboard-error" role="alert"><strong>Falha administrativa.</strong><span>{error}</span></div> : null}
       {notice ? <div className="dashboard-notice" role="status">{notice}</div> : null}
 
-      <section className="admin-tabs" role="tablist" aria-label="Administração">
+      {!embedded ? <section className="admin-tabs" role="tablist" aria-label="Administração">
+        <button type="button" role="tab" aria-selected={tab === 'overview'} className={tab === 'overview' ? 'is-active' : ''} onClick={() => setTab('overview')}>
+          <SettingsIcon /> Visão geral
+        </button>
         <button type="button" role="tab" aria-selected={tab === 'configuration'} className={tab === 'configuration' ? 'is-active' : ''} onClick={() => setTab('configuration')}>
           <SettingsIcon /> Motor
         </button>
@@ -265,7 +280,53 @@ export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
         <button type="button" role="tab" aria-selected={tab === 'permissions'} className={tab === 'permissions' ? 'is-active' : ''} onClick={() => setTab('permissions')}>
           <ShieldIcon /> Permissões
         </button>
-      </section>
+      </section> : null}
+
+      {tab === 'overview' ? (
+        <section className="admin-command-overview" role="tabpanel">
+          <div className="admin-command-kpis">
+            <article><span>Identidades</span><strong>{metrics.total}</strong><small>{metrics.active} com acesso ativo</small></article>
+            <article className={metrics.blocked ? 'is-warning' : ''}><span>Segurança</span><strong>{metrics.blocked}</strong><small>contas temporariamente bloqueadas</small></article>
+            <article className={metrics.recovery ? 'is-warning' : ''}><span>Recuperações</span><strong>{metrics.recovery}</strong><small>solicitações aguardando ação</small></article>
+            <article><span>Capacidades</span><strong>{permissionMatrix?.perfis.reduce((total, profile) => total + profile.capacidades.filter((item) => item.permitido).length, 0) ?? 0}</strong><small>regras ativas na matriz</small></article>
+          </div>
+
+          <div className="admin-command-dashboard-grid">
+            <section className="admin-command-control-panel">
+              <header><div><span className="eyebrow">CONTROLES CENTRAIS</span><h2>Governança do sistema</h2></div><button type="button" disabled={refreshing} onClick={() => void refresh('Workspace atualizado.') }><RefreshIcon />{refreshing ? 'Atualizando…' : 'Atualizar'}</button></header>
+              <div className="admin-command-module-grid">
+                <button type="button" onClick={() => setTab('configuration')}><SettingsIcon /><span><strong>Motor de Configuração</strong><small>Rascunhos, validação, publicação e rollback imutável.</small></span><b>Seguro</b></button>
+                <button type="button" onClick={() => setTab('users')}><UsersIcon /><span><strong>Identidades e perfis</strong><small>Usuários, áreas técnicas, cargos, sessões e recuperação.</small></span><b>{metrics.active} ativos</b></button>
+                <button type="button" onClick={() => setTab('permissions')}><ShieldIcon /><span><strong>Matriz de capacidades</strong><small>Permissões efetivas para gestor e operador.</small></span><b>Auditada</b></button>
+              </div>
+            </section>
+
+            <aside className="admin-command-safety-panel">
+              <span className="eyebrow">NÚCLEO PROTEGIDO</span>
+              <h2>Barreiras de segurança</h2>
+              <ul>
+                <li><ShieldIcon /><span><strong>Runtime isolado</strong><small>Rascunhos nunca alteram a operação.</small></span></li>
+                <li><ShieldIcon /><span><strong>Lista branca</strong><small>Somente parâmetros tipados podem ser publicados.</small></span></li>
+                <li><ShieldIcon /><span><strong>Histórico imutável</strong><small>Rollback cria uma nova versão auditada.</small></span></li>
+                <li><ShieldIcon /><span><strong>Concorrência bloqueada</strong><small>Versões obsoletas são recusadas.</small></span></li>
+              </ul>
+            </aside>
+          </div>
+
+          <section className="admin-command-flow-panel">
+            <header><span className="eyebrow">FLUXO CORPORATIVO</span><h2>Como a governança chega ao chão de fábrica</h2></header>
+            <div className="admin-command-flow">
+              <article><b>01</b><span><strong>Administrador</strong><small>Cria planos, modelos e políticas.</small></span></article>
+              <i aria-hidden="true">→</i>
+              <article><b>02</b><span><strong>Filtro técnico</strong><small>Gestor valida, encaminha e solicita assinatura.</small></span></article>
+              <i aria-hidden="true">→</i>
+              <article><b>03</b><span><strong>Especialista</strong><small>Qualidade, manutenção ou segurança libera.</small></span></article>
+              <i aria-hidden="true">→</i>
+              <article><b>04</b><span><strong>Operador</strong><small>Executa a ordem e registra evidências.</small></span></article>
+            </div>
+          </section>
+        </section>
+      ) : null}
 
       {tab === 'configuration' ? <ConfigurationEnginePanel onSessionExpired={onSessionExpired} /> : null}
 
