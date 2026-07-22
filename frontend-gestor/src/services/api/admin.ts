@@ -10,6 +10,8 @@ import type {
   AdminUserSaveResult,
   TechnicalArea,
   TechnicalRole,
+  TechnicalAreaInput,
+  TechnicalRoleInput,
   ConfigurationDraft,
   ConfigurationEngineState,
   ConfigurationPublishResult,
@@ -139,6 +141,39 @@ export async function listTechnicalRoles(
     signal,
   )
   return Array.isArray(data.cargos) ? data.cargos : []
+}
+
+export async function listAllTechnicalAreas(signal?: AbortSignal): Promise<TechnicalArea[]> {
+  const data = await readAdminData<TechnicalAreaListData>('admin.areas_tecnicas.listar', {}, signal)
+  return Array.isArray(data.areas) ? data.areas : []
+}
+
+export async function listAllTechnicalRoles(
+  areaId = '',
+  signal?: AbortSignal,
+): Promise<TechnicalRole[]> {
+  const data = await readAdminData<TechnicalRoleListData>(
+    'admin.cargos_tecnicos.listar',
+    { area_id: areaId },
+    signal,
+  )
+  return Array.isArray(data.cargos) ? data.cargos : []
+}
+
+export async function saveTechnicalArea(input: TechnicalAreaInput): Promise<TechnicalArea> {
+  const data = await writeAdminData<{ saved: boolean; area: TechnicalArea }>(
+    'admin.areas_tecnicas.salvar',
+    { dados: input },
+  )
+  return data.area
+}
+
+export async function saveTechnicalRole(input: TechnicalRoleInput): Promise<TechnicalRole> {
+  const data = await writeAdminData<{ saved: boolean; cargo: TechnicalRole }>(
+    'admin.cargos_tecnicos.salvar',
+    { dados: input },
+  )
+  return data.cargo
 }
 
 export function unlockAdminUser(userId: string): Promise<AdminUnlockResult> {

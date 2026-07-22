@@ -24,6 +24,7 @@ const MODULES: Array<{
   { id: 'checklists', label: 'Construtor de checklist', description: 'Modelos e roteamento', Icon: CheckIcon },
   { id: 'maintenance', label: 'Planos programados', description: 'Gatilhos e recorrências', Icon: SettingsIcon },
   { id: 'inventory', label: 'Materiais e peças', description: 'Estoque técnico', Icon: AssetIcon },
+  { id: 'workforce', label: 'Áreas e cargos', description: 'Filtros e assinaturas', Icon: UsersIcon },
   { id: 'imports', label: 'Implantação e importação', description: 'Modelos de planilhas', Icon: SettingsIcon },
   { id: 'configuration', label: 'Motor de configuração', description: 'Runtime versionado', Icon: SettingsIcon },
   { id: 'users', label: 'Usuários e perfis', description: 'Identidades e acessos', Icon: UsersIcon },
@@ -60,6 +61,11 @@ const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; sub
     eyebrow: 'ALMOXARIFADO TÉCNICO',
     title: 'Materiais e peças',
     subtitle: 'Cadastre itens de consumo e acompanhe saldo e estoque mínimo para as execuções.',
+  },
+  workforce: {
+    eyebrow: 'ESTRUTURA TÉCNICA',
+    title: 'Áreas e cargos especialistas',
+    subtitle: 'Defina os destinos do fluxo, os cargos de cada área e quem pode assinar uma liberação.',
   },
   imports: {
     eyebrow: 'IMPLANTAÇÃO E GOVERNANÇA DE DADOS',

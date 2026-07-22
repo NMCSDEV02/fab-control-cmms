@@ -14,9 +14,11 @@ const page = read('frontend-gestor/src/pages/AdminPage.tsx')
 const catalog = read('frontend-gestor/src/components/AdminCatalogWorkspace.tsx')
 const checklist = read('frontend-gestor/src/components/AdminChecklistBuilder.tsx')
 const checklistApi = read('frontend-gestor/src/services/api/checklists.ts')
+const adminApi = read('frontend-gestor/src/services/api/admin.ts')
+const technicalStructure = read('frontend-gestor/src/components/AdminTechnicalStructure.tsx')
 const styles = read('frontend-gestor/src/styles/global.css')
 
-for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'imports', 'configuration', 'users', 'permissions']) {
+for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
   assert(page.includes(`tab === '${moduleId}'`), `módulo sem conteúdo: ${moduleId}`)
 }
@@ -46,9 +48,15 @@ for (const assistedField of ['Ativo *', 'Componente', 'Tipo de resposta', 'Área
 assert(checklist.includes('availableComponents'), 'componentes não são filtrados pelo ativo')
 assert(checklist.includes('availableRoles'), 'cargos não são filtrados pela área')
 assert(checklist.includes('saveModel()'), 'envio não garante rascunho salvo')
+for (const action of ['admin.areas_tecnicas.listar', 'admin.areas_tecnicas.salvar', 'admin.cargos_tecnicos.listar', 'admin.cargos_tecnicos.salvar']) {
+  assert(adminApi.includes(`'${action}'`), `cliente da estrutura técnica não usa ${action}`)
+}
+assert(technicalStructure.includes('Área técnica *'), 'cargo não usa dropdown de área')
+assert(technicalStructure.includes('Pode assinar documentos'), 'permissão de assinatura não é assistida')
+assert(technicalStructure.includes("editor.kind === 'role'"), 'formulário de cargo não é protegido por tipo')
 assert(styles.includes('.admin-checklist-layout'), 'construtor sem layout de Command Workspace')
 assert(styles.includes('.admin-catalog-dialog'), 'cadastro sem formulário administrativo')
 
 console.log('CONTRATO DO COMMAND WORKSPACE APROVADO')
-console.log('9 módulos funcionais, cadastros assistidos e construtor de checklist conferidos')
+console.log('10 módulos funcionais, cadastros assistidos e construtor de checklist conferidos')
 console.log('Vínculos, concorrência, auditoria e workflow Admin -> Gestor -> Operador protegidos')

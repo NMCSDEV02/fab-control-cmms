@@ -58,6 +58,25 @@ export interface TechnicalRole {
   pode_assinar?: string
 }
 
+export interface TechnicalAreaInput {
+  id?: string
+  codigo: string
+  nome: string
+  descricao?: string
+  status: AdminUserStatus
+  exige_assinatura_padrao: string
+}
+
+export interface TechnicalRoleInput {
+  id?: string
+  area_id: string
+  codigo: string
+  nome: string
+  descricao?: string
+  status: AdminUserStatus
+  pode_assinar: string
+}
+
 export interface AdminUserListFilters {
   busca?: string
   perfil?: AdminUserProfile | ''
