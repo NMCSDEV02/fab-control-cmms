@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "8C8E395F299EB4FE783CC1133E7C5564C196F0721859D8DC581E7C88602AD789",
-    "immutableAppsScriptVersion": 7,
-    "deploymentId": "AKfycbxst8aAYbW2L7qzh6t45ZRZNU-1SjUs77cMD1SkW3x2D_WWmlttOmB-87dDuEjqGzkvTg",
+    "backendSourceSha256": "FE0C94F85B8FFA4891444004A08EC413FFC966AAE78E1BC77CDF8999021CE3F3",
+    "immutableAppsScriptVersion": 8,
+    "deploymentId": "AKfycbyUZ87jD-qR6ZYi94LKkVCpAZHZEB_s3HFqLkYfb_cYJbO65TFcpUi7jNHeCDexdzdAMw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "1ddb0fb"
+    "sourceGitCommit": "2c7f3cd"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -63,6 +63,7 @@
       "importedPlansWorkflow": "forced-draft-inactive-until-manager-validation",
       "manualMasterData": "implemented-assisted-dropdowns-audited",
       "checklistAuthoring": "implemented-dynamic-technical-routing",
+      "governedInterventions": "draft-manager-validation-operator-release",
       "configurationRemoteAuthenticatedValidation": "pending",
       "remoteAccessControlValidation": "approved",
       "remoteAuthenticatedValidation": "approved"
@@ -90,6 +91,7 @@
     "adminImportE2E": "approved",
     "adminCommandWorkspaceContract": "approved",
     "adminManualCatalogE2E": "approved",
+    "adminInterventionWorkflowE2E": "approved",
     "productionBootstrapContract": "approved",
     "operatorFrontendBuild": "approved",
     "managerFrontendBuild": "approved",
@@ -100,10 +102,10 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "8C8E395F299EB4FE783CC1133E7C5564C196F0721859D8DC581E7C88602AD789",
-    "immutableAppsScriptVersion": 7,
-    "sourceGitCommit": "1ddb0fb",
-    "deploymentId": "AKfycbxst8aAYbW2L7qzh6t45ZRZNU-1SjUs77cMD1SkW3x2D_WWmlttOmB-87dDuEjqGzkvTg",
+    "backendSourceSha256": "FE0C94F85B8FFA4891444004A08EC413FFC966AAE78E1BC77CDF8999021CE3F3",
+    "immutableAppsScriptVersion": 8,
+    "sourceGitCommit": "2c7f3cd",
+    "deploymentId": "AKfycbyUZ87jD-qR6ZYi94LKkVCpAZHZEB_s3HFqLkYfb_cYJbO65TFcpUi7jNHeCDexdzdAMw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
@@ -118,6 +120,8 @@
       "manualRegistrationEndpointDeclared": "approved",
       "manualRegistrationRequiresAuthentication": "approved",
       "checklistBuilderEndpointsDeclared": "approved",
+      "interventionEndpointsDeclared": "approved",
+      "interventionEndpointsRequireAuthentication": "approved",
       "unknownLoginRejected": "approved",
       "recoveryNonEnumeration": "approved",
       "usersRequiresAuthentication": "approved",
