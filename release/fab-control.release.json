@@ -1,8 +1,8 @@
 {
   "manifestVersion": 2,
   "release": "1.4.0",
-  "status": "canary-published-authenticated-validation-pending",
-  "promotionEligible": false,
+  "status": "canary-homologated",
+  "promotionEligible": true,
   "components": {
     "frontend": "1.4.0",
     "frontendGestor": "1.4.0",
@@ -34,7 +34,7 @@
   },
   "features": {
     "operatorAuthentication": {
-      "status": "implemented-canary-validation-pending",
+      "status": "homologated",
       "identifier": "matricula",
       "passwordStorage": "salted-iterative-sha256-with-script-property-pepper",
       "firstAccessRequiredForLegacyPinUsers": true,
@@ -43,18 +43,18 @@
       "sessionStorageOnly": true,
       "recoveryResponse": "non-enumerating-deterministic-reference",
       "remotePublicValidation": "approved",
-      "remoteAuthenticatedValidation": "pending"
+      "remoteAuthenticatedValidation": "approved"
     },
     "managerAdministration": {
-      "status": "implemented-canary-validation-pending",
+      "status": "homologated",
       "userManagement": "implemented",
       "profileManagement": "implemented",
       "permissionMatrix": "implemented",
       "remoteAccessControlValidation": "approved",
-      "remoteAuthenticatedValidation": "pending"
+      "remoteAuthenticatedValidation": "approved"
     },
     "productionBootstrap": {
-      "status": "canary-public-validated",
+      "status": "canary-homologated",
       "requiresEmptySpreadsheet": true,
       "requiresConfiguredSpreadsheetId": true,
       "demoSeeded": false,
@@ -73,7 +73,7 @@
     "productionBootstrapContract": "approved",
     "operatorFrontendBuild": "approved",
     "managerFrontendBuild": "approved",
-    "remoteCanary": "public-contract-approved"
+    "remoteCanary": "approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
@@ -94,10 +94,11 @@
       "usersRequiresAuthentication": "approved",
       "invalidPermissionTokenRejected": "approved",
       "productionDeploymentUnchanged": "approved",
-      "permanentAdminLogin": "pending",
-      "authenticatedAdminRead": "pending",
-      "remoteLogout": "pending",
-      "revokedTokenRejected": "pending"
+      "permanentAdminLogin": "approved",
+      "authenticatedAdminRead": "approved",
+      "authenticatedPermissionMatrixRead": "approved",
+      "remoteLogout": "approved",
+      "revokedTokenRejected": "approved"
     }
   },
   "legacyEvidence": {

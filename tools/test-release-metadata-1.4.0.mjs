@@ -25,8 +25,8 @@ assert(config.includes(`const FAB_RELEASE_VERSION = "${release}";`), 'backend fo
 assert(operatorPackage.version === release, 'frontend do operador fora da versão 1.4.0')
 assert(managerPackage.version === release, 'frontend do gestor fora da versão 1.4.0')
 assert(manifest.release === release, 'manifesto fora da versão 1.4.0')
-assert(manifest.status === 'canary-published-authenticated-validation-pending', 'status canário incorreto')
-assert(manifest.promotionEligible === false, 'candidato pendente não pode ser promovido')
+assert(manifest.status === 'canary-homologated', 'status canário incorreto')
+assert(manifest.promotionEligible === true, 'canário homologado deve estar elegível')
 
 for (const [component, version] of Object.entries(manifest.components)) {
   assert(version === release, `componente fora da versão 1.4.0: ${component}`)
@@ -60,10 +60,11 @@ for (const check of [
 for (const check of [
   'permanentAdminLogin',
   'authenticatedAdminRead',
+  'authenticatedPermissionMatrixRead',
   'remoteLogout',
   'revokedTokenRejected',
 ]) {
-  assert(checks?.[check] === 'pending', `evidência autenticada deve permanecer pendente: ${check}`)
+  assert(checks?.[check] === 'approved', `evidência autenticada ausente: ${check}`)
 }
 
 assert(snapshot.release === release, 'snapshot fora da versão 1.4.0')
@@ -71,4 +72,4 @@ assert(snapshot.schemaVersion === release, 'schema fora da versão 1.4.0')
 assert(snapshot.declaredSheetCount === 32, 'quantidade de abas alterada')
 
 console.log('TESTE DOS METADADOS DA RELEASE 1.4.0 APROVADO')
-console.log('Canário publicado, isolado e bloqueado para produção até o teste autenticado')
+console.log('Canário publicado, isolado, autenticado e elegível para promoção controlada')

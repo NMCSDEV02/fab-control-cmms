@@ -209,6 +209,7 @@ assert(canary.checks?.productionDeploymentUnchanged === 'approved', 'produção 
 const authenticatedChecks = [
   'permanentAdminLogin',
   'authenticatedAdminRead',
+  'authenticatedPermissionMatrixRead',
   'remoteLogout',
   'revokedTokenRejected',
 ]
@@ -236,7 +237,10 @@ requireChecks(candidate, [
   'operatorFrontendBuild',
   'managerFrontendBuild',
 ])
-assert(candidate.remoteCanary === 'public-contract-approved', 'evidência remota pública ausente')
+assert(
+  candidate.remoteCanary === (manifest.promotionEligible ? 'approved' : 'public-contract-approved'),
+  'evidência remota do canário divergente',
+)
 
 console.log('VALIDAÇÃO LOCAL DO CANÁRIO APROVADA — VALIDADOR V2.0')
 console.log(`Release: ${expectedRelease}`)
@@ -246,4 +250,6 @@ console.log('Isolamento entre produção e homologação: aprovado')
 console.log('Contrato público, proteção de acesso e builds: aprovados')
 if (!manifest.promotionEligible) {
   console.log('Promoção para produção: bloqueada até concluir o login administrativo remoto')
+} else {
+  console.log('Promoção para produção: elegível, mas não executada')
 }
