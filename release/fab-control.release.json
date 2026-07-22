@@ -1,8 +1,8 @@
 {
   "manifestVersion": 2,
   "release": "1.4.0",
-  "status": "canary-published-authenticated-validation-pending",
-  "promotionEligible": false,
+  "status": "canary-homologated",
+  "promotionEligible": true,
   "components": {
     "frontend": "1.4.0",
     "frontendGestor": "1.4.0",
@@ -46,7 +46,7 @@
       "remoteAuthenticatedValidation": "approved"
     },
     "managerAdministration": {
-      "status": "canary-authenticated-validation-pending",
+      "status": "homologated",
       "userManagement": "implemented",
       "profileManagement": "implemented",
       "permissionMatrix": "implemented",
@@ -56,7 +56,7 @@
       "occurrenceAnalysis": "implemented",
       "technicalKpis": "implemented",
       "remoteAccessControlValidation": "approved",
-      "remoteAuthenticatedValidation": "pending"
+      "remoteAuthenticatedValidation": "approved"
     },
     "productionBootstrap": {
       "status": "canary-homologated",
@@ -80,7 +80,7 @@
     "managerFrontendBuild": "approved",
     "technicalWorkflowContract": "approved",
     "technicalWorkflowE2E": "approved",
-    "remoteCanary": "public-contract-approved"
+    "remoteCanary": "approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
@@ -103,11 +103,14 @@
       "productionDeploymentUnchanged": "approved",
       "technicalWorkflowEndpointDeclared": "approved",
       "technicalKpiEndpointDeclared": "approved",
-      "permanentAdminLogin": "pending",
-      "authenticatedAdminRead": "pending",
-      "authenticatedPermissionMatrixRead": "pending",
-      "remoteLogout": "pending",
-      "revokedTokenRejected": "pending"
+      "authenticatedTechnicalContextRead": "approved",
+      "authenticatedTechnicalQueueRead": "approved",
+      "technicalSchemaSeeded": "approved",
+      "permanentAdminLogin": "approved",
+      "authenticatedAdminRead": "approved",
+      "authenticatedPermissionMatrixRead": "approved",
+      "remoteLogout": "approved",
+      "revokedTokenRejected": "approved"
     }
   },
   "legacyEvidence": {
