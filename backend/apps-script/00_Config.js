@@ -125,6 +125,9 @@ const SH = {
   importacao_lotes: ["id","tipo","entidade","arquivo_nome","aba_nome","status","total_linhas","linhas_validas","linhas_invalidas","validacao_hash","cabecalhos_json","cabecalhos_ignorados_json","resultado_json","criado_por","criado_em","confirmado_por","confirmado_em","rollback_por","rollback_em","atualizado_em"],
   importacao_registros: ["id","lote_id","linha_numero","entidade","entidade_id","operacao","status","raw_json","normalizado_json","erros_json","antes_json","depois_json","aplicado_em","rollback_em","criado_em","atualizado_em"],
 
+  documentos_tecnicos: ["id","codigo","titulo","tipo","entidade_tipo","entidade_id","status","revisao_atual","validade_em","responsavel_id","descricao","arquivo_id","arquivo_nome","mime_type","tamanho_bytes","criado_por","criado_em","atualizado_em"],
+  documento_revisoes: ["id","documento_id","revisao","arquivo_id","arquivo_nome","mime_type","tamanho_bytes","observacao","criado_por","criado_em"],
+
   legado_quarentena: ["id", "aba_origem", "linha_origem", "motivo", "payload_json", "movido_em"]
 };
 
@@ -136,6 +139,7 @@ const PERM = {
     "admin.listar_tipos_item_checklist", "admin.listar_regras_checklist", "admin.validar_catalogo_item_checklist", "admin.salvar_item_modelo_checklist", "admin.remover_item_modelo_checklist", "admin.reordenar_itens_modelo_checklist", "admin.clonar_item_modelo_checklist", "admin.listar_itens_modelo_checklist", "admin.detalhar_modelo_checklist_catalogo", "cmms.catalogo_checklist_schema_upgrade",
     "cmms.workflow_tecnico_schema_upgrade", "cmms.configuracao_schema_upgrade", "admin.configuracao.estado", "admin.configuracao.rascunho.salvar", "admin.configuracao.validar", "admin.configuracao.publicar", "admin.configuracao.versoes", "admin.configuracao.rollback", "admin.areas_tecnicas.listar", "admin.areas_tecnicas.salvar", "admin.cargos_tecnicos.listar", "admin.cargos_tecnicos.salvar", "admin.demandas_tecnicas.enviar", "admin.demandas_tecnicas.listar", "admin.analises_tecnicas.listar", "admin.analises_tecnicas.converter",
     "admin.intervencoes.listar", "admin.intervencoes.salvar", "admin.intervencoes.enviar_validacao",
+    "admin.documentos.listar", "admin.documentos.detalhe", "admin.documentos.upload", "admin.documentos.atualizar", "admin.auditoria.listar", "admin.monitoramento.estado", "admin.backups.listar", "admin.backups.criar",
     "cmms.importacao_admin_schema_upgrade", "admin.importacao.modelos", "admin.importacao.validar", "admin.importacao.confirmar", "admin.importacao.lotes", "admin.importacao.detalhe", "admin.importacao.rollback",
     "cmms.schema_upgrade", "admin.salvar_modelo_checklist", "admin.enviar_modelo_checklist_validacao", "admin.detalhe_modelo_checklist", "admin.listar_modelos_checklist", "admin.modelos_devolvidos", "admin.corrigir_modelo_checklist", "admin.criar_revisao_modelo_checklist", "gestor.modelos_em_validacao", "gestor.listar_modelos_checklist", "gestor.detalhe_modelo_checklist", "gestor.validar_modelo_checklist", "operador.listar_checklist_execucao",
     "sistema.warmup", "admin.resumo", "perf.cache_clear", "perf.cache_status", "admin.resumo_cache", "admin.listar", "admin.obter", "admin.salvar", "admin.usuarios.listar", "admin.usuarios.salvar", "admin.usuarios.desbloquear", "admin.usuarios.redefinir_senha", "admin.usuarios.revogar_sessoes", "admin.permissoes.obter", "admin.permissoes.salvar", "admin.gerar_qr", "admin.criar_demo", "admin.recalcular_ativo",

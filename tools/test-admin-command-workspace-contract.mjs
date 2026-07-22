@@ -21,9 +21,14 @@ const interventionsApi = read('frontend-gestor/src/services/api/interventions.ts
 const interventionsBackend = read('backend/apps-script/28_Admin_Intervencoes.js')
 const analytics = read('frontend-gestor/src/components/AdminAnalyticsWorkspace.tsx')
 const analyticsApi = read('frontend-gestor/src/services/api/analytics.ts')
+const documents = read('frontend-gestor/src/components/AdminDocumentsWorkspace.tsx')
+const governance = read('frontend-gestor/src/components/AdminGovernanceWorkspace.tsx')
+const backup = read('frontend-gestor/src/components/AdminBackupWorkspace.tsx')
+const governanceApi = read('frontend-gestor/src/services/api/governance.ts')
+const governanceBackend = read('backend/apps-script/29_Admin_Governanca.js')
 const styles = read('frontend-gestor/src/styles/global.css')
 
-for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'imports', 'configuration', 'users', 'permissions']) {
+for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
   assert(page.includes(`tab === '${moduleId}'`), `módulo sem conteúdo: ${moduleId}`)
 }
@@ -73,9 +78,26 @@ for (const metric of ['MTTR', 'MTBF', 'Lead time de OS', 'SLA resposta', 'OEE'])
 }
 assert(analytics.includes('Sem amostra'), 'ausência de dados pode ser confundida com zero')
 assert(analytics.includes('Exportar CSV'), 'relatório exportável ausente')
+for (const action of ['admin.documentos.listar', 'admin.documentos.detalhe', 'admin.documentos.upload', 'admin.documentos.atualizar', 'admin.auditoria.listar', 'admin.monitoramento.estado', 'admin.backups.listar', 'admin.backups.criar']) {
+  assert(router.includes(`case "${action}"`), `rota de governança ausente: ${action}`)
+  assert(governanceApi.includes(`'${action}'`), `cliente de governança não usa ${action}`)
+}
+for (const assistedField of ['Tipo *', 'Status *', 'Escopo *', 'Cadastro vinculado', 'Responsável', 'Validade']) {
+  assert(documents.includes(assistedField), `campo documental assistido ausente: ${assistedField}`)
+}
+assert(documents.includes('<select value={form.entidade_tipo}'), 'escopo documental não usa dropdown')
+assert(documents.includes('targetOptions.map'), 'vínculo documental não é preenchido pelo cadastro')
+assert(governance.includes('Dados sensíveis protegidos'), 'auditoria não informa a proteção de segredos')
+assert(governanceBackend.includes('adminGovernanceRedact_'), 'servidor não mascara dados sensíveis')
+assert(governanceBackend.includes('ADMIN_DOCUMENT_MAX_BYTES'), 'upload documental não limita tamanho')
+assert(governanceBackend.includes('LockService.getScriptLock()'), 'documentos e backup não bloqueiam concorrência')
+assert(backup.includes('<select value={reasonType}'), 'motivo do backup não usa dropdown')
+assert(backup.includes('Restauração protegida'), 'risco de restauração não está sinalizado')
+assert(governanceBackend.includes('restauracao_disponivel:false'), 'backend pode expor restauração destrutiva prematura')
 assert(styles.includes('.admin-checklist-layout'), 'construtor sem layout de Command Workspace')
 assert(styles.includes('.admin-catalog-dialog'), 'cadastro sem formulário administrativo')
+assert(styles.includes('.admin-governance-table'), 'governança sem layout de Command Workspace')
 
 console.log('CONTRATO DO COMMAND WORKSPACE APROVADO')
-console.log('12 módulos funcionais, cadastros assistidos, checklist, intervenções e KPI conferidos')
+console.log('15 módulos funcionais, cadastros assistidos, documentos, backup, intervenções e KPI conferidos')
 console.log('Vínculos, concorrência, auditoria e workflow Admin -> Gestor -> Operador protegidos')

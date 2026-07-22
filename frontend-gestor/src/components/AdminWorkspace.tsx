@@ -27,6 +27,9 @@ const MODULES: Array<{
   { id: 'workforce', label: 'Áreas e cargos', description: 'Filtros e assinaturas', Icon: UsersIcon },
   { id: 'operations', label: 'Intervenções e OS', description: 'Criar, validar e liberar', Icon: WrenchIcon },
   { id: 'analytics', label: 'Indicadores e relatórios', description: 'KPI e exportação', Icon: HomeIcon },
+  { id: 'documents', label: 'Documentos técnicos', description: 'Arquivos e revisões', Icon: AssetIcon },
+  { id: 'governance', label: 'Auditoria e monitoramento', description: 'Integridade e trilha', Icon: ShieldIcon },
+  { id: 'backup', label: 'Backup e continuidade', description: 'Cópias integrais', Icon: ShieldIcon },
   { id: 'imports', label: 'Implantação e importação', description: 'Modelos de planilhas', Icon: SettingsIcon },
   { id: 'configuration', label: 'Motor de configuração', description: 'Runtime versionado', Icon: SettingsIcon },
   { id: 'users', label: 'Usuários e perfis', description: 'Identidades e acessos', Icon: UsersIcon },
@@ -78,6 +81,21 @@ const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; sub
     eyebrow: 'INTELIGÊNCIA OPERACIONAL',
     title: 'Indicadores e relatórios técnicos',
     subtitle: 'Analise MTTR, MTBF, lead time, SLA, disponibilidade e OEE por equipamento e período.',
+  },
+  documents: {
+    eyebrow: 'GESTÃO DOCUMENTAL',
+    title: 'Documentos técnicos e revisões',
+    subtitle: 'Organize manuais, diagramas, laudos e certificados com vínculos assistidos e arquivos privados.',
+  },
+  governance: {
+    eyebrow: 'AUDITORIA E OBSERVABILIDADE',
+    title: 'Integridade e trilha administrativa',
+    subtitle: 'Acompanhe a saúde da base e inspecione alterações sem expor credenciais ou segredos.',
+  },
+  backup: {
+    eyebrow: 'CONTINUIDADE OPERACIONAL',
+    title: 'Backup e recuperação protegida',
+    subtitle: 'Crie cópias integrais auditadas; restaurações permanecem bloqueadas até a dupla confirmação segura.',
   },
   imports: {
     eyebrow: 'IMPLANTAÇÃO E GOVERNANÇA DE DADOS',

@@ -8,6 +8,9 @@ import { AdminChecklistBuilder } from '../components/AdminChecklistBuilder'
 import { AdminTechnicalStructure } from '../components/AdminTechnicalStructure'
 import { AdminInterventionsWorkspace } from '../components/AdminInterventionsWorkspace'
 import { AdminAnalyticsWorkspace } from '../components/AdminAnalyticsWorkspace'
+import { AdminDocumentsWorkspace } from '../components/AdminDocumentsWorkspace'
+import { AdminGovernanceWorkspace } from '../components/AdminGovernanceWorkspace'
+import { AdminBackupWorkspace } from '../components/AdminBackupWorkspace'
 import { AssetIcon, CheckIcon, KeyIcon, RefreshIcon, SearchIcon, SettingsIcon, ShieldIcon, UsersIcon } from '../components/Icons'
 import {
   getAdminPermissionMatrix,
@@ -44,6 +47,9 @@ export type AdminModule =
   | 'workforce'
   | 'operations'
   | 'analytics'
+  | 'documents'
+  | 'governance'
+  | 'backup'
   | 'configuration'
   | 'users'
   | 'permissions'
@@ -114,7 +120,7 @@ export function AdminPage({
   }, [])
 
   useEffect(() => {
-    if (['configuration', 'imports', 'structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics'].includes(tab)) {
+    if (['configuration', 'imports', 'structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup'].includes(tab)) {
       setLoading(false)
       return undefined
     }
@@ -325,6 +331,9 @@ export function AdminPage({
                 <button type="button" onClick={() => setTab('workforce')}><UsersIcon /><span><strong>Áreas e cargos técnicos</strong><small>Destinos, especialistas e permissão de assinatura.</small></span><b>Roteável</b></button>
                 <button type="button" onClick={() => setTab('operations')}><AssetIcon /><span><strong>Intervenções e OS</strong><small>Rascunho, filtro técnico e liberação ao Operador.</small></span><b>Controlada</b></button>
                 <button type="button" onClick={() => setTab('analytics')}><SettingsIcon /><span><strong>Indicadores e relatórios</strong><small>MTTR, MTBF, lead time, SLA, OEE e exportação.</small></span><b>Calculado</b></button>
+                <button type="button" onClick={() => setTab('documents')}><AssetIcon /><span><strong>Documentos técnicos</strong><small>Arquivos privados, validade e revisões imutáveis.</small></span><b>Versionado</b></button>
+                <button type="button" onClick={() => setTab('governance')}><ShieldIcon /><span><strong>Auditoria e monitoramento</strong><small>Integridade, eventos e alterações com dados sensíveis protegidos.</small></span><b>Observável</b></button>
+                <button type="button" onClick={() => setTab('backup')}><ShieldIcon /><span><strong>Backup e continuidade</strong><small>Pontos integrais privados com criação confirmada e auditada.</small></span><b>Protegido</b></button>
                 <button type="button" onClick={() => setTab('imports')}><SettingsIcon /><span><strong>Implantação e Importação</strong><small>Modelos de planilha, pré-análise, confirmação e rollback por lote.</small></span><b>Governada</b></button>
                 <button type="button" onClick={() => setTab('configuration')}><SettingsIcon /><span><strong>Motor de Configuração</strong><small>Rascunhos, validação, publicação e rollback imutável.</small></span><b>Seguro</b></button>
                 <button type="button" onClick={() => setTab('users')}><UsersIcon /><span><strong>Identidades e perfis</strong><small>Usuários, áreas técnicas, cargos, sessões e recuperação.</small></span><b>{metrics.active} ativos</b></button>
@@ -378,6 +387,12 @@ export function AdminPage({
       {tab === 'operations' ? <AdminInterventionsWorkspace onSessionExpired={onSessionExpired} /> : null}
 
       {tab === 'analytics' ? <AdminAnalyticsWorkspace onSessionExpired={onSessionExpired} /> : null}
+
+      {tab === 'documents' ? <AdminDocumentsWorkspace onSessionExpired={onSessionExpired} /> : null}
+
+      {tab === 'governance' ? <AdminGovernanceWorkspace onSessionExpired={onSessionExpired} /> : null}
+
+      {tab === 'backup' ? <AdminBackupWorkspace onSessionExpired={onSessionExpired} /> : null}
 
       {tab === 'users' ? (
         <section className="admin-users" role="tabpanel">
