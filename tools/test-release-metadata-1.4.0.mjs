@@ -76,7 +76,7 @@ for (const check of [
 
 assert(snapshot.release === release, 'snapshot fora da versão 1.4.0')
 assert(snapshot.schemaVersion === release, 'schema fora da versão 1.4.0')
-assert(snapshot.declaredSheetCount === 42, 'quantidade de abas alterada')
+assert(snapshot.declaredSheetCount === 44, 'quantidade de abas alterada')
 
 console.log('TESTE DOS METADADOS DA RELEASE 1.4.0 APROVADO')
 console.log('Canário publicado e isolado; elegibilidade segue o gate autenticado')

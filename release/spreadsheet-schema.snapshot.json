@@ -3,7 +3,7 @@
   "release": "1.4.0",
   "schemaVersion": "1.4.0",
   "spreadsheetAlias": "FAB_CONTROL_CORE",
-  "declaredSheetCount": 42,
+  "declaredSheetCount": 44,
   "declaredSheets": [
     "config",
     "usuarios",
@@ -46,6 +46,8 @@
     "checklist_validacao_regras",
     "modelo_checklist_auditoria",
     "dashboard_cache",
+    "configuracao_versoes",
+    "configuracao_rascunhos",
     "legado_quarentena"
   ],
   "liveSheetNamesConfirmedAgainstBaseline": true,

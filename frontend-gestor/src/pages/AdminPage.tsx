@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PasswordResetDialog } from '../components/PasswordResetDialog'
 import { UserEditorDialog } from '../components/UserEditorDialog'
-import { KeyIcon, RefreshIcon, SearchIcon, ShieldIcon, UsersIcon } from '../components/Icons'
+import { ConfigurationEnginePanel } from '../components/ConfigurationEnginePanel'
+import { KeyIcon, RefreshIcon, SearchIcon, SettingsIcon, ShieldIcon, UsersIcon } from '../components/Icons'
 import {
   getAdminPermissionMatrix,
   listAdminUsers,
@@ -23,7 +24,7 @@ interface AdminPageProps {
   onSessionExpired: () => void
 }
 
-type AdminTab = 'users' | 'permissions'
+type AdminTab = 'configuration' | 'users' | 'permissions'
 type EditablePermissionProfile = 'GESTOR' | 'OPERADOR'
 
 const PROFILE_LABELS: Record<AdminUserProfile, string> = {
@@ -54,7 +55,7 @@ function normalizeAttempts(user: AdminUser): number {
 }
 
 export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
-  const [tab, setTab] = useState<AdminTab>('users')
+  const [tab, setTab] = useState<AdminTab>('configuration')
   const [users, setUsers] = useState<AdminUser[]>([])
   const [permissionMatrix, setPermissionMatrix] = useState<AdminPermissionMatrix | null>(null)
   const [selectedPermissionProfile, setSelectedPermissionProfile] = useState<EditablePermissionProfile>('GESTOR')
@@ -80,6 +81,10 @@ export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
   }, [])
 
   useEffect(() => {
+    if (tab === 'configuration') {
+      setLoading(false)
+      return undefined
+    }
     const controller = new AbortController()
     setLoading(true)
     setError('')
@@ -94,7 +99,7 @@ export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
       })
       .finally(() => setLoading(false))
     return () => controller.abort()
-  }, [loadData, onSessionExpired])
+  }, [loadData, onSessionExpired, tab])
 
   const visibleUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -228,22 +233,32 @@ export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
 
   return (
     <main className="content admin-page">
+      <section className="admin-mobile-block">
+        <ShieldIcon />
+        <h1>Command Workspace</h1>
+        <p>O ambiente administrativo foi protegido para uso em computador. Acesse em uma tela com pelo menos 901 px de largura.</p>
+      </section>
       <section className="page-heading">
         <div>
           <span className="eyebrow">ADMINISTRAÇÃO E SEGURANÇA</span>
-          <h1>Usuários e permissões</h1>
-          <p>Controle de identidades, recuperação de acesso, sessões e capacidades por perfil.</p>
+          <h1>Command Workspace</h1>
+          <p>Configuração versionada, identidades e capacidades com proteção de runtime e trilha de auditoria.</p>
         </div>
-        <button className="icon-text-button" type="button" disabled={refreshing} onClick={() => void refresh('Dados administrativos atualizados.') }>
-          <RefreshIcon />
-          {refreshing ? 'Atualizando…' : 'Atualizar'}
-        </button>
+        {tab !== 'configuration' ? (
+          <button className="icon-text-button" type="button" disabled={refreshing} onClick={() => void refresh('Dados administrativos atualizados.') }>
+            <RefreshIcon />
+            {refreshing ? 'Atualizando…' : 'Atualizar'}
+          </button>
+        ) : null}
       </section>
 
       {error ? <div className="dashboard-error" role="alert"><strong>Falha administrativa.</strong><span>{error}</span></div> : null}
       {notice ? <div className="dashboard-notice" role="status">{notice}</div> : null}
 
       <section className="admin-tabs" role="tablist" aria-label="Administração">
+        <button type="button" role="tab" aria-selected={tab === 'configuration'} className={tab === 'configuration' ? 'is-active' : ''} onClick={() => setTab('configuration')}>
+          <SettingsIcon /> Motor
+        </button>
         <button type="button" role="tab" aria-selected={tab === 'users'} className={tab === 'users' ? 'is-active' : ''} onClick={() => setTab('users')}>
           <UsersIcon /> Usuários
         </button>
@@ -251,6 +266,8 @@ export function AdminPage({ session, onSessionExpired }: AdminPageProps) {
           <ShieldIcon /> Permissões
         </button>
       </section>
+
+      {tab === 'configuration' ? <ConfigurationEnginePanel onSessionExpired={onSessionExpired} /> : null}
 
       {tab === 'users' ? (
         <section className="admin-users" role="tabpanel">

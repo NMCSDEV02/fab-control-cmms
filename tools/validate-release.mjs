@@ -99,7 +99,7 @@ const sourceFiles = fs
   .filter((name) => name.endsWith('.js') || name === 'appsscript.json')
   .sort()
 
-assert(sourceFiles.length === 27, `quantidade de fontes backend = ${sourceFiles.length}; esperado 27`)
+assert(sourceFiles.length === 28, `quantidade de fontes backend = ${sourceFiles.length}; esperado 28`)
 assert(
   !fs.readdirSync(backendPath).some((name) => name.endsWith('.gs')),
   'arquivo .gs ativo encontrado',
@@ -203,7 +203,7 @@ assert(canary.sourceGitCommit === target.sourceGitCommit, 'commit da evidência 
 assert(canary.deploymentId === target.deploymentId, 'deployment da evidência divergente')
 assert(canary.spreadsheetId === target.spreadsheetId, 'planilha da evidência divergente')
 requireChecks(canary.checks, publicChecks)
-assert(canary.checks?.declaredSheets === 42, 'quantidade de abas declaradas divergente')
+assert(canary.checks?.declaredSheets === 44, 'quantidade de abas declaradas divergente')
 assert(canary.checks?.productionDeploymentUnchanged === 'approved', 'produção não foi reconfirmada')
 
 const authenticatedChecks = [
@@ -233,6 +233,8 @@ requireChecks(candidate, [
   'javascriptSyntax',
   'authenticationContract',
   'adminIdentityContract',
+  'configurationEngineContract',
+  'configurationEngineE2E',
   'productionBootstrapContract',
   'operatorFrontendBuild',
   'managerFrontendBuild',

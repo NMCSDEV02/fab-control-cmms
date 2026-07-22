@@ -346,6 +346,12 @@ function adminDemandasTecnicasEnviar_(p, auth){
   var needsSignature = data.exige_assinatura === undefined
     ? bool_(area.exige_assinatura_padrao)
     : bool_(data.exige_assinatura);
+  var separationRequired = data.exige_segregacao === undefined
+    ? bool_(configurationRuntimeValue_("workflow.tecnico.exige_segregacao_padrao", false))
+    : bool_(data.exige_segregacao);
+  var defaultSignatures = Math.max(1, Math.min(5, num_(
+    configurationRuntimeValue_("workflow.tecnico.assinaturas_padrao", 1), 1
+  )));
   var demand = fit_("demandas_tecnicas", {
     id:uuid_("DMT"), tipo:upper_(data.tipo || "VALIDACAO_TECNICA"),
     entidade_tipo:upper_(data.entidade_tipo), entidade_id:clean_(data.entidade_id),
@@ -356,8 +362,8 @@ function adminDemandasTecnicasEnviar_(p, auth){
     cargo_atual_id:clean_(data.cargo_atual_id), responsavel_atual_id:clean_(data.responsavel_atual_id),
     criado_por:auth.usuario_id, criado_perfil:auth.perfil,
     exige_assinatura:needsSignature ? "SIM" : "NAO",
-    assinaturas_necessarias:needsSignature ? Math.max(1, num_(data.assinaturas_necessarias, 1)) : 0,
-    assinaturas_realizadas:0, exige_segregacao:bool_(data.exige_segregacao) ? "SIM" : "NAO",
+    assinaturas_necessarias:needsSignature ? Math.max(1, num_(data.assinaturas_necessarias, defaultSignatures)) : 0,
+    assinaturas_realizadas:0, exige_segregacao:separationRequired ? "SIM" : "NAO",
     prazo_primeira_resposta_em:technicalAddMinutesIso_(num_(data.resposta_minutos, policy && policy.resposta_minutos)),
     prazo_resolucao_em:technicalAddMinutesIso_(num_(data.resolucao_minutos, policy && policy.resolucao_minutos)),
     primeiro_atendimento_em:"", concluido_em:"", versao_entidade:clean_(data.versao_entidade || "1"),
@@ -753,7 +759,8 @@ function cmmsKpisTecnicos_(p, auth){
   technicalRequireManager_(auth);
   technicalEnsureSchema_();
   var endMs = clean_(p.fim_em) ? new Date(clean_(p.fim_em)).getTime() : Date.now();
-  var startMs = clean_(p.inicio_em) ? new Date(clean_(p.inicio_em)).getTime() : endMs - 30 * 86400000;
+  var defaultWindowDays = Math.max(1, Math.min(365, num_(configurationRuntimeValue_("kpi.janela_padrao_dias", 30), 30)));
+  var startMs = clean_(p.inicio_em) ? new Date(clean_(p.inicio_em)).getTime() : endMs - defaultWindowDays * 86400000;
   if(!startMs || !endMs || startMs >= endMs) err_("KPI_PERIOD_INVALID", "PerÃ­odo de indicadores invÃ¡lido.", 400);
   var assetId = clean_(p.ativo_id);
   var activeAssets = rows_("ativos", true).filter(function(asset){
@@ -813,6 +820,11 @@ function cmmsKpisTecnicos_(p, auth){
   });
   return Object.assign({
     ativo_id:assetId || "TODOS", inicio_em:iso_(new Date(startMs)), fim_em:iso_(new Date(endMs)),
-    ativos_considerados:activeAssets.length, metodologia:"MTBF/MTTR por falhas nÃ£o planejadas; OEE somente com apontamento de produÃ§Ã£o."
+    ativos_considerados:activeAssets.length,
+    metas:{
+      disponibilidade_pct:num_(configurationRuntimeValue_("kpi.meta.disponibilidade_pct", 90), 90),
+      oee_pct:num_(configurationRuntimeValue_("kpi.meta.oee_pct", 75), 75)
+    },
+    metodologia:"MTBF/MTTR por falhas nÃ£o planejadas; OEE somente com apontamento de produÃ§Ã£o."
   }, metrics);
 }

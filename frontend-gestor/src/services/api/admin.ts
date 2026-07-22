@@ -10,6 +10,12 @@ import type {
   AdminUserSaveResult,
   TechnicalArea,
   TechnicalRole,
+  ConfigurationDraft,
+  ConfigurationEngineState,
+  ConfigurationPublishResult,
+  ConfigurationValidation,
+  ConfigurationValue,
+  ConfigurationVersion,
 } from '../../types/admin'
 import { API_TIMEOUT_MS, ApiRequestError, callApi } from './client'
 import { getGestorToken } from './config'
@@ -181,4 +187,60 @@ export function saveAdminPermissionProfile(
     'admin.permissoes.salvar',
     { perfil: profile, permissoes: permissions },
   )
+}
+
+export function getConfigurationEngineState(
+  signal?: AbortSignal,
+): Promise<ConfigurationEngineState> {
+  return readAdminData<ConfigurationEngineState>('admin.configuracao.estado', {}, signal)
+}
+
+export async function listConfigurationVersions(
+  signal?: AbortSignal,
+): Promise<ConfigurationVersion[]> {
+  const data = await readAdminData<{ total: number; versoes: ConfigurationVersion[] }>(
+    'admin.configuracao.versoes',
+    { limite: 50 },
+    signal,
+  )
+  return Array.isArray(data.versoes) ? data.versoes : []
+}
+
+export async function saveConfigurationDraft(
+  configuration: Record<string, ConfigurationValue>,
+  baseVersionId: string,
+): Promise<ConfigurationDraft> {
+  const data = await writeAdminData<{ saved: boolean; rascunho: ConfigurationDraft }>(
+    'admin.configuracao.rascunho.salvar',
+    { configuracao: configuration, base_versao_id: baseVersionId },
+  )
+  return data.rascunho
+}
+
+export function validateConfiguration(
+  configuration: Record<string, ConfigurationValue>,
+): Promise<ConfigurationValidation> {
+  return writeAdminData<ConfigurationValidation>('admin.configuracao.validar', {
+    configuracao: configuration,
+  })
+}
+
+export function publishConfigurationDraft(
+  draftId: string,
+): Promise<ConfigurationPublishResult> {
+  return writeAdminData<ConfigurationPublishResult>('admin.configuracao.publicar', {
+    rascunho_id: draftId,
+  })
+}
+
+export function rollbackConfiguration(
+  versionId: string,
+  baseVersionId: string,
+  reason: string,
+): Promise<ConfigurationPublishResult> {
+  return writeAdminData<ConfigurationPublishResult>('admin.configuracao.rollback', {
+    versao_id: versionId,
+    base_versao_id: baseVersionId,
+    motivo: reason,
+  })
 }

@@ -110,3 +110,76 @@ export interface AdminPermissionSaveResult {
   perfil: AdminUserProfile
   matriz: AdminPermissionProfile
 }
+
+export type ConfigurationValue = string | number | boolean
+
+export interface ConfigurationDefinition {
+  chave: string
+  grupo: 'OPERACAO' | 'EVIDENCIAS' | 'WORKFLOW' | 'INDICADORES'
+  nome: string
+  descricao: string
+  tipo: 'INTEIRO' | 'NUMERO' | 'BOOLEANO' | 'ENUM'
+  padrao: ConfigurationValue
+  minimo?: number
+  maximo?: number
+  unidade?: string
+  opcoes?: string[]
+}
+
+export interface ConfigurationValidationError {
+  chave: string
+  codigo: string
+  mensagem: string
+}
+
+export interface ConfigurationValidation {
+  valido: boolean
+  erros: ConfigurationValidationError[]
+  configuracao: Record<string, ConfigurationValue>
+  hash_sha256: string
+}
+
+export interface ConfigurationActiveVersion {
+  id: string
+  numero: number
+  hash_sha256: string
+  configuracao: Record<string, ConfigurationValue>
+  publicado_em: string
+  publicado_por: string
+  integridade: 'VALIDA' | 'PADRAO_SEGURO' | 'FALLBACK_SEGURO'
+}
+
+export interface ConfigurationDraft {
+  id: string
+  base_versao_id: string
+  configuracao: Record<string, ConfigurationValue>
+  hash_sha256: string
+  validacao: ConfigurationValidation
+  atualizado_em: string
+}
+
+export interface ConfigurationEngineState {
+  catalogo: ConfigurationDefinition[]
+  protegidas: string[]
+  ativa: ConfigurationActiveVersion
+  rascunho: ConfigurationDraft | null
+}
+
+export interface ConfigurationVersion {
+  id: string
+  numero: number
+  status: 'ATIVA' | 'PUBLICADA'
+  origem: 'PUBLICACAO' | 'ROLLBACK'
+  base_versao_id: string
+  hash_sha256: string
+  valido: boolean
+  criado_por: string
+  criado_em: string
+}
+
+export interface ConfigurationPublishResult {
+  published: boolean
+  ativa: ConfigurationActiveVersion
+  aviso?: string
+  rollback_from_version_id?: string
+}
