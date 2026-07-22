@@ -44,9 +44,9 @@ assert(production.release === '1.3.1', 'produção não permaneceu em 1.3.1')
 assert(production.health === 'approved-unchanged', 'produção não foi reconfirmada')
 assert(production.deploymentId !== target.deploymentId, 'deployment canário não está isolado')
 assert(production.spreadsheetId !== target.spreadsheetId, 'planilha canária não está isolada')
-assert(target.immutableAppsScriptVersion === 6, 'versão imutável canária incorreta')
+assert(target.immutableAppsScriptVersion === 7, 'versão imutável canária incorreta')
 assert(target.deploymentId !== 'HEAD', 'deployment canário não pode usar HEAD')
-assert(target.sourceGitCommit === '3ec637e', 'commit-fonte canário incorreto')
+assert(target.sourceGitCommit === '1ddb0fb', 'commit-fonte canário incorreto')
 
 const checks = manifest.canaryEvidence?.checks
 for (const check of [
@@ -58,6 +58,9 @@ for (const check of [
   'configurationEngineRequiresAuthentication',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
+  'manualRegistrationEndpointDeclared',
+  'manualRegistrationRequiresAuthentication',
+  'checklistBuilderEndpointsDeclared',
   'unknownLoginRejected',
   'recoveryNonEnumeration',
   'usersRequiresAuthentication',

@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "F982518E70780FB773609F7B8493AA42095A51515646655C71F93B3C5A0AFDD7",
-    "immutableAppsScriptVersion": 6,
-    "deploymentId": "AKfycbw3-xmx1n2e0W1cbuiv0RvUQrgUxOTQsefGj9cqIOh8IypcolDNxitgKZPr5P084V6okA",
+    "backendSourceSha256": "8C8E395F299EB4FE783CC1133E7C5564C196F0721859D8DC581E7C88602AD789",
+    "immutableAppsScriptVersion": 7,
+    "deploymentId": "AKfycbxst8aAYbW2L7qzh6t45ZRZNU-1SjUs77cMD1SkW3x2D_WWmlttOmB-87dDuEjqGzkvTg",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "3ec637e"
+    "sourceGitCommit": "1ddb0fb"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -61,6 +61,8 @@
       "governedSpreadsheetImport": "implemented-two-phase-audited-rollback",
       "importModels": "plants-sectors-lines-assets-components-materials-plans-checklist-items",
       "importedPlansWorkflow": "forced-draft-inactive-until-manager-validation",
+      "manualMasterData": "implemented-assisted-dropdowns-audited",
+      "checklistAuthoring": "implemented-dynamic-technical-routing",
       "configurationRemoteAuthenticatedValidation": "pending",
       "remoteAccessControlValidation": "approved",
       "remoteAuthenticatedValidation": "approved"
@@ -86,6 +88,8 @@
     "configurationEngineE2E": "approved",
     "adminImportContract": "approved",
     "adminImportE2E": "approved",
+    "adminCommandWorkspaceContract": "approved",
+    "adminManualCatalogE2E": "approved",
     "productionBootstrapContract": "approved",
     "operatorFrontendBuild": "approved",
     "managerFrontendBuild": "approved",
@@ -96,10 +100,10 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "F982518E70780FB773609F7B8493AA42095A51515646655C71F93B3C5A0AFDD7",
-    "immutableAppsScriptVersion": 6,
-    "sourceGitCommit": "3ec637e",
-    "deploymentId": "AKfycbw3-xmx1n2e0W1cbuiv0RvUQrgUxOTQsefGj9cqIOh8IypcolDNxitgKZPr5P084V6okA",
+    "backendSourceSha256": "8C8E395F299EB4FE783CC1133E7C5564C196F0721859D8DC581E7C88602AD789",
+    "immutableAppsScriptVersion": 7,
+    "sourceGitCommit": "1ddb0fb",
+    "deploymentId": "AKfycbxst8aAYbW2L7qzh6t45ZRZNU-1SjUs77cMD1SkW3x2D_WWmlttOmB-87dDuEjqGzkvTg",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
@@ -111,6 +115,9 @@
       "configurationEngineRequiresAuthentication": "approved",
       "adminImportEndpointDeclared": "approved",
       "adminImportRequiresAuthentication": "approved",
+      "manualRegistrationEndpointDeclared": "approved",
+      "manualRegistrationRequiresAuthentication": "approved",
+      "checklistBuilderEndpointsDeclared": "approved",
       "unknownLoginRejected": "approved",
       "recoveryNonEnumeration": "approved",
       "usersRequiresAuthentication": "approved",
