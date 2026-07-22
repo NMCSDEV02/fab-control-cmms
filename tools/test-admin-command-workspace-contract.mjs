@@ -19,9 +19,11 @@ const technicalStructure = read('frontend-gestor/src/components/AdminTechnicalSt
 const interventions = read('frontend-gestor/src/components/AdminInterventionsWorkspace.tsx')
 const interventionsApi = read('frontend-gestor/src/services/api/interventions.ts')
 const interventionsBackend = read('backend/apps-script/28_Admin_Intervencoes.js')
+const analytics = read('frontend-gestor/src/components/AdminAnalyticsWorkspace.tsx')
+const analyticsApi = read('frontend-gestor/src/services/api/analytics.ts')
 const styles = read('frontend-gestor/src/styles/global.css')
 
-for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'imports', 'configuration', 'users', 'permissions']) {
+for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
   assert(page.includes(`tab === '${moduleId}'`), `módulo sem conteúdo: ${moduleId}`)
 }
@@ -65,9 +67,15 @@ assert(interventions.includes('Área responsável *'), 'intervenção não usa d
 assert(interventions.includes('routeRoles'), 'cargo da intervenção não é filtrado pela área')
 assert(interventionsBackend.includes('O rascunho não cria os_acoes'), 'rascunho pode vazar ao Operador')
 assert(interventionsBackend.indexOf('append_("os_acoes"') > interventionsBackend.indexOf('adminIntervencaoLiberarOperacao_'), 'ação não está restrita à liberação')
+assert(analyticsApi.includes("'cmms.kpis_tecnicos'"), 'painel administrativo não consulta KPIs técnicos')
+for (const metric of ['MTTR', 'MTBF', 'Lead time de OS', 'SLA resposta', 'OEE']) {
+  assert(analytics.includes(metric), `indicador ausente no Admin: ${metric}`)
+}
+assert(analytics.includes('Sem amostra'), 'ausência de dados pode ser confundida com zero')
+assert(analytics.includes('Exportar CSV'), 'relatório exportável ausente')
 assert(styles.includes('.admin-checklist-layout'), 'construtor sem layout de Command Workspace')
 assert(styles.includes('.admin-catalog-dialog'), 'cadastro sem formulário administrativo')
 
 console.log('CONTRATO DO COMMAND WORKSPACE APROVADO')
-console.log('11 módulos funcionais, cadastros assistidos, checklist e intervenções conferidos')
+console.log('12 módulos funcionais, cadastros assistidos, checklist, intervenções e KPI conferidos')
 console.log('Vínculos, concorrência, auditoria e workflow Admin -> Gestor -> Operador protegidos')

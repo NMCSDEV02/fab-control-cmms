@@ -74,6 +74,10 @@ export interface GestorTechnicalKpis {
   oee_qualidade_pct: number | null
   producao_amostra: number
   metodologia?: string
+  metas?: {
+    disponibilidade_pct: number
+    oee_pct: number
+  }
 }
 
 export interface GestorTechnicalIdentity {

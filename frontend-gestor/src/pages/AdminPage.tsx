@@ -7,6 +7,7 @@ import { AdminCatalogWorkspace } from '../components/AdminCatalogWorkspace'
 import { AdminChecklistBuilder } from '../components/AdminChecklistBuilder'
 import { AdminTechnicalStructure } from '../components/AdminTechnicalStructure'
 import { AdminInterventionsWorkspace } from '../components/AdminInterventionsWorkspace'
+import { AdminAnalyticsWorkspace } from '../components/AdminAnalyticsWorkspace'
 import { AssetIcon, CheckIcon, KeyIcon, RefreshIcon, SearchIcon, SettingsIcon, ShieldIcon, UsersIcon } from '../components/Icons'
 import {
   getAdminPermissionMatrix,
@@ -42,6 +43,7 @@ export type AdminModule =
   | 'inventory'
   | 'workforce'
   | 'operations'
+  | 'analytics'
   | 'configuration'
   | 'users'
   | 'permissions'
@@ -112,7 +114,7 @@ export function AdminPage({
   }, [])
 
   useEffect(() => {
-    if (['configuration', 'imports', 'structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations'].includes(tab)) {
+    if (['configuration', 'imports', 'structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics'].includes(tab)) {
       setLoading(false)
       return undefined
     }
@@ -322,6 +324,7 @@ export function AdminPage({
                 <button type="button" onClick={() => setTab('inventory')}><AssetIcon /><span><strong>Materiais e peças</strong><small>Itens, unidades, saldo e estoque mínimo.</small></span><b>Controlado</b></button>
                 <button type="button" onClick={() => setTab('workforce')}><UsersIcon /><span><strong>Áreas e cargos técnicos</strong><small>Destinos, especialistas e permissão de assinatura.</small></span><b>Roteável</b></button>
                 <button type="button" onClick={() => setTab('operations')}><AssetIcon /><span><strong>Intervenções e OS</strong><small>Rascunho, filtro técnico e liberação ao Operador.</small></span><b>Controlada</b></button>
+                <button type="button" onClick={() => setTab('analytics')}><SettingsIcon /><span><strong>Indicadores e relatórios</strong><small>MTTR, MTBF, lead time, SLA, OEE e exportação.</small></span><b>Calculado</b></button>
                 <button type="button" onClick={() => setTab('imports')}><SettingsIcon /><span><strong>Implantação e Importação</strong><small>Modelos de planilha, pré-análise, confirmação e rollback por lote.</small></span><b>Governada</b></button>
                 <button type="button" onClick={() => setTab('configuration')}><SettingsIcon /><span><strong>Motor de Configuração</strong><small>Rascunhos, validação, publicação e rollback imutável.</small></span><b>Seguro</b></button>
                 <button type="button" onClick={() => setTab('users')}><UsersIcon /><span><strong>Identidades e perfis</strong><small>Usuários, áreas técnicas, cargos, sessões e recuperação.</small></span><b>{metrics.active} ativos</b></button>
@@ -373,6 +376,8 @@ export function AdminPage({
       {tab === 'workforce' ? <AdminTechnicalStructure onSessionExpired={onSessionExpired} /> : null}
 
       {tab === 'operations' ? <AdminInterventionsWorkspace onSessionExpired={onSessionExpired} /> : null}
+
+      {tab === 'analytics' ? <AdminAnalyticsWorkspace onSessionExpired={onSessionExpired} /> : null}
 
       {tab === 'users' ? (
         <section className="admin-users" role="tabpanel">
