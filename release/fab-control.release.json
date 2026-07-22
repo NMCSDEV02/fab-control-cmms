@@ -1,8 +1,8 @@
 {
   "manifestVersion": 2,
   "release": "1.4.0",
-  "status": "canary-homologated",
-  "promotionEligible": true,
+  "status": "canary-published-authenticated-validation-pending",
+  "promotionEligible": false,
   "components": {
     "frontend": "1.4.0",
     "frontendGestor": "1.4.0",
@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "636C67E0B4E94E97BDE56E68E81CE5FDECBB56FCB8A48C0E3A1083150475E324",
-    "immutableAppsScriptVersion": 4,
-    "deploymentId": "AKfycbywPPX6r0erhRswSkTFHLDWi0or6dQYJZM5n_QAfmLAVvacKiDULQBS6e7cMx33mMCZVQ",
+    "backendSourceSha256": "9515D414EAC4DE7113B6866EF16303FDBE6C1334BBE4E48AC0B910437AF03FC0",
+    "immutableAppsScriptVersion": 5,
+    "deploymentId": "AKfycbwN-rk548FT5P9CnOugktzI6IB2t7WBsDnO64vgbAq6RDwqYg0Y4MPaR5o4-xvoZg-cLg",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "7c98eac"
+    "sourceGitCommit": "2a28b74"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -58,6 +58,7 @@
       "configurationEngine": "implemented-versioned-safe",
       "configurationPublication": "draft-validate-atomic-pointer",
       "configurationRollback": "immutable-republish",
+      "configurationRemoteAuthenticatedValidation": "pending",
       "remoteAccessControlValidation": "approved",
       "remoteAuthenticatedValidation": "approved"
     },
@@ -85,22 +86,24 @@
     "managerFrontendBuild": "approved",
     "technicalWorkflowContract": "approved",
     "technicalWorkflowE2E": "approved",
-    "remoteCanary": "approved"
+    "remoteCanary": "public-contract-approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "636C67E0B4E94E97BDE56E68E81CE5FDECBB56FCB8A48C0E3A1083150475E324",
-    "immutableAppsScriptVersion": 4,
-    "sourceGitCommit": "7c98eac",
-    "deploymentId": "AKfycbywPPX6r0erhRswSkTFHLDWi0or6dQYJZM5n_QAfmLAVvacKiDULQBS6e7cMx33mMCZVQ",
+    "backendSourceSha256": "9515D414EAC4DE7113B6866EF16303FDBE6C1334BBE4E48AC0B910437AF03FC0",
+    "immutableAppsScriptVersion": 5,
+    "sourceGitCommit": "2a28b74",
+    "deploymentId": "AKfycbwN-rk548FT5P9CnOugktzI6IB2t7WBsDnO64vgbAq6RDwqYg0Y4MPaR5o4-xvoZg-cLg",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
       "bootstrap": "approved",
-      "declaredSheets": 42,
+      "declaredSheets": 44,
       "userAdminEndpointDeclared": "approved",
       "permissionsEndpointDeclared": "approved",
+      "configurationEngineEndpointDeclared": "approved",
+      "configurationEngineRequiresAuthentication": "approved",
       "unknownLoginRejected": "approved",
       "recoveryNonEnumeration": "approved",
       "usersRequiresAuthentication": "approved",
@@ -108,14 +111,16 @@
       "productionDeploymentUnchanged": "approved",
       "technicalWorkflowEndpointDeclared": "approved",
       "technicalKpiEndpointDeclared": "approved",
-      "authenticatedTechnicalContextRead": "approved",
-      "authenticatedTechnicalQueueRead": "approved",
-      "technicalSchemaSeeded": "approved",
-      "permanentAdminLogin": "approved",
-      "authenticatedAdminRead": "approved",
-      "authenticatedPermissionMatrixRead": "approved",
-      "remoteLogout": "approved",
-      "revokedTokenRejected": "approved"
+      "authenticatedTechnicalContextRead": "pending",
+      "authenticatedTechnicalQueueRead": "pending",
+      "technicalSchemaSeeded": "pending",
+      "authenticatedConfigurationStateRead": "pending",
+      "configurationSchemaSeeded": "pending",
+      "permanentAdminLogin": "pending",
+      "authenticatedAdminRead": "pending",
+      "authenticatedPermissionMatrixRead": "pending",
+      "remoteLogout": "pending",
+      "revokedTokenRejected": "pending"
     }
   },
   "legacyEvidence": {

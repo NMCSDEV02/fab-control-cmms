@@ -186,6 +186,8 @@ const publicChecks = [
   'bootstrap',
   'userAdminEndpointDeclared',
   'permissionsEndpointDeclared',
+  'configurationEngineEndpointDeclared',
+  'configurationEngineRequiresAuthentication',
   'unknownLoginRejected',
   'recoveryNonEnumeration',
   'usersRequiresAuthentication',
@@ -210,6 +212,8 @@ const authenticatedChecks = [
   'permanentAdminLogin',
   'authenticatedAdminRead',
   'authenticatedPermissionMatrixRead',
+  'authenticatedConfigurationStateRead',
+  'configurationSchemaSeeded',
   'remoteLogout',
   'revokedTokenRejected',
 ]
