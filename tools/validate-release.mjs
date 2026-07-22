@@ -99,7 +99,7 @@ const sourceFiles = fs
   .filter((name) => name.endsWith('.js') || name === 'appsscript.json')
   .sort()
 
-assert(sourceFiles.length === 28, `quantidade de fontes backend = ${sourceFiles.length}; esperado 28`)
+assert(sourceFiles.length === 29, `quantidade de fontes backend = ${sourceFiles.length}; esperado 29`)
 assert(
   !fs.readdirSync(backendPath).some((name) => name.endsWith('.gs')),
   'arquivo .gs ativo encontrado',
@@ -188,6 +188,8 @@ const publicChecks = [
   'permissionsEndpointDeclared',
   'configurationEngineEndpointDeclared',
   'configurationEngineRequiresAuthentication',
+  'adminImportEndpointDeclared',
+  'adminImportRequiresAuthentication',
   'unknownLoginRejected',
   'recoveryNonEnumeration',
   'usersRequiresAuthentication',
@@ -205,7 +207,7 @@ assert(canary.sourceGitCommit === target.sourceGitCommit, 'commit da evidência 
 assert(canary.deploymentId === target.deploymentId, 'deployment da evidência divergente')
 assert(canary.spreadsheetId === target.spreadsheetId, 'planilha da evidência divergente')
 requireChecks(canary.checks, publicChecks)
-assert(canary.checks?.declaredSheets === 44, 'quantidade de abas declaradas divergente')
+assert(canary.checks?.declaredSheets === 46, 'quantidade de abas declaradas divergente')
 assert(canary.checks?.productionDeploymentUnchanged === 'approved', 'produção não foi reconfirmada')
 
 const authenticatedChecks = [
@@ -214,6 +216,8 @@ const authenticatedChecks = [
   'authenticatedPermissionMatrixRead',
   'authenticatedConfigurationStateRead',
   'configurationSchemaSeeded',
+  'authenticatedImportCatalogRead',
+  'importSchemaSeeded',
   'remoteLogout',
   'revokedTokenRejected',
 ]
@@ -239,6 +243,8 @@ requireChecks(candidate, [
   'adminIdentityContract',
   'configurationEngineContract',
   'configurationEngineE2E',
+  'adminImportContract',
+  'adminImportE2E',
   'productionBootstrapContract',
   'operatorFrontendBuild',
   'managerFrontendBuild',
