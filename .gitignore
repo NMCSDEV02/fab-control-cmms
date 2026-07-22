@@ -11,7 +11,11 @@ coverage/
 .DS_Store
 Thumbs.db
 *.log
+*.tsbuildinfo
 .clasp.json
+
+# Mockups HTML são a fonte versionável; pacotes ZIP permanecem locais.
+mockups/*.zip
 
 # FAB Control local deployment metadata
 **/.clasp.json
