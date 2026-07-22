@@ -8,6 +8,8 @@ import type {
   AdminUserListFilters,
   AdminUserProfile,
   AdminUserSaveResult,
+  TechnicalArea,
+  TechnicalRole,
 } from '../../types/admin'
 import { API_TIMEOUT_MS, ApiRequestError, callApi } from './client'
 import { getGestorToken } from './config'
@@ -20,6 +22,16 @@ interface AdminUserListData {
 interface AdminUnlockResult {
   unlocked: boolean
   usuario_id: string
+}
+
+interface TechnicalAreaListData {
+  total: number
+  areas: TechnicalArea[]
+}
+
+interface TechnicalRoleListData {
+  total: number
+  cargos: TechnicalRole[]
 }
 
 function adminToken(): string {
@@ -100,6 +112,27 @@ export function saveAdminUser(input: AdminUserInput): Promise<AdminUserSaveResul
   return writeAdminData<AdminUserSaveResult>('admin.usuarios.salvar', {
     dados: input,
   })
+}
+
+export async function listTechnicalAreas(signal?: AbortSignal): Promise<TechnicalArea[]> {
+  const data = await readAdminData<TechnicalAreaListData>(
+    'admin.areas_tecnicas.listar',
+    { status: 'ATIVO' },
+    signal,
+  )
+  return Array.isArray(data.areas) ? data.areas : []
+}
+
+export async function listTechnicalRoles(
+  areaId = '',
+  signal?: AbortSignal,
+): Promise<TechnicalRole[]> {
+  const data = await readAdminData<TechnicalRoleListData>(
+    'admin.cargos_tecnicos.listar',
+    { area_id: areaId, status: 'ATIVO' },
+    signal,
+  )
+  return Array.isArray(data.cargos) ? data.cargos : []
 }
 
 export function unlockAdminUser(userId: string): Promise<AdminUnlockResult> {

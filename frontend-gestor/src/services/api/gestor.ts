@@ -12,6 +12,10 @@ import type {
   GestorDecision,
   GestorDecisionResult,
   GestorKpiBase,
+  GestorTechnicalAnalysisInput,
+  GestorTechnicalContext,
+  GestorTechnicalDemand,
+  GestorTechnicalKpis,
   GestorOccurrence,
   GestorOverview,
   GestorStop,
@@ -42,6 +46,11 @@ interface OccurrenceListData {
 interface ChecklistModelListData {
   total: number
   modelos: GestorChecklistModel[]
+}
+
+interface TechnicalDemandListData {
+  total: number
+  demandas: GestorTechnicalDemand[]
 }
 
 interface AdminListData<T> {
@@ -171,7 +180,7 @@ export async function getGestorOverview(
     getGestorActions(signal),
     getGestorStops(signal),
     getGestorOccurrences(signal),
-    getGestorKpis(signal),
+    getGestorTechnicalKpis(signal),
   ])
 
   const statusCount = (status: string) =>
@@ -207,6 +216,79 @@ export async function getGestorKpis(
   signal?: AbortSignal,
 ): Promise<GestorKpiBase> {
   return readGestorData<GestorKpiBase>('cmms.kpis_base', {}, signal)
+}
+
+export async function getGestorTechnicalKpis(
+  signal?: AbortSignal,
+): Promise<GestorTechnicalKpis> {
+  return readGestorData<GestorTechnicalKpis>('cmms.kpis_tecnicos', {}, signal)
+}
+
+export async function getGestorTechnicalContext(
+  signal?: AbortSignal,
+): Promise<GestorTechnicalContext> {
+  return readGestorData<GestorTechnicalContext>('gestor.contexto_tecnico', {}, signal)
+}
+
+export async function getGestorTechnicalDemands(
+  signal?: AbortSignal,
+): Promise<GestorTechnicalDemand[]> {
+  const data = await readGestorData<TechnicalDemandListData>(
+    'gestor.demandas.listar',
+    { limite: 300 },
+    signal,
+  )
+  return Array.isArray(data.demandas) ? data.demandas : []
+}
+
+export function assumeGestorTechnicalDemand(
+  demandId: string,
+): Promise<{ assumed: boolean; demanda: GestorTechnicalDemand }> {
+  return writeGestorData('gestor.demandas.assumir', { demanda_id: demandId })
+}
+
+export function forwardGestorTechnicalDemand(input: {
+  demanda_id: string
+  para_area_id: string
+  para_cargo_id?: string
+  motivo: string
+  parecer?: string
+}): Promise<{ forwarded: boolean; demanda: GestorTechnicalDemand }> {
+  return writeGestorData('gestor.demandas.encaminhar', input)
+}
+
+export function signGestorTechnicalDemand(
+  demandId: string,
+  declaration: string,
+): Promise<{ signed: boolean; demanda: GestorTechnicalDemand }> {
+  return writeGestorData('gestor.demandas.assinar', {
+    demanda_id: demandId,
+    declaracao: declaration,
+  })
+}
+
+export function decideGestorTechnicalDemand(
+  demandId: string,
+  decision: 'APROVAR' | 'DEVOLVER_ADMIN' | 'LIBERAR_OPERACAO',
+  opinion: string,
+): Promise<{ decided: boolean; demanda: GestorTechnicalDemand }> {
+  return writeGestorData('gestor.demandas.decidir', {
+    demanda_id: demandId,
+    decisao: decision,
+    parecer: opinion,
+  })
+}
+
+export async function saveGestorTechnicalAnalysis(
+  analysis: GestorTechnicalAnalysisInput,
+): Promise<{ saved: boolean; analise: { id: string } }> {
+  return writeGestorData('gestor.analises.salvar', { analise: analysis })
+}
+
+export function sendGestorTechnicalAnalysis(
+  analysisId: string,
+): Promise<{ sent: boolean }> {
+  return writeGestorData('gestor.analises.enviar_admin', { analise_id: analysisId })
 }
 
 export async function getGestorChecklistModels(

@@ -49,6 +49,111 @@ export interface GestorKpiBase {
   observacao?: string
 }
 
+export interface GestorTechnicalKpis {
+  ativo_id: string
+  inicio_em: string
+  fim_em: string
+  ativos_considerados: number
+  disponibilidade_pct: number | null
+  tempo_observado_segundos: number
+  tempo_operacao_segundos: number
+  tempo_parada_segundos: number
+  falhas_nao_planejadas: number
+  mttr_segundos: number | null
+  mtbf_segundos: number | null
+  lead_time_os_segundos: number | null
+  lead_time_demanda_segundos: number | null
+  sla_resposta_pct: number | null
+  sla_resolucao_pct: number | null
+  sla_resposta_amostra: number
+  sla_resolucao_amostra: number
+  oee_disponivel: boolean
+  oee_pct: number | null
+  oee_disponibilidade_pct: number | null
+  oee_performance_pct: number | null
+  oee_qualidade_pct: number | null
+  producao_amostra: number
+  metodologia?: string
+}
+
+export interface GestorTechnicalIdentity {
+  usuario_id: string
+  nome: string
+  perfil: string
+  area_id: string
+  area_nome: string
+  cargo_id: string
+  cargo_nome: string
+  pode_assinar: boolean
+  especialidades: string[]
+  escopo_ids: string[]
+}
+
+export interface GestorTechnicalArea {
+  id: string
+  codigo: string
+  nome: string
+  status: string
+}
+
+export interface GestorTechnicalRole {
+  id: string
+  area_id: string
+  codigo: string
+  nome: string
+  status: string
+  pode_assinar?: string
+}
+
+export interface GestorTechnicalContext {
+  identidade: GestorTechnicalIdentity
+  areas: GestorTechnicalArea[]
+  cargos: GestorTechnicalRole[]
+  pode_encaminhar: boolean
+  pode_assinar: boolean
+}
+
+export interface GestorTechnicalDemand {
+  id: string
+  tipo: string
+  entidade_tipo: string
+  entidade_id: string
+  titulo: string
+  descricao?: string
+  prioridade: string
+  status: string
+  area_atual_id?: string
+  area_atual_nome?: string
+  cargo_atual_id?: string
+  cargo_atual_nome?: string
+  responsavel_atual_id?: string
+  responsavel_atual_nome?: string
+  exige_assinatura?: string
+  assinaturas_necessarias?: number
+  assinaturas_realizadas?: number
+  prazo_primeira_resposta_em?: string
+  prazo_resolucao_em?: string
+  sla_resposta_atrasado?: boolean
+  sla_resolucao_atrasado?: boolean
+  criado_em?: string
+  atualizado_em?: string
+}
+
+export interface GestorTechnicalAnalysisInput {
+  id?: string
+  ocorrencia_id: string
+  ativo_id?: string
+  componente_id?: string
+  titulo: string
+  diagnostico: string
+  risco: string
+  causa_provavel: string
+  recomendacao: string
+  recomenda_checklist: boolean
+  recomenda_os: boolean
+  prioridade: string
+}
+
 export interface GestorExecution {
   id?: string
   acao_id?: string
@@ -154,7 +259,7 @@ export interface GestorOverview {
   stops: GestorStop[]
   openStops: GestorStop[]
   occurrences: GestorOccurrence[]
-  kpis: GestorKpiBase
+  kpis: GestorTechnicalKpis
   counts: {
     pending: number
     executing: number

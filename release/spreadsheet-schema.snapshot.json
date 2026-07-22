@@ -3,7 +3,7 @@
   "release": "1.4.0",
   "schemaVersion": "1.4.0",
   "spreadsheetAlias": "FAB_CONTROL_CORE",
-  "declaredSheetCount": 32,
+  "declaredSheetCount": 42,
   "declaredSheets": [
     "config",
     "usuarios",
@@ -27,6 +27,16 @@
     "paradas_equipamento",
     "paradas_manutencao",
     "ocorrencias_operacionais",
+    "areas_tecnicas",
+    "cargos_tecnicos",
+    "demandas_tecnicas",
+    "demanda_tramitacoes",
+    "assinaturas_tecnicas",
+    "analises_tecnicas",
+    "notificacoes",
+    "turnos",
+    "apontamentos_producao",
+    "sla_politicas",
     "historico",
     "execucao_locks",
     "telemetria_sessoes",
@@ -59,7 +69,11 @@
       "ultimo_login_em",
       "senha_atualizada_em",
       "recuperacao_referencia",
-      "recuperacao_solicitada_em"
+      "recuperacao_solicitada_em",
+      "area_id",
+      "cargo_id",
+      "especialidades_json",
+      "escopo_ids_json"
     ],
     "sessoes": [
       "token",

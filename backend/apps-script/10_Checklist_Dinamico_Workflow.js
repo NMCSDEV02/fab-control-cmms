@@ -135,8 +135,30 @@ function adminEnviarModeloChecklistValidacao_(p){
   }));
 
   hist_({ativo_id:plano.ativo_id, componente_id:plano.componente_id, evento:"MODELO_CHECKLIST_ENVIADO_GESTAO", descricao:"Modelo enviado para validação da gestão.", usuario_id:auth.usuario_id||"", perfil:auth.perfil||ROLE.ADMIN});
+  var technicalDemand = null;
+  if(clean_(p.area_atual_id)){
+    technicalDemand = adminDemandasTecnicasEnviar_({
+      demanda:{
+        tipo:"VALIDACAO_CHECKLIST",
+        entidade_tipo:"CHECKLIST_MODELO",
+        entidade_id:plano.id,
+        titulo:"Validar checklist: " + clean_(plano.nome),
+        descricao:clean_(p.comentario),
+        prioridade:upper_(plano.criticidade || "MEDIA"),
+        area_atual_id:clean_(p.area_atual_id),
+        cargo_atual_id:clean_(p.cargo_atual_id),
+        responsavel_atual_id:clean_(p.responsavel_atual_id),
+        exige_assinatura:p.exige_assinatura,
+        assinaturas_necessarias:p.assinaturas_necessarias,
+        exige_segregacao:p.exige_segregacao,
+        versao_entidade:num_(plano.revisao,1)
+      },
+      __auth:auth,
+      user_agent:p.user_agent
+    }, auth).demanda;
+  }
   invalidateRuntimeCache_();
-  return {sent:true, plano_id:plano.id, workflow_status:ST.EM_VALIDACAO_GESTAO};
+  return {sent:true, plano_id:plano.id, workflow_status:ST.EM_VALIDACAO_GESTAO, demanda_tecnica:technicalDemand};
 }
 
 function validarModeloChecklistEstrutura_(plano, itens){
@@ -174,11 +196,18 @@ function listarModelosChecklistBase_(p, defaultStatus){
     if(!ultimasValidacoes[String(v.plano_id)]) ultimasValidacoes[String(v.plano_id)] = strip_(v);
   });
 
+  var auth = p.__auth || {};
+  var identity = technicalIdentity_(auth);
+  var routed = (sheetExists_("demandas_tecnicas") ? rows_("demandas_tecnicas") : []).filter(function(demand){
+    return upper_(demand.entidade_tipo) === "CHECKLIST_MODELO" && TECH_FINAL_STATUSES.indexOf(upper_(demand.status)) < 0;
+  });
   var modelos = rows_("planos_manutencao").filter(function(pl){
     var wf = upper_(pl.workflow_status || ST.RASCUNHO);
     if(statuses.length && statuses.indexOf(wf) < 0) return false;
     if(ativoId && String(pl.ativo_id) !== String(ativoId)) return false;
     if(componenteId && String(pl.componente_id) !== String(componenteId)) return false;
+    var demand = routed.find(function(item){ return String(item.entidade_id) === String(pl.id); });
+    if(demand && identity.perfil !== ROLE.ADMIN && !technicalDemandAccessible_(demand, identity)) return false;
     return true;
   }).sort(sortByDateDesc_("atualizado_em")).slice(0, limite).map(function(pl){
     var atv = ativos[String(pl.ativo_id)];
@@ -268,6 +297,14 @@ function gestorValidarModeloChecklist_(p){
   var auth = p.__auth || {};
   var pl = find_("planos_manutencao","id",p.plano_id);
   if(!pl) err_("PLAN_NOT_FOUND","Plano/checklist não encontrado.",404);
+  var routedDemand = sheetExists_("demandas_tecnicas") ? rows_("demandas_tecnicas", true).find(function(demand){
+    return upper_(demand.entidade_tipo) === "CHECKLIST_MODELO" &&
+      String(demand.entidade_id) === String(pl.id) &&
+      TECH_FINAL_STATUSES.indexOf(upper_(demand.status)) < 0;
+  }) : null;
+  if(routedDemand){
+    err_("TECH_WORKFLOW_REQUIRED", "Este checklist possui rota tecnica. Use a Fila tecnica para assinar, encaminhar ou decidir.", 409);
+  }
   var dec = upper_(p.decisao);
   if(["APROVAR","DEVOLVER"].indexOf(dec) < 0) err_("INVALID_DECISION","Decisão deve ser APROVAR ou DEVOLVER.",400);
   if(upper_(pl.workflow_status) !== ST.EM_VALIDACAO_GESTAO) err_("INVALID_WORKFLOW_STATUS","Modelo não está em validação da gestão. Status atual: "+pl.workflow_status,400);

@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActionReviewDialog } from '../components/ActionReviewDialog'
 import { ChecklistModelReviewDialog } from '../components/ChecklistModelReviewDialog'
+import { TechnicalAnalysisDialog } from '../components/TechnicalAnalysisDialog'
+import { TechnicalDemandDialog } from '../components/TechnicalDemandDialog'
 import { AlertIcon, RefreshIcon, SearchIcon, StopIcon, ValidationIcon } from '../components/Icons'
 import {
   getGestorActions,
   getGestorChecklistModels,
   getGestorOccurrences,
   getGestorStops,
+  getGestorTechnicalContext,
+  getGestorTechnicalDemands,
   isGestorAuthenticationError,
 } from '../services/api/gestor'
 import type {
@@ -16,6 +20,8 @@ import type {
   GestorDecisionResult,
   GestorOccurrence,
   GestorStop,
+  GestorTechnicalContext,
+  GestorTechnicalDemand,
 } from '../types/gestor'
 
 export interface ValidationsPageProps {
@@ -23,7 +29,7 @@ export interface ValidationsPageProps {
   onSessionExpired: () => void
 }
 
-type ValidationTab = 'actions' | 'models' | 'operations'
+type ValidationTab = 'demands' | 'actions' | 'models' | 'operations'
 
 function upper(value: unknown): string {
   return String(value ?? '').trim().toUpperCase()
@@ -51,13 +57,17 @@ export function ValidationsPage({
   onQueueCountChange,
   onSessionExpired,
 }: ValidationsPageProps) {
-  const [tab, setTab] = useState<ValidationTab>('actions')
+  const [tab, setTab] = useState<ValidationTab>('demands')
+  const [demands, setDemands] = useState<GestorTechnicalDemand[]>([])
+  const [technicalContext, setTechnicalContext] = useState<GestorTechnicalContext | null>(null)
   const [actions, setActions] = useState<GestorAction[]>([])
   const [models, setModels] = useState<GestorChecklistModel[]>([])
   const [stops, setStops] = useState<GestorStop[]>([])
   const [occurrences, setOccurrences] = useState<GestorOccurrence[]>([])
+  const [selectedDemand, setSelectedDemand] = useState<GestorTechnicalDemand | null>(null)
   const [selectedAction, setSelectedAction] = useState<GestorAction | null>(null)
   const [selectedModel, setSelectedModel] = useState<GestorChecklistModel | null>(null)
+  const [selectedOccurrence, setSelectedOccurrence] = useState<GestorOccurrence | null>(null)
   const [search, setSearch] = useState('')
   const [priority, setPriority] = useState('')
   const [loading, setLoading] = useState(true)
@@ -72,11 +82,20 @@ export function ValidationsPage({
       setError('')
 
       try {
-        const [actionData, modelData, stopData, occurrenceData] = await Promise.all([
+        const [
+          actionData,
+          modelData,
+          stopData,
+          occurrenceData,
+          demandData,
+          contextData,
+        ] = await Promise.all([
           getGestorActions(signal),
           getGestorChecklistModels(signal),
           getGestorStops(signal),
           getGestorOccurrences(signal),
+          getGestorTechnicalDemands(signal),
+          getGestorTechnicalContext(signal),
         ])
         const validationActions = actionData.filter(
           (action) => upper(action.status) === 'AGUARDANDO_VALIDACAO',
@@ -85,8 +104,10 @@ export function ValidationsPage({
         setModels(modelData)
         setStops(stopData)
         setOccurrences(occurrenceData)
+        setDemands(demandData)
+        setTechnicalContext(contextData)
         onQueueCountChange(
-          validationActions.length + modelData.length + occurrenceData.length,
+          demandData.length + validationActions.length + modelData.length + occurrenceData.length,
         )
       } catch (cause) {
         if (signal?.aborted) return
@@ -114,6 +135,17 @@ export function ValidationsPage({
     void load(controller.signal)
     return () => controller.abort()
   }, [load])
+
+  const filteredDemands = useMemo(
+    () => demands.filter((demand) => {
+      if (priority && upper(demand.prioridade) !== priority) return false
+      return includesSearch(
+        [demand.id, demand.titulo, demand.entidade_id, demand.area_atual_nome, demand.cargo_atual_nome],
+        search,
+      )
+    }),
+    [demands, priority, search],
+  )
 
   const filteredActions = useMemo(
     () => actions.filter((action) => {
@@ -158,6 +190,13 @@ export function ValidationsPage({
     await load(undefined, true)
   }
 
+  async function handleTechnicalChange(message: string) {
+    setSelectedDemand(null)
+    setSelectedOccurrence(null)
+    setNotice(message)
+    await load(undefined, true)
+  }
+
   return (
     <>
       <main className="content validation-page">
@@ -165,7 +204,7 @@ export function ValidationsPage({
           <div>
             <span className="eyebrow">FILTRO TÉCNICO</span>
             <h1>Central de validações</h1>
-            <p>Revise execuções, modelos de checklist e condições operacionais.</p>
+            <p>Trate demandas por área, assine documentos, encaminhe decisões e analise ocorrências.</p>
           </div>
           <button
             className="icon-text-button"
@@ -178,6 +217,14 @@ export function ValidationsPage({
           </button>
         </section>
 
+        {technicalContext ? (
+          <div className="technical-identity-banner">
+            <span>Escopo atual</span>
+            <strong>{technicalContext.identidade.area_nome || 'Gestor sem área definida'}</strong>
+            <small>{technicalContext.identidade.cargo_nome || 'Sem cargo específico'}{technicalContext.pode_assinar ? ' · pode assinar' : ''}</small>
+          </div>
+        ) : null}
+
         {notice ? (
           <div className="dashboard-notice" role="status">
             <span>{notice}</span>
@@ -187,49 +234,24 @@ export function ValidationsPage({
         {error ? <div className="dashboard-error" role="alert"><strong>Falha na central.</strong><span>{error}</span></div> : null}
 
         <div className="validation-tabs" role="tablist" aria-label="Tipos de validação">
-          <button
-            className={tab === 'actions' ? 'is-active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'actions'}
-            onClick={() => setTab('actions')}
-          >
-            <ValidationIcon />
-            Execuções
-            <span>{actions.length}</span>
+          <button className={tab === 'demands' ? 'is-active' : ''} type="button" role="tab" aria-selected={tab === 'demands'} onClick={() => setTab('demands')}>
+            <ValidationIcon /> Fila técnica <span>{demands.length}</span>
           </button>
-          <button
-            className={tab === 'models' ? 'is-active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'models'}
-            onClick={() => setTab('models')}
-          >
-            <ValidationIcon />
-            Modelos técnicos
-            <span>{models.length}</span>
+          <button className={tab === 'actions' ? 'is-active' : ''} type="button" role="tab" aria-selected={tab === 'actions'} onClick={() => setTab('actions')}>
+            <ValidationIcon /> Execuções <span>{actions.length}</span>
           </button>
-          <button
-            className={tab === 'operations' ? 'is-active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={tab === 'operations'}
-            onClick={() => setTab('operations')}
-          >
-            <AlertIcon />
-            Operação
-            <span>{occurrences.length + stops.length}</span>
+          <button className={tab === 'models' ? 'is-active' : ''} type="button" role="tab" aria-selected={tab === 'models'} onClick={() => setTab('models')}>
+            <ValidationIcon /> Modelos técnicos <span>{models.length}</span>
+          </button>
+          <button className={tab === 'operations' ? 'is-active' : ''} type="button" role="tab" aria-selected={tab === 'operations'} onClick={() => setTab('operations')}>
+            <AlertIcon /> Operação <span>{occurrences.length + stops.length}</span>
           </button>
         </div>
 
         <section className="filter-bar" aria-label="Filtros da central">
           <label className="search-field">
             <SearchIcon />
-            <input
-              value={search}
-              placeholder="Buscar por ID, ativo, componente ou título"
-              onChange={(event) => setSearch(event.target.value)}
-            />
+            <input value={search} placeholder="Buscar por ID, ativo, área, cargo ou título" onChange={(event) => setSearch(event.target.value)} />
           </label>
           <label>
             <span>Prioridade</span>
@@ -244,23 +266,36 @@ export function ValidationsPage({
           </label>
         </section>
 
+        {tab === 'demands' ? (
+          <section className="validation-grid" role="tabpanel">
+            {loading ? <p className="panel-state">Carregando fila técnica…</p> : null}
+            {!loading && filteredDemands.length === 0 ? <p className="panel-state">Nenhuma demanda destinada à sua área ou cargo.</p> : null}
+            {filteredDemands.map((demand) => (
+              <article className="validation-card technical-demand-card" key={demand.id}>
+                <div className="validation-card__topline"><span className="status-pill status-pill--blue">{demand.entidade_tipo}</span><span className="priority-chip">{demand.prioridade}</span></div>
+                <h2>{demand.titulo}</h2>
+                <p>{demand.area_atual_nome || 'Sem área'}{demand.cargo_atual_nome ? ` · ${demand.cargo_atual_nome}` : ''}</p>
+                <dl>
+                  <div><dt>Status</dt><dd>{demand.status}</dd></div>
+                  <div><dt>Assinaturas</dt><dd>{Number(demand.assinaturas_realizadas ?? 0)}/{Number(demand.assinaturas_necessarias ?? 0)}</dd></div>
+                  <div><dt>SLA</dt><dd>{demand.sla_resolucao_atrasado ? 'Atrasado' : 'No prazo'}</dd></div>
+                </dl>
+                <button className="review-button" type="button" onClick={() => setSelectedDemand(demand)}>Tratar demanda</button>
+              </article>
+            ))}
+          </section>
+        ) : null}
+
         {tab === 'actions' ? (
           <section className="validation-grid" role="tabpanel">
             {loading ? <p className="panel-state">Carregando execuções…</p> : null}
             {!loading && filteredActions.length === 0 ? <p className="panel-state">Nenhuma execução encontrada.</p> : null}
             {filteredActions.map((action) => (
               <article className="validation-card" key={action.id}>
-                <div className="validation-card__topline">
-                  <span className="status-pill">EXECUÇÃO</span>
-                  <span className="priority-chip">{action.prioridade || 'NORMAL'}</span>
-                </div>
+                <div className="validation-card__topline"><span className="status-pill">EXECUÇÃO</span><span className="priority-chip">{action.prioridade || 'NORMAL'}</span></div>
                 <h2>{action.titulo || 'Ação sem título'}</h2>
                 <p>{action.ativo_tag || action.ativo_id || 'Ativo não informado'}{action.ativo_nome ? ` · ${action.ativo_nome}` : ''}</p>
-                <dl>
-                  <div><dt>Gerada em</dt><dd>{formatDate(action.gerado_em)}</dd></div>
-                  <div><dt>Locks</dt><dd>{action.locks_ativos ?? 0}</dd></div>
-                  <div><dt>Status</dt><dd>{action.status}</dd></div>
-                </dl>
+                <dl><div><dt>Gerada em</dt><dd>{formatDate(action.gerado_em)}</dd></div><div><dt>Locks</dt><dd>{action.locks_ativos ?? 0}</dd></div><div><dt>Status</dt><dd>{action.status}</dd></div></dl>
                 <button className="review-button" type="button" onClick={() => setSelectedAction(action)}>Abrir revisão</button>
               </article>
             ))}
@@ -273,17 +308,10 @@ export function ValidationsPage({
             {!loading && filteredModels.length === 0 ? <p className="panel-state">Nenhum modelo técnico encontrado.</p> : null}
             {filteredModels.map((model) => (
               <article className="validation-card" key={model.id}>
-                <div className="validation-card__topline">
-                  <span className="status-pill status-pill--blue">MODELO R{model.revisao ?? 1}</span>
-                  <span className="priority-chip">{model.criticidade || 'NORMAL'}</span>
-                </div>
+                <div className="validation-card__topline"><span className="status-pill status-pill--blue">MODELO R{model.revisao ?? 1}</span><span className="priority-chip">{model.criticidade || 'NORMAL'}</span></div>
                 <h2>{model.nome || 'Modelo sem nome'}</h2>
                 <p>{model.ativo_tag || model.ativo_id || 'Ativo não informado'}{model.componente_nome ? ` · ${model.componente_nome}` : ''}</p>
-                <dl>
-                  <div><dt>Itens</dt><dd>{model.itens_count ?? 0}</dd></div>
-                  <div><dt>Tempo</dt><dd>{model.tempo_estimado_min ?? 0} min</dd></div>
-                  <div><dt>Enviado</dt><dd>{formatDate(model.enviado_validacao_em || model.atualizado_em)}</dd></div>
-                </dl>
+                <dl><div><dt>Itens</dt><dd>{model.itens_count ?? 0}</dd></div><div><dt>Tempo</dt><dd>{model.tempo_estimado_min ?? 0} min</dd></div><div><dt>Enviado</dt><dd>{formatDate(model.enviado_validacao_em || model.atualizado_em)}</dd></div></dl>
                 <button className="review-button" type="button" onClick={() => setSelectedModel(model)}>Revisar modelo</button>
               </article>
             ))}
@@ -302,6 +330,7 @@ export function ValidationsPage({
                     <div className="validation-card__topline"><span className="priority-chip">{occurrence.severidade || 'NÃO CLASSIFICADA'}</span><small>{formatDate(occurrence.criado_em)}</small></div>
                     <h3>{occurrence.titulo || 'Ocorrência operacional'}</h3>
                     <p>{occurrence.descricao || occurrence.ativo_id || 'Sem descrição.'}</p>
+                    <button className="review-button" type="button" onClick={() => setSelectedOccurrence(occurrence)}>Criar análise técnica</button>
                   </div>
                 </article>
               ))}
@@ -313,11 +342,7 @@ export function ValidationsPage({
               {stops.map((stop) => (
                 <article className="operation-card" key={stop.id}>
                   <span className="operation-card__icon"><StopIcon /></span>
-                  <div>
-                    <div className="validation-card__topline"><span className="status-pill">{stop.status}</span><small>{formatDate(stop.iniciada_em)}</small></div>
-                    <h3>{stop.ativo_id}</h3>
-                    <p>{stop.motivo_parada || 'Parada sem motivo informado.'}</p>
-                  </div>
+                  <div><div className="validation-card__topline"><span className="status-pill">{stop.status}</span><small>{formatDate(stop.iniciada_em)}</small></div><h3>{stop.ativo_id}</h3><p>{stop.motivo_parada || 'Parada sem motivo informado.'}</p></div>
                 </article>
               ))}
             </div>
@@ -325,23 +350,10 @@ export function ValidationsPage({
         ) : null}
       </main>
 
-      {selectedAction ? (
-        <ActionReviewDialog
-          action={selectedAction}
-          onClose={() => setSelectedAction(null)}
-          onDecisionComplete={handleActionDecision}
-          onSessionExpired={onSessionExpired}
-        />
-      ) : null}
-
-      {selectedModel ? (
-        <ChecklistModelReviewDialog
-          model={selectedModel}
-          onClose={() => setSelectedModel(null)}
-          onDecisionComplete={handleModelDecision}
-          onSessionExpired={onSessionExpired}
-        />
-      ) : null}
+      {selectedAction ? <ActionReviewDialog action={selectedAction} onClose={() => setSelectedAction(null)} onDecisionComplete={handleActionDecision} onSessionExpired={onSessionExpired} /> : null}
+      {selectedModel ? <ChecklistModelReviewDialog model={selectedModel} onClose={() => setSelectedModel(null)} onDecisionComplete={handleModelDecision} onSessionExpired={onSessionExpired} /> : null}
+      {selectedDemand && technicalContext ? <TechnicalDemandDialog demand={selectedDemand} context={technicalContext} onClose={() => setSelectedDemand(null)} onChanged={handleTechnicalChange} onSessionExpired={onSessionExpired} /> : null}
+      {selectedOccurrence ? <TechnicalAnalysisDialog occurrence={selectedOccurrence} onClose={() => setSelectedOccurrence(null)} onChanged={handleTechnicalChange} /> : null}
     </>
   )
 }

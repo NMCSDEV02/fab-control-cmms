@@ -34,12 +34,28 @@ const EMPTY_OVERVIEW: GestorOverview = {
   occurrences: [],
   kpis: {
     ativo_id: 'TODOS',
-    total_execucoes: 0,
-    execucoes_finalizadas: 0,
-    falhas_registradas: 0,
-    acoes_abertas: 0,
-    mttr_segundos: 0,
-    disponibilidade_base_pct: 0,
+    inicio_em: '',
+    fim_em: '',
+    ativos_considerados: 0,
+    disponibilidade_pct: null,
+    tempo_observado_segundos: 0,
+    tempo_operacao_segundos: 0,
+    tempo_parada_segundos: 0,
+    falhas_nao_planejadas: 0,
+    mttr_segundos: null,
+    mtbf_segundos: null,
+    lead_time_os_segundos: null,
+    lead_time_demanda_segundos: null,
+    sla_resposta_pct: null,
+    sla_resolucao_pct: null,
+    sla_resposta_amostra: 0,
+    sla_resolucao_amostra: 0,
+    oee_disponivel: false,
+    oee_pct: null,
+    oee_disponibilidade_pct: null,
+    oee_performance_pct: null,
+    oee_qualidade_pct: null,
+    producao_amostra: 0,
   },
   counts: {
     pending: 0,
@@ -68,6 +84,16 @@ function formatDuration(seconds: number): string {
   const minutes = totalMinutes % 60
   if (!hours) return `${minutes} min`
   return minutes ? `${hours}h ${minutes}min` : `${hours}h`
+}
+
+function formatOptionalDuration(seconds: number | null): string {
+  return seconds == null ? 'Sem amostra' : formatDuration(seconds)
+}
+
+function formatOptionalPercent(value: number | null): string {
+  return value == null
+    ? 'Sem amostra'
+    : `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
 }
 
 function actionTitle(action: GestorAction): string {
@@ -296,20 +322,32 @@ export function DashboardPage({
               </button>
             </div>
 
-            <article className="kpi-card">
-              <div>
-                <span>Disponibilidade base</span>
-                <strong>{overview.kpis.disponibilidade_base_pct.toLocaleString('pt-BR')}%</strong>
-              </div>
-              <small>KPI operacional atual</small>
-            </article>
-            <article className="kpi-card">
-              <div>
-                <span>MTTR médio</span>
-                <strong>{formatDuration(overview.kpis.mttr_segundos)}</strong>
-              </div>
-              <small>{overview.kpis.execucoes_finalizadas} execução(ões) finalizada(s)</small>
-            </article>
+            <div className="technical-kpi-grid">
+              <article className="kpi-card">
+                <div><span>Disponibilidade</span><strong>{formatOptionalPercent(overview.kpis.disponibilidade_pct)}</strong></div>
+                <small>{overview.kpis.ativos_considerados} ativo(s) no período</small>
+              </article>
+              <article className="kpi-card">
+                <div><span>MTTR</span><strong>{formatOptionalDuration(overview.kpis.mttr_segundos)}</strong></div>
+                <small>Tempo médio de reparo</small>
+              </article>
+              <article className="kpi-card">
+                <div><span>MTBF</span><strong>{formatOptionalDuration(overview.kpis.mtbf_segundos)}</strong></div>
+                <small>{overview.kpis.falhas_nao_planejadas} falha(s) não planejada(s)</small>
+              </article>
+              <article className="kpi-card">
+                <div><span>Lead time OS</span><strong>{formatOptionalDuration(overview.kpis.lead_time_os_segundos)}</strong></div>
+                <small>Da abertura à finalização</small>
+              </article>
+              <article className="kpi-card">
+                <div><span>SLA resolução</span><strong>{formatOptionalPercent(overview.kpis.sla_resolucao_pct)}</strong></div>
+                <small>{overview.kpis.sla_resolucao_amostra} demanda(s) elegível(is)</small>
+              </article>
+              <article className="kpi-card">
+                <div><span>OEE</span><strong>{overview.kpis.oee_disponivel ? formatOptionalPercent(overview.kpis.oee_pct) : 'Aguardando dados'}</strong></div>
+                <small>{overview.kpis.oee_disponivel ? 'Disponibilidade × performance × qualidade' : 'Cadastre apontamentos de produção'}</small>
+              </article>
+            </div>
 
             <p className="last-update">
               Última atualização: {updatedAt ? formatDate(updatedAt) : 'pendente'}

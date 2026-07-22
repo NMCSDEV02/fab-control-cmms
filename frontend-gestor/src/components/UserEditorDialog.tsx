@@ -1,10 +1,16 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { saveAdminUser } from '../services/api/admin'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import {
+  listTechnicalAreas,
+  listTechnicalRoles,
+  saveAdminUser,
+} from '../services/api/admin'
 import type {
   AdminUser,
   AdminUserInput,
   AdminUserProfile,
   AdminUserStatus,
+  TechnicalArea,
+  TechnicalRole,
 } from '../types/admin'
 
 interface UserEditorDialogProps {
@@ -37,6 +43,18 @@ export function UserEditorDialog({
   const [registration, setRegistration] = useState(user?.matricula ?? '')
   const [profile, setProfile] = useState<AdminUserProfile>(user?.perfil ?? 'OPERADOR')
   const [status, setStatus] = useState<AdminUserStatus>(user?.status ?? 'ATIVO')
+  const [areaId, setAreaId] = useState(user?.area_id ?? '')
+  const [roleId, setRoleId] = useState(user?.cargo_id ?? '')
+  const [specialties, setSpecialties] = useState<string>(() => {
+    try { return JSON.parse(user?.especialidades_json ?? '[]').join(', ') }
+    catch { return '' }
+  })
+  const [scopeIds, setScopeIds] = useState<string>(() => {
+    try { return JSON.parse(user?.escopo_ids_json ?? '[]').join(', ') }
+    catch { return '' }
+  })
+  const [areas, setAreas] = useState<TechnicalArea[]>([])
+  const [roles, setRoles] = useState<TechnicalRole[]>([])
   const [temporaryPassword, setTemporaryPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -46,6 +64,22 @@ export function UserEditorDialog({
     () => (editing ? `Editar ${user?.nome ?? 'usuário'}` : 'Novo usuário'),
     [editing, user?.nome],
   )
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void Promise.all([
+      listTechnicalAreas(controller.signal),
+      listTechnicalRoles('', controller.signal),
+    ]).then(([areaData, roleData]) => {
+      setAreas(areaData)
+      setRoles(roleData)
+    }).catch(() => {
+      // O cadastro continua disponÃ­vel mesmo se o catÃ¡logo tÃ©cnico falhar.
+    })
+    return () => controller.abort()
+  }, [])
+
+  const availableRoles = roles.filter((role) => !areaId || role.area_id === areaId)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -76,6 +110,14 @@ export function UserEditorDialog({
       perfil: profile,
       status,
       senha_temporaria: editing ? undefined : temporaryPassword,
+      area_id: profile === 'GESTOR' ? areaId : '',
+      cargo_id: profile === 'GESTOR' ? roleId : '',
+      especialidades: profile === 'GESTOR'
+        ? specialties.split(',').map((value: string) => value.trim()).filter(Boolean)
+        : [],
+      escopo_ids: profile === 'GESTOR'
+        ? scopeIds.split(',').map((value: string) => value.trim()).filter(Boolean)
+        : [],
     }
 
     setSubmitting(true)
@@ -152,6 +194,50 @@ export function UserEditorDialog({
                 <option value="INATIVO">Inativo</option>
               </select>
             </label>
+            {profile === 'GESTOR' ? (
+              <>
+                <label>
+                  <span>Ãrea tÃ©cnica</span>
+                  <select
+                    value={areaId}
+                    onChange={(event) => {
+                      setAreaId(event.target.value)
+                      setRoleId('')
+                    }}
+                  >
+                    <option value="">Gestor sem Ã¡rea definida</option>
+                    {areas.map((area) => (
+                      <option key={area.id} value={area.id}>{area.nome}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Cargo tÃ©cnico</span>
+                  <select value={roleId} onChange={(event) => setRoleId(event.target.value)}>
+                    <option value="">Sem cargo especÃ­fico</option>
+                    {availableRoles.map((role) => (
+                      <option key={role.id} value={role.id}>{role.nome}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Especialidades</span>
+                  <input
+                    value={specialties}
+                    onChange={(event) => setSpecialties(event.target.value)}
+                    placeholder="ElÃ©trica, mecÃ¢nica, metrologia"
+                  />
+                </label>
+                <label>
+                  <span>Escopo (IDs de setor/linha)</span>
+                  <input
+                    value={scopeIds}
+                    onChange={(event) => setScopeIds(event.target.value)}
+                    placeholder="SET-01, LIN-02"
+                  />
+                </label>
+              </>
+            ) : null}
           </div>
 
           {editingSelf ? (

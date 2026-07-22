@@ -19,6 +19,10 @@ export interface AdminUser {
   sessoes_ativas?: number
   criado_em?: string
   atualizado_em?: string
+  area_id?: string
+  cargo_id?: string
+  especialidades_json?: string
+  escopo_ids_json?: string
 }
 
 export interface AdminUserInput {
@@ -29,6 +33,29 @@ export interface AdminUserInput {
   perfil: AdminUserProfile
   status: AdminUserStatus
   senha_temporaria?: string
+  area_id?: string
+  cargo_id?: string
+  especialidades?: string[]
+  escopo_ids?: string[]
+}
+
+export interface TechnicalArea {
+  id: string
+  codigo: string
+  nome: string
+  descricao?: string
+  status: AdminUserStatus
+  exige_assinatura_padrao?: string
+}
+
+export interface TechnicalRole {
+  id: string
+  area_id: string
+  codigo: string
+  nome: string
+  descricao?: string
+  status: AdminUserStatus
+  pode_assinar?: string
 }
 
 export interface AdminUserListFilters {

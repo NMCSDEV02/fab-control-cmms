@@ -62,6 +62,22 @@ const ADMIN_PERMISSION_CAPABILITIES = [
     acoes:["gestor.modelos_em_validacao","gestor.listar_modelos_checklist","gestor.detalhe_modelo_checklist","gestor.validar_modelo_checklist"]
   },
   {
+    id:"TRATAR_DEMANDAS_TECNICAS",
+    nome:"Tratar demandas tÃ©cnicas",
+    descricao:"Assume, encaminha, assina e decide demandas conforme Ã¡rea, cargo e escopo.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["gestor.contexto_tecnico","gestor.demandas.listar","gestor.demandas.detalhe","gestor.demandas.assumir","gestor.demandas.encaminhar","gestor.demandas.assinar","gestor.demandas.decidir","gestor.notificacoes.listar","gestor.notificacoes.marcar_lida"]
+  },
+  {
+    id:"EMITIR_ANALISE_TECNICA",
+    nome:"Emitir anÃ¡lise tÃ©cnica",
+    descricao:"Analisa ocorrÃªncias e envia recomendaÃ§Ãµes de checklist ou ordem de serviÃ§o ao administrador.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["gestor.analises.salvar","gestor.analises.enviar_admin"]
+  },
+  {
     id:"CONSULTAR_ATIVOS",
     nome:"Consultar ativos",
     descricao:"Permite leitura do catálogo técnico de ativos e componentes.",
@@ -75,7 +91,7 @@ const ADMIN_PERMISSION_CAPABILITIES = [
     descricao:"Exibe KPIs operacionais disponíveis no contrato atual.",
     perfis:[ROLE.GESTOR],
     padrao:[ROLE.GESTOR],
-    acoes:["cmms.kpis_base"]
+    acoes:["cmms.kpis_base","cmms.kpis_tecnicos"]
   },
   {
     id:"GERENCIAR_SESSOES_OPERACIONAIS",
@@ -157,7 +173,23 @@ function adminAssertUserPayload_(data){
   if(!/^[A-Za-z0-9._-]{3,40}$/.test(registration)) err_("USER_REGISTRATION_INVALID", "A matrícula deve ter de 3 a 40 caracteres alfanuméricos.", 400);
   if([ROLE.ADMIN, ROLE.GESTOR, ROLE.OPERADOR].indexOf(profile) < 0) err_("USER_PROFILE_INVALID", "Perfil de usuário inválido.", 400);
   if([ST.ATIVO, ST.INATIVO].indexOf(status) < 0) err_("USER_STATUS_INVALID", "Status de usuário inválido.", 400);
-  return {email:email, matricula:registration, perfil:profile, status:status};
+  var areaId = profile === ROLE.GESTOR ? clean_(data.area_id) : "";
+  var roleId = profile === ROLE.GESTOR ? clean_(data.cargo_id) : "";
+  if(areaId){
+    var area = find_("areas_tecnicas", "id", areaId);
+    if(!area || upper_(area.status) !== ST.ATIVO) err_("USER_TECH_AREA_INVALID", "Ãrea tÃ©cnica inexistente ou inativa.", 400);
+  }
+  if(roleId){
+    var technicalRole = find_("cargos_tecnicos", "id", roleId);
+    if(!technicalRole || upper_(technicalRole.status) !== ST.ATIVO) err_("USER_TECH_ROLE_INVALID", "Cargo tÃ©cnico inexistente ou inativo.", 400);
+    if(areaId && String(technicalRole.area_id) !== String(areaId)) err_("USER_TECH_ROLE_AREA_MISMATCH", "O cargo nÃ£o pertence Ã  Ã¡rea selecionada.", 400);
+  }
+  return {
+    email:email, matricula:registration, perfil:profile, status:status,
+    area_id:areaId, cargo_id:roleId,
+    especialidades_json:technicalSerializeArray_(data.especialidades_json || data.especialidades),
+    escopo_ids_json:technicalSerializeArray_(data.escopo_ids_json || data.escopo_ids)
+  };
 }
 
 function adminAssertAdminContinuity_(oldUser, nextProfile, nextStatus){
@@ -221,6 +253,10 @@ function adminUsuariosSalvar_(p, auth){
         matricula:normalized.matricula,
         perfil:normalized.perfil,
         status:normalized.status,
+        area_id:normalized.area_id,
+        cargo_id:normalized.cargo_id,
+        especialidades_json:normalized.especialidades_json,
+        escopo_ids_json:normalized.escopo_ids_json,
         atualizado_em:now_()
       };
       update_("usuarios", old.__rowIndex, patch);
@@ -252,6 +288,10 @@ function adminUsuariosSalvar_(p, auth){
       senha_atualizada_em:now_(),
       recuperacao_referencia:"",
       recuperacao_solicitada_em:"",
+      area_id:normalized.area_id,
+      cargo_id:normalized.cargo_id,
+      especialidades_json:normalized.especialidades_json,
+      escopo_ids_json:normalized.escopo_ids_json,
       criado_em:now_(),
       atualizado_em:now_()
     });

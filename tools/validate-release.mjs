@@ -99,7 +99,7 @@ const sourceFiles = fs
   .filter((name) => name.endsWith('.js') || name === 'appsscript.json')
   .sort()
 
-assert(sourceFiles.length === 26, `quantidade de fontes backend = ${sourceFiles.length}; esperado 26`)
+assert(sourceFiles.length === 27, `quantidade de fontes backend = ${sourceFiles.length}; esperado 27`)
 assert(
   !fs.readdirSync(backendPath).some((name) => name.endsWith('.gs')),
   'arquivo .gs ativo encontrado',

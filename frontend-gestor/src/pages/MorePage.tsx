@@ -47,7 +47,7 @@ export function MorePage({ session, onNavigate }: MorePageProps) {
         ) : null}
         <article className="more-card more-card--static">
           <span className="more-card__icon"><SettingsIcon /></span>
-          <span><strong>Escopo deste incremento</strong><small>Solicitações técnicas, OEE real e turnos serão liberados após os contratos backend correspondentes.</small></span>
+          <span><strong>Governança técnica</strong><small>Roteamento por área e cargo, assinatura interna, SLA, análise de ocorrências e OEE baseado em apontamentos reais.</small></span>
         </article>
       </section>
 
