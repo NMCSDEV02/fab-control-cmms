@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PasswordResetDialog } from '../components/PasswordResetDialog'
 import { UserEditorDialog } from '../components/UserEditorDialog'
 import { ConfigurationEnginePanel } from '../components/ConfigurationEnginePanel'
+import { AdminImportCenter } from '../components/AdminImportCenter'
 import { KeyIcon, RefreshIcon, SearchIcon, SettingsIcon, ShieldIcon, UsersIcon } from '../components/Icons'
 import {
   getAdminPermissionMatrix,
@@ -27,7 +28,7 @@ interface AdminPageProps {
   onModuleChange?: (module: AdminModule) => void
 }
 
-export type AdminModule = 'overview' | 'configuration' | 'users' | 'permissions'
+export type AdminModule = 'overview' | 'imports' | 'configuration' | 'users' | 'permissions'
 type EditablePermissionProfile = 'GESTOR' | 'OPERADOR'
 
 const PROFILE_LABELS: Record<AdminUserProfile, string> = {
@@ -95,7 +96,7 @@ export function AdminPage({
   }, [])
 
   useEffect(() => {
-    if (tab === 'configuration') {
+    if (tab === 'configuration' || tab === 'imports') {
       setLoading(false)
       return undefined
     }
@@ -274,6 +275,9 @@ export function AdminPage({
         <button type="button" role="tab" aria-selected={tab === 'configuration'} className={tab === 'configuration' ? 'is-active' : ''} onClick={() => setTab('configuration')}>
           <SettingsIcon /> Motor
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'imports'} className={tab === 'imports' ? 'is-active' : ''} onClick={() => setTab('imports')}>
+          <SettingsIcon /> Importação
+        </button>
         <button type="button" role="tab" aria-selected={tab === 'users'} className={tab === 'users' ? 'is-active' : ''} onClick={() => setTab('users')}>
           <UsersIcon /> Usuários
         </button>
@@ -295,6 +299,7 @@ export function AdminPage({
             <section className="admin-command-control-panel">
               <header><div><span className="eyebrow">CONTROLES CENTRAIS</span><h2>Governança do sistema</h2></div><button type="button" disabled={refreshing} onClick={() => void refresh('Workspace atualizado.') }><RefreshIcon />{refreshing ? 'Atualizando…' : 'Atualizar'}</button></header>
               <div className="admin-command-module-grid">
+                <button type="button" onClick={() => setTab('imports')}><SettingsIcon /><span><strong>Implantação e Importação</strong><small>Modelos de planilha, pré-análise, confirmação e rollback por lote.</small></span><b>Governada</b></button>
                 <button type="button" onClick={() => setTab('configuration')}><SettingsIcon /><span><strong>Motor de Configuração</strong><small>Rascunhos, validação, publicação e rollback imutável.</small></span><b>Seguro</b></button>
                 <button type="button" onClick={() => setTab('users')}><UsersIcon /><span><strong>Identidades e perfis</strong><small>Usuários, áreas técnicas, cargos, sessões e recuperação.</small></span><b>{metrics.active} ativos</b></button>
                 <button type="button" onClick={() => setTab('permissions')}><ShieldIcon /><span><strong>Matriz de capacidades</strong><small>Permissões efetivas para gestor e operador.</small></span><b>Auditada</b></button>
@@ -329,6 +334,8 @@ export function AdminPage({
       ) : null}
 
       {tab === 'configuration' ? <ConfigurationEnginePanel onSessionExpired={onSessionExpired} /> : null}
+
+      {tab === 'imports' ? <AdminImportCenter onSessionExpired={onSessionExpired} /> : null}
 
       {tab === 'users' ? (
         <section className="admin-users" role="tabpanel">

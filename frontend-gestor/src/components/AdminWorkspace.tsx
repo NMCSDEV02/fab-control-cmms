@@ -18,10 +18,11 @@ const MODULES: Array<{
   description: string
   Icon: typeof HomeIcon
 }> = [
-  { id: 'overview', label: 'Visão geral', description: 'Estado do sistema', Icon: HomeIcon },
-  { id: 'configuration', label: 'Motor', description: 'Configuração versionada', Icon: SettingsIcon },
-  { id: 'users', label: 'Usuários', description: 'Identidades e acessos', Icon: UsersIcon },
-  { id: 'permissions', label: 'Permissões', description: 'Matriz de capacidades', Icon: ShieldIcon },
+  { id: 'overview', label: 'Dashboard técnico', description: 'Visão consolidada', Icon: HomeIcon },
+  { id: 'imports', label: 'Implantação e importação', description: 'Modelos de planilhas', Icon: SettingsIcon },
+  { id: 'configuration', label: 'Motor de configuração', description: 'Runtime versionado', Icon: SettingsIcon },
+  { id: 'users', label: 'Usuários e perfis', description: 'Identidades e acessos', Icon: UsersIcon },
+  { id: 'permissions', label: 'Segurança e continuidade', description: 'Matriz de capacidades', Icon: ShieldIcon },
 ]
 
 const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; subtitle: string }> = {
@@ -29,6 +30,11 @@ const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; sub
     eyebrow: 'CENTRO DE COMANDO',
     title: 'Visão geral administrativa',
     subtitle: 'Controle a configuração, identidades e políticas que governam toda a operação.',
+  },
+  imports: {
+    eyebrow: 'IMPLANTAÇÃO E GOVERNANÇA DE DADOS',
+    title: 'Central de Importação',
+    subtitle: 'Baixe modelos, valide vínculos e confirme cadastros, planos e checklists com rollback auditável.',
   },
   configuration: {
     eyebrow: 'GOVERNANÇA DO RUNTIME',
