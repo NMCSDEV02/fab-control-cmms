@@ -5,43 +5,43 @@ var CONFIG_ENGINE_RUNTIME_CACHE = null;
 
 const CONFIG_ENGINE_CATALOG = [
   {
-    chave:"parada.tolerancia_retorno_min", grupo:"OPERACAO", nome:"Tolerancia de retorno operacional",
-    descricao:"Minutos permitidos entre o fim da manutencao e o retorno operacional.",
+    chave:"parada.tolerancia_retorno_min", grupo:"OPERACAO", nome:"Tolerância de retorno operacional",
+    descricao:"Minutos permitidos entre o fim da manutenção e o retorno operacional.",
     tipo:"INTEIRO", padrao:10, minimo:0, maximo:1440, unidade:"min"
   },
   {
-    chave:"manutencao.modo_parada_padrao", grupo:"OPERACAO", nome:"Modo de parada padrao",
-    descricao:"Aplicado somente quando a acao e o plano nao definem uma politica propria.",
+    chave:"manutencao.modo_parada_padrao", grupo:"OPERACAO", nome:"Modo de parada padrão",
+    descricao:"Aplicado somente quando a ação e o plano não definem uma política própria.",
     tipo:"ENUM", padrao:"DECISAO_EXECUTOR", opcoes:["OBRIGATORIA","DECISAO_EXECUTOR","SEM_PARADA"]
   },
   {
-    chave:"evidencia.foto.max_bytes", grupo:"EVIDENCIAS", nome:"Tamanho maximo de foto",
-    descricao:"Limite de cada evidencia fotografica enviada pelo operador.",
+    chave:"evidencia.foto.max_bytes", grupo:"EVIDENCIAS", nome:"Tamanho máximo de foto",
+    descricao:"Limite de cada evidência fotográfica enviada pelo operador.",
     tipo:"INTEIRO", padrao:2500000, minimo:250000, maximo:5000000, unidade:"bytes"
   },
   {
-    chave:"workflow.tecnico.exige_segregacao_padrao", grupo:"WORKFLOW", nome:"Segregacao tecnica padrao",
-    descricao:"Impede que o autor da demanda assine a propria liberacao quando a demanda nao informar a regra.",
+    chave:"workflow.tecnico.exige_segregacao_padrao", grupo:"WORKFLOW", nome:"Segregação técnica padrão",
+    descricao:"Impede que o autor da demanda assine a própria liberação quando a demanda não informar a regra.",
     tipo:"BOOLEANO", padrao:false
   },
   {
-    chave:"workflow.tecnico.assinaturas_padrao", grupo:"WORKFLOW", nome:"Assinaturas tecnicas padrao",
-    descricao:"Quantidade padrao de assinaturas quando a area exige aprovacao tecnica.",
+    chave:"workflow.tecnico.assinaturas_padrao", grupo:"WORKFLOW", nome:"Assinaturas técnicas padrão",
+    descricao:"Quantidade padrão de assinaturas quando a área exige aprovação técnica.",
     tipo:"INTEIRO", padrao:1, minimo:1, maximo:5, unidade:"assinaturas"
   },
   {
-    chave:"kpi.janela_padrao_dias", grupo:"INDICADORES", nome:"Janela padrao dos indicadores",
-    descricao:"Periodo usado quando o painel nao informa datas de consulta.",
+    chave:"kpi.janela_padrao_dias", grupo:"INDICADORES", nome:"Janela padrão dos indicadores",
+    descricao:"Período usado quando o painel não informa datas de consulta.",
     tipo:"INTEIRO", padrao:30, minimo:1, maximo:365, unidade:"dias"
   },
   {
     chave:"kpi.meta.disponibilidade_pct", grupo:"INDICADORES", nome:"Meta de disponibilidade",
-    descricao:"Referencia gerencial para a disponibilidade tecnica.",
+    descricao:"Referência gerencial para a disponibilidade técnica.",
     tipo:"NUMERO", padrao:90, minimo:0, maximo:100, unidade:"%"
   },
   {
     chave:"kpi.meta.oee_pct", grupo:"INDICADORES", nome:"Meta de OEE",
-    descricao:"Referencia gerencial de eficiencia global do equipamento.",
+    descricao:"Referência gerencial de eficiência global do equipamento.",
     tipo:"NUMERO", padrao:75, minimo:0, maximo:100, unidade:"%"
   }
 ];
@@ -54,7 +54,7 @@ const CONFIG_ENGINE_PROTECTED_KEYS = [
 
 function configurationRequireAdmin_(auth){
   if(upper_(auth && auth.perfil) !== ROLE.ADMIN){
-    err_("FORBIDDEN_ADMIN_REQUIRED", "O Motor de Configuracao exige perfil ADMIN.", 403);
+    err_("FORBIDDEN_ADMIN_REQUIRED", "O Motor de Configuração exige perfil ADMIN.", 403);
   }
 }
 
@@ -68,7 +68,7 @@ function configurationEnsureSchema_(){
     upsert_("config", "chave", {
       chave:CONFIG_ENGINE_SCHEMA_KEY,
       valor:CONFIG_ENGINE_SCHEMA_VERSION,
-      descricao:"Versao interna do Motor de Configuracao",
+      descricao:"Versão interna do Motor de Configuração",
       atualizado_em:now_()
     });
   }

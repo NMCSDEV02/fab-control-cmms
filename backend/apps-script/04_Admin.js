@@ -63,16 +63,16 @@ const ADMIN_PERMISSION_CAPABILITIES = [
   },
   {
     id:"TRATAR_DEMANDAS_TECNICAS",
-    nome:"Tratar demandas tÃ©cnicas",
-    descricao:"Assume, encaminha, assina e decide demandas conforme Ã¡rea, cargo e escopo.",
+    nome:"Tratar demandas técnicas",
+    descricao:"Assume, encaminha, assina e decide demandas conforme área, cargo e escopo.",
     perfis:[ROLE.GESTOR],
     padrao:[ROLE.GESTOR],
     acoes:["gestor.contexto_tecnico","gestor.demandas.listar","gestor.demandas.detalhe","gestor.demandas.assumir","gestor.demandas.encaminhar","gestor.demandas.assinar","gestor.demandas.decidir","gestor.notificacoes.listar","gestor.notificacoes.marcar_lida"]
   },
   {
     id:"EMITIR_ANALISE_TECNICA",
-    nome:"Emitir anÃ¡lise tÃ©cnica",
-    descricao:"Analisa ocorrÃªncias e envia recomendaÃ§Ãµes de checklist ou ordem de serviÃ§o ao administrador.",
+    nome:"Emitir análise técnica",
+    descricao:"Analisa ocorrências e envia recomendações de checklist ou ordem de serviço ao administrador.",
     perfis:[ROLE.GESTOR],
     padrao:[ROLE.GESTOR],
     acoes:["gestor.analises.salvar","gestor.analises.enviar_admin"]
@@ -268,12 +268,12 @@ function adminAssertUserPayload_(data){
   var roleId = profile === ROLE.GESTOR ? clean_(data.cargo_id) : "";
   if(areaId){
     var area = find_("areas_tecnicas", "id", areaId);
-    if(!area || upper_(area.status) !== ST.ATIVO) err_("USER_TECH_AREA_INVALID", "Ãrea tÃ©cnica inexistente ou inativa.", 400);
+    if(!area || upper_(area.status) !== ST.ATIVO) err_("USER_TECH_AREA_INVALID", "Área técnica inexistente ou inativa.", 400);
   }
   if(roleId){
     var technicalRole = find_("cargos_tecnicos", "id", roleId);
-    if(!technicalRole || upper_(technicalRole.status) !== ST.ATIVO) err_("USER_TECH_ROLE_INVALID", "Cargo tÃ©cnico inexistente ou inativo.", 400);
-    if(areaId && String(technicalRole.area_id) !== String(areaId)) err_("USER_TECH_ROLE_AREA_MISMATCH", "O cargo nÃ£o pertence Ã  Ã¡rea selecionada.", 400);
+    if(!technicalRole || upper_(technicalRole.status) !== ST.ATIVO) err_("USER_TECH_ROLE_INVALID", "Cargo técnico inexistente ou inativo.", 400);
+    if(areaId && String(technicalRole.area_id) !== String(areaId)) err_("USER_TECH_ROLE_AREA_MISMATCH", "O cargo não pertence à área selecionada.", 400);
   }
   return {
     email:email, matricula:registration, perfil:profile, status:status,

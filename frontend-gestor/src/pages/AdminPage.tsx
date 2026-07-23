@@ -498,9 +498,14 @@ export function AdminPage({
               {selectedPermissions?.capacidades.map((capability) => (
                 <label className="permission-capability" key={capability.id}>
                   <span className="permission-capability__icon"><ShieldIcon /></span>
-                  <span><strong>{capability.nome}</strong><small>{capability.descricao}</small><i>{capability.acoes.length} operação(ões) protegida(s)</i></span>
-                  <span className="permission-switch">
-                    <input type="checkbox" checked={capability.permitido} onChange={(event) => togglePermission(capability.id, event.target.checked)} />
+                  <span><strong>{capability.nome}</strong><small>{capability.descricao}</small><i>{capability.acoes.length} {capability.acoes.length === 1 ? 'operação protegida' : 'operações protegidas'}</i></span>
+                  <span className="permission-switch" title={capability.permitido ? 'Capacidade habilitada' : 'Capacidade desabilitada'}>
+                    <input
+                      type="checkbox"
+                      checked={capability.permitido}
+                      aria-label={`${capability.nome}: ${capability.permitido ? 'habilitada' : 'desabilitada'}`}
+                      onChange={(event) => togglePermission(capability.id, event.target.checked)}
+                    />
                     <i aria-hidden="true" />
                   </span>
                 </label>

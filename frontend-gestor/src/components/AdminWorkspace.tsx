@@ -9,7 +9,7 @@ import {
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 import { getAdminCompanyProfile, saveAdminCompanyProfile } from '../services/api/admin'
-import { isGestorAuthenticationError } from '../services/api/gestor'
+import { getUnreadNotificationCount, isGestorAuthenticationError } from '../services/api/gestor'
 import type { AdminCompanyProfile } from '../types/admin'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
 import { AdminCompanyDialog } from './AdminCompanyDialog'
@@ -342,6 +342,7 @@ export function AdminWorkspace({
   const [companyOpen, setCompanyOpen] = useState(false)
   const [companyProfile, setCompanyProfile] = useState<AdminCompanyProfile>(readCachedCompanyProfile)
   const [companyLoadError, setCompanyLoadError] = useState('')
+  const [notificationCount, setNotificationCount] = useState<number | null>(null)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [dragging, setDragging] = useState(false)
   const [snapTarget, setSnapTarget] = useState<WindowSnapTarget | null>(null)
@@ -350,6 +351,20 @@ export function AdminWorkspace({
   const [cacheBaseMb, setCacheBaseMb] = useState(10)
   const [cacheMessage, setCacheMessage] = useState('Uso normal. Nenhuma ação necessária.')
   windowsRef.current = windows
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    void getUnreadNotificationCount(controller.signal)
+      .then(setNotificationCount)
+      .catch((cause) => {
+        if (cause instanceof DOMException && cause.name === 'AbortError') return
+        setNotificationCount(0)
+        if (isGestorAuthenticationError(cause)) onSessionExpired()
+      })
+
+    return () => controller.abort()
+  }, [onSessionExpired])
 
   const filteredModules = useMemo(() => {
     const term = paletteQuery.trim().toLocaleLowerCase('pt-BR')
@@ -751,7 +766,16 @@ export function AdminWorkspace({
 
         <div className="admin-desktop-top-actions">
           <button type="button" title="Gerenciador de janelas" aria-label="Gerenciador de janelas" onClick={() => { setLayoutQuickOpen(false); setWindowManagerOpen((current) => !current) }}><WindowsIcon /></button>
-          <button className="admin-notification-button" type="button" title="Avisos operacionais" aria-label="Avisos operacionais" onClick={() => openModule('operations')}><BellIcon /><span>6</span></button>
+          <button
+            className="admin-notification-button"
+            type="button"
+            title={notificationCount ? `${notificationCount} aviso(s) não lido(s)` : 'Nenhum aviso não lido'}
+            aria-label={notificationCount ? `Avisos operacionais: ${notificationCount} não lido(s)` : 'Avisos operacionais: nenhum não lido'}
+            onClick={() => openModule('operations')}
+          >
+            <BellIcon />
+            {notificationCount ? <span>{notificationCount > 99 ? '99+' : notificationCount}</span> : null}
+          </button>
           <button type="button" title="Ajuda do Workspace" aria-label="Ajuda do Workspace" onClick={() => setHelpOpen(true)}>?</button>
           <button
             className="admin-desktop-avatar"

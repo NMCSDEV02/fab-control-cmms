@@ -105,15 +105,15 @@ export function AdminGovernanceWorkspace({ onSessionExpired }: AdminGovernanceWo
       <section className="admin-governance-table-card">
         <header><div><span className="eyebrow">TRILHA IMUTÁVEL</span><h2>Eventos administrativos</h2></div><strong>{events.length} evento(s)</strong></header>
         <div className="admin-governance-table-wrap"><table className="admin-governance-table"><thead><tr><th>Data e hora</th><th>Responsável</th><th>Ação</th><th>Registro</th><th>Inspeção</th></tr></thead><tbody>
-          {events.map((event) => <tr key={event.id}><td><strong>{formatDate(event.criado_em)}</strong><small>{event.id}</small></td><td><strong>{userNames.get(event.usuario_id) || event.usuario_id}</strong><small>{event.perfil}</small></td><td><strong>{event.acao.replaceAll('_', ' ')}</strong><small>operação auditada</small></td><td><strong>{event.entidade}</strong><small>{event.entidade_id}</small></td><td><button type="button" onClick={() => setSelected(event)}>Ver alteração</button></td></tr>)}
+          {events.map((event) => <tr key={event.id}><td><strong>{formatDate(event.criado_em)}</strong><small>{event.id}</small></td><td><strong>{userNames.get(event.usuario_id) || event.usuario_id}</strong><small>{event.perfil}</small></td><td><strong>{event.acao.replaceAll('_', ' ')}</strong><small>operação auditada</small></td><td><strong>{event.entidade}</strong><small>{event.entidade_id}</small></td><td><button className="admin-audit-inspect-button" type="button" onClick={() => setSelected(event)}>Ver alteração</button></td></tr>)}
           {!events.length ? <tr><td colSpan={5}><div className="admin-empty-state">Nenhum evento corresponde aos filtros.</div></td></tr> : null}
         </tbody></table></div>
       </section>
 
       {selected ? <div className="admin-catalog-dialog" role="dialog" aria-modal="true" aria-label="Detalhe de auditoria"><section>
-        <header><div><span className="eyebrow">EVENTO {selected.id}</span><h2>{selected.acao.replaceAll('_', ' ')}</h2></div><button type="button" onClick={() => setSelected(null)}>Fechar</button></header>
+        <header><div><span className="eyebrow">EVENTO {selected.id}</span><h2>{selected.acao.replaceAll('_', ' ')}</h2></div><button className="admin-audit-dialog__close" type="button" title="Fechar" aria-label="Fechar detalhe da auditoria" onClick={() => setSelected(null)}>×</button></header>
         <div className="admin-audit-detail"><article><strong>Antes</strong><pre>{safePretty(selected.antes_json)}</pre></article><article><strong>Depois</strong><pre>{safePretty(selected.depois_json)}</pre></article><aside><ShieldIcon /><span><strong>Dados sensíveis protegidos</strong><small>Senhas, PINs, tokens, segredos e hashes são ocultados pelo servidor antes da resposta.</small></span></aside></div>
-        <footer><div><button type="button" onClick={() => setSelected(null)}>Concluir inspeção</button></div></footer>
+        <footer className="admin-audit-dialog__footer"><span>Consulta concluída sem alterar o registro.</span><div><button className="admin-audit-dialog__done" type="button" onClick={() => setSelected(null)}><ShieldIcon />Concluir inspeção</button></div></footer>
       </section></div> : null}
     </section>
   )

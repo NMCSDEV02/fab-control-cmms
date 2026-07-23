@@ -53,6 +53,10 @@ interface TechnicalDemandListData {
   demandas: GestorTechnicalDemand[]
 }
 
+interface NotificationListData {
+  total: number
+}
+
 interface AdminListData<T> {
   entidade: string
   total: number
@@ -171,6 +175,19 @@ export async function getGestorOccurrences(
   )
 
   return Array.isArray(data.ocorrencias) ? data.ocorrencias : []
+}
+
+export async function getUnreadNotificationCount(
+  signal?: AbortSignal,
+): Promise<number> {
+  const data = await readGestorData<NotificationListData>(
+    'gestor.notificacoes.listar',
+    { status: 'NAO_LIDA', limite: 1 },
+    signal,
+  )
+
+  const total = Number(data.total)
+  return Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : 0
 }
 
 export async function getGestorOverview(

@@ -22,9 +22,10 @@ const TECH_FINAL_STATUSES = [
 function technicalEnsureSchema_(){
   var ss = getSpreadsheet_();
   var marker = find_("config", "chave", "workflow.tecnico.schema.version");
-  if(marker && clean_(marker.valor) === FAB.SCHEMA_VERSION) return;
+  var textRepairMarker = find_("config", "chave", "workflow.tecnico.text.repair.version");
+  if(marker && clean_(marker.valor) === FAB.SCHEMA_VERSION && textRepairMarker && clean_(textRepairMarker.valor) === "1") return;
   var lock = LockService.getScriptLock();
-  if(!lock.tryLock(20000)) err_("TECH_SCHEMA_BUSY", "A preparaÃ§Ã£o do workflow tÃ©cnico estÃ¡ em andamento. Tente novamente.", 409);
+  if(!lock.tryLock(20000)) err_("TECH_SCHEMA_BUSY", "A preparação do workflow técnico está em andamento. Tente novamente.", 409);
   try{
     marker = find_("config", "chave", "workflow.tecnico.schema.version");
     if(!marker || clean_(marker.valor) !== FAB.SCHEMA_VERSION){
@@ -33,29 +34,39 @@ function technicalEnsureSchema_(){
         "assinaturas_tecnicas","analises_tecnicas","notificacoes","turnos",
         "apontamentos_producao","sla_politicas","usuarios"
       ].forEach(function(name){ ensureSheet_(ss, name, SH[name]); });
-      technicalSeedCatalog_({usuario_id:"SISTEMA", perfil:ROLE.SISTEMA});
       upsert_("config", "chave", {
         chave:"workflow.tecnico.schema.version",
         valor:FAB.SCHEMA_VERSION,
-        descricao:"VersÃ£o do roteamento, assinatura, anÃ¡lises e KPIs tÃ©cnicos",
+        descricao:"Versão do roteamento, assinatura, análises e KPIs técnicos",
         atualizado_em:now_()
       });
     }
+    technicalSeedCatalog_({usuario_id:"SISTEMA", perfil:ROLE.SISTEMA});
+    upsert_("config", "chave", {
+      chave:"workflow.tecnico.text.repair.version",
+      valor:"1",
+      descricao:"Versão da correção de acentuação dos catálogos técnicos",
+      atualizado_em:now_()
+    });
   } finally {
     lock.releaseLock();
   }
 }
 
+function technicalLooksMojibake_(value){
+  return /Ã[^A-Z0-9\s]|Â|â€|[\u0080-\u009F]|�/.test(String(value || ""));
+}
+
 function cmmsWorkflowTecnicoSchemaUpgrade_(p, auth){
   if(upper_(auth && auth.perfil) !== ROLE.ADMIN){
-    err_("FORBIDDEN_ADMIN_REQUIRED", "A migraÃ§Ã£o do workflow tÃ©cnico exige perfil ADMIN.", 403);
+    err_("FORBIDDEN_ADMIN_REQUIRED", "A migração do workflow técnico exige perfil ADMIN.", 403);
   }
   technicalEnsureSchema_();
   var catalog = technicalSeedCatalog_(auth);
   upsert_("config", "chave", {
     chave:"workflow.tecnico.schema.version",
     valor:FAB.SCHEMA_VERSION,
-    descricao:"VersÃ£o do roteamento, assinatura, anÃ¡lises e KPIs tÃ©cnicos",
+    descricao:"Versão do roteamento, assinatura, análises e KPIs técnicos",
     atualizado_em:now_()
   });
   invalidateRuntimeCache_();
@@ -64,11 +75,11 @@ function cmmsWorkflowTecnicoSchemaUpgrade_(p, auth){
 
 function technicalSeedCatalog_(auth){
   var definitions = [
-    {codigo:"MANUTENCAO", nome:"ManutenÃ§Ã£o", descricao:"DiagnÃ³stico, reparo, confiabilidade e liberaÃ§Ã£o tÃ©cnica.", exige:"NAO", cargo:"TÃ‰CNICO DE MANUTENÃ‡ÃƒO"},
-    {codigo:"QUALIDADE", nome:"Qualidade", descricao:"Conformidade, inspeÃ§Ã£o e assinatura de qualidade.", exige:"SIM", cargo:"INSPETOR DE QUALIDADE"},
-    {codigo:"SEGURANCA", nome:"SeguranÃ§a", descricao:"Riscos, bloqueios e liberaÃ§Ã£o de seguranÃ§a.", exige:"SIM", cargo:"TÃ‰CNICO DE SEGURANÃ‡A"},
-    {codigo:"SUPERVISAO", nome:"SupervisÃ£o", descricao:"CoordenaÃ§Ã£o operacional e decisÃ£o de turno.", exige:"NAO", cargo:"SUPERVISOR"},
-    {codigo:"LIDERANCA_SETOR", nome:"LideranÃ§a de setor", descricao:"GestÃ£o do escopo da linha ou setor.", exige:"NAO", cargo:"LÃDER DE SETOR"}
+    {codigo:"MANUTENCAO", nome:"Manutenção", descricao:"Diagnóstico, reparo, confiabilidade e liberação técnica.", exige:"NAO", cargo:"TÉCNICO DE MANUTENÇÃO"},
+    {codigo:"QUALIDADE", nome:"Qualidade", descricao:"Conformidade, inspeção e assinatura de qualidade.", exige:"SIM", cargo:"INSPETOR DE QUALIDADE"},
+    {codigo:"SEGURANCA", nome:"Segurança", descricao:"Riscos, bloqueios e liberação de segurança.", exige:"SIM", cargo:"TÉCNICO DE SEGURANÇA"},
+    {codigo:"SUPERVISAO", nome:"Supervisão", descricao:"Coordenação operacional e decisão de turno.", exige:"NAO", cargo:"SUPERVISOR"},
+    {codigo:"LIDERANCA_SETOR", nome:"Liderança de setor", descricao:"Gestão do escopo da linha ou setor.", exige:"NAO", cargo:"LÍDER DE SETOR"}
   ];
   var createdAreas = 0;
   var createdRoles = 0;
@@ -82,18 +93,34 @@ function technicalSeedCatalog_(auth){
       });
       append_("areas_tecnicas", area);
       createdAreas++;
+    } else if(technicalLooksMojibake_(area.nome) || technicalLooksMojibake_(area.descricao)){
+      update_("areas_tecnicas", area.__rowIndex, {
+        nome:definition.nome,
+        descricao:definition.descricao,
+        atualizado_em:now_()
+      });
+      area.nome = definition.nome;
+      area.descricao = definition.descricao;
     }
     var roleCode = slug_(definition.cargo);
+    var roleId = eid_("CTEC", definition.codigo);
     var role = rows_("cargos_tecnicos", true).find(function(item){
-      return String(item.area_id) === String(area.id) && upper_(item.codigo) === roleCode;
+      return String(item.id) === String(roleId) || (String(item.area_id) === String(area.id) && upper_(item.codigo) === roleCode);
     });
     if(!role){
       append_("cargos_tecnicos", fit_("cargos_tecnicos", {
-        id:eid_("CTEC", definition.codigo), area_id:area.id, codigo:roleCode,
+        id:roleId, area_id:area.id, codigo:roleCode,
         nome:definition.cargo, descricao:definition.descricao, status:ST.ATIVO,
         pode_assinar:"SIM", criado_por:auth.usuario_id, criado_em:now_(), atualizado_em:now_()
       }));
       createdRoles++;
+    } else if(upper_(role.codigo) !== roleCode || technicalLooksMojibake_(role.nome) || technicalLooksMojibake_(role.descricao)){
+      update_("cargos_tecnicos", role.__rowIndex, {
+        codigo:roleCode,
+        nome:definition.cargo,
+        descricao:definition.descricao,
+        atualizado_em:now_()
+      });
     }
   });
   [
@@ -116,14 +143,14 @@ function technicalSeedCatalog_(auth){
 
 function technicalRequireAdmin_(auth){
   if(upper_(auth && auth.perfil) !== ROLE.ADMIN){
-    err_("FORBIDDEN_ADMIN_REQUIRED", "Esta operaÃ§Ã£o exige perfil ADMIN.", 403);
+    err_("FORBIDDEN_ADMIN_REQUIRED", "Esta operação exige perfil ADMIN.", 403);
   }
 }
 
 function technicalRequireManager_(auth){
   var profile = upper_(auth && auth.perfil);
   if([ROLE.GESTOR, ROLE.ADMIN].indexOf(profile) < 0){
-    err_("FORBIDDEN_GESTOR_REQUIRED", "Esta operaÃ§Ã£o exige perfil GESTOR ou ADMIN.", 403);
+    err_("FORBIDDEN_GESTOR_REQUIRED", "Esta operação exige perfil GESTOR ou ADMIN.", 403);
   }
 }
 
@@ -163,7 +190,7 @@ function technicalSerializeArray_(value){
 function technicalActiveArea_(id){
   var area = id ? find_("areas_tecnicas", "id", id) : null;
   if(!area || upper_(area.status) !== ST.ATIVO){
-    err_("TECH_AREA_INVALID", "Ãrea tÃ©cnica inexistente ou inativa.", 400);
+    err_("TECH_AREA_INVALID", "Área técnica inexistente ou inativa.", 400);
   }
   return area;
 }
@@ -172,10 +199,10 @@ function technicalActiveRole_(id, areaId){
   if(!id) return null;
   var role = find_("cargos_tecnicos", "id", id);
   if(!role || upper_(role.status) !== ST.ATIVO){
-    err_("TECH_ROLE_INVALID", "Cargo tÃ©cnico inexistente ou inativo.", 400);
+    err_("TECH_ROLE_INVALID", "Cargo técnico inexistente ou inativo.", 400);
   }
   if(areaId && String(role.area_id) !== String(areaId)){
-    err_("TECH_ROLE_AREA_MISMATCH", "O cargo nÃ£o pertence Ã  Ã¡rea tÃ©cnica informada.", 400);
+    err_("TECH_ROLE_AREA_MISMATCH", "O cargo não pertence à área técnica informada.", 400);
   }
   return role;
 }
@@ -197,11 +224,11 @@ function adminAreasTecnicasSalvar_(p, auth){
   req_(data, ["nome"]);
   var old = data.id ? find_("areas_tecnicas", "id", data.id) : null;
   var code = upper_(data.codigo || slug_(data.nome));
-  if(!code) err_("TECH_AREA_CODE_REQUIRED", "Informe o cÃ³digo da Ã¡rea tÃ©cnica.", 400);
+  if(!code) err_("TECH_AREA_CODE_REQUIRED", "Informe o código da área técnica.", 400);
   var duplicate = rows_("areas_tecnicas", true).find(function(item){
     return (!old || String(item.id) !== String(old.id)) && upper_(item.codigo) === code;
   });
-  if(duplicate) err_("TECH_AREA_CODE_EXISTS", "JÃ¡ existe uma Ã¡rea com este cÃ³digo.", 409);
+  if(duplicate) err_("TECH_AREA_CODE_EXISTS", "Já existe uma área com este código.", 409);
   var saved = fit_("areas_tecnicas", Object.assign({}, old || {}, {
     id:old ? old.id : uuid_("ATEC"),
     codigo:code,
@@ -242,7 +269,7 @@ function adminCargosTecnicosSalvar_(p, auth){
     return (!old || String(item.id) !== String(old.id)) &&
       String(item.area_id) === String(data.area_id) && upper_(item.codigo) === code;
   });
-  if(duplicate) err_("TECH_ROLE_CODE_EXISTS", "JÃ¡ existe um cargo com este cÃ³digo na Ã¡rea.", 409);
+  if(duplicate) err_("TECH_ROLE_CODE_EXISTS", "Já existe um cargo com este código na área.", 409);
   var saved = fit_("cargos_tecnicos", Object.assign({}, old || {}, {
     id:old ? old.id : uuid_("CTEC"),
     area_id:clean_(data.area_id),
@@ -335,10 +362,10 @@ function adminDemandasTecnicasEnviar_(p, auth){
   if(data.responsavel_atual_id){
     var targetUser = find_("usuarios", "id", data.responsavel_atual_id);
     if(!targetUser || upper_(targetUser.status) !== ST.ATIVO || upper_(targetUser.perfil) !== ROLE.GESTOR){
-      err_("TECH_ASSIGNEE_INVALID", "ResponsÃ¡vel tÃ©cnico inexistente, inativo ou fora do perfil GESTOR.", 400);
+      err_("TECH_ASSIGNEE_INVALID", "Responsável técnico inexistente, inativo ou fora do perfil GESTOR.", 400);
     }
     if(clean_(targetUser.area_id) && String(targetUser.area_id) !== String(area.id)){
-      err_("TECH_ASSIGNEE_AREA_MISMATCH", "O responsÃ¡vel nÃ£o pertence Ã  Ã¡rea de destino.", 400);
+      err_("TECH_ASSIGNEE_AREA_MISMATCH", "O responsável não pertence à área de destino.", 400);
     }
   }
   var priority = upper_(data.prioridade || "MEDIA");
@@ -374,7 +401,7 @@ function adminDemandasTecnicasEnviar_(p, auth){
   technicalAppendTransition_(demand, "ENVIADA_PELO_ADMIN", technicalIdentity_(auth), {
     area_id:demand.area_atual_id, cargo_id:demand.cargo_atual_id, usuario_id:demand.responsavel_atual_id
   }, "", data.parecer, data.motivo);
-  technicalNotify_({usuario_id:demand.responsavel_atual_id, area_id:demand.responsavel_atual_id ? "" : demand.area_atual_id, cargo_id:demand.cargo_atual_id}, "DEMANDA_TECNICA", demand.titulo, "Nova demanda tÃ©cnica aguardando tratamento.", "demandas_tecnicas", demand.id, demand.prioridade);
+  technicalNotify_({usuario_id:demand.responsavel_atual_id, area_id:demand.responsavel_atual_id ? "" : demand.area_atual_id, cargo_id:demand.cargo_atual_id}, "DEMANDA_TECNICA", demand.titulo, "Nova demanda técnica aguardando tratamento.", "demandas_tecnicas", demand.id, demand.prioridade);
   audit_(auth, "TECH_DEMAND_SENT", "demandas_tecnicas", demand.id, null, demand, clean_(p.user_agent));
   return {sent:true, demanda:technicalDemandPublic_(demand)};
 }
@@ -390,14 +417,14 @@ function technicalDemandAccessible_(demand, identity){
 
 function technicalRequireDemand_(id, identity){
   var demand = find_("demandas_tecnicas", "id", id);
-  if(!demand) err_("TECH_DEMAND_NOT_FOUND", "Demanda tÃ©cnica nÃ£o encontrada.", 404);
-  if(!technicalDemandAccessible_(demand, identity)) err_("TECH_DEMAND_FORBIDDEN", "Demanda fora do seu escopo tÃ©cnico.", 403);
+  if(!demand) err_("TECH_DEMAND_NOT_FOUND", "Demanda técnica não encontrada.", 404);
+  if(!technicalDemandAccessible_(demand, identity)) err_("TECH_DEMAND_FORBIDDEN", "Demanda fora do seu escopo técnico.", 403);
   return demand;
 }
 
 function technicalAssertDemandOpen_(demand){
   if(TECH_FINAL_STATUSES.indexOf(upper_(demand.status)) >= 0){
-    err_("TECH_DEMAND_FINAL", "A demanda jÃ¡ estÃ¡ encerrada e nÃ£o aceita novas transiÃ§Ãµes.", 409);
+    err_("TECH_DEMAND_FINAL", "A demanda já está encerrada e não aceita novas transições.", 409);
   }
   return true;
 }
@@ -472,7 +499,7 @@ function gestorDemandaAssumir_(p, auth){
   var demand = technicalRequireDemand_(p.demanda_id, identity);
   technicalAssertDemandOpen_(demand);
   if(clean_(demand.responsavel_atual_id) && String(demand.responsavel_atual_id) !== String(identity.usuario_id)){
-    err_("TECH_DEMAND_ALREADY_ASSIGNED", "A demanda jÃ¡ possui outro responsÃ¡vel.", 409);
+    err_("TECH_DEMAND_ALREADY_ASSIGNED", "A demanda já possui outro responsável.", 409);
   }
   var patch = {responsavel_atual_id:identity.usuario_id, status:TECH_DEMAND_STATUS.EM_TRIAGEM, atualizado_em:now_()};
   if(!clean_(demand.primeiro_atendimento_em)) patch.primeiro_atendimento_em = now_();
@@ -485,7 +512,7 @@ function gestorDemandaEncaminhar_(p, auth){
   technicalRequireManager_(auth);
   technicalEnsureSchema_();
   req_(p, ["demanda_id","para_area_id","motivo"]);
-  if(clean_(p.motivo).length < 5) err_("TECH_FORWARD_REASON_REQUIRED", "Informe o motivo tÃ©cnico do encaminhamento.", 400);
+  if(clean_(p.motivo).length < 5) err_("TECH_FORWARD_REASON_REQUIRED", "Informe o motivo técnico do encaminhamento.", 400);
   var identity = technicalIdentity_(auth);
   var demand = technicalRequireDemand_(p.demanda_id, identity);
   technicalAssertDemandOpen_(demand);
@@ -493,10 +520,10 @@ function gestorDemandaEncaminhar_(p, auth){
   technicalActiveRole_(p.para_cargo_id, area.id);
   var targetUser = p.para_usuario_id ? find_("usuarios", "id", p.para_usuario_id) : null;
   if(p.para_usuario_id && (!targetUser || upper_(targetUser.status) !== ST.ATIVO || upper_(targetUser.perfil) !== ROLE.GESTOR)){
-    err_("TECH_ASSIGNEE_INVALID", "ResponsÃ¡vel de destino invÃ¡lido.", 400);
+    err_("TECH_ASSIGNEE_INVALID", "Responsável de destino inválido.", 400);
   }
   if(targetUser && clean_(targetUser.area_id) && String(targetUser.area_id) !== String(area.id)){
-    err_("TECH_ASSIGNEE_AREA_MISMATCH", "O responsÃ¡vel nÃ£o pertence Ã  Ã¡rea de destino.", 400);
+    err_("TECH_ASSIGNEE_AREA_MISMATCH", "O responsável não pertence à área de destino.", 400);
   }
   var patch = {
     area_atual_id:area.id, cargo_atual_id:clean_(p.para_cargo_id),
@@ -518,13 +545,13 @@ function gestorDemandaAssinar_(p, auth){
   req_(p, ["demanda_id","declaracao"]);
   var identity = technicalIdentity_(auth);
   if(identity.perfil !== ROLE.ADMIN && !identity.pode_assinar){
-    err_("TECH_SIGNATURE_NOT_ALLOWED", "Seu cargo tÃ©cnico nÃ£o possui permissÃ£o para assinar.", 403);
+    err_("TECH_SIGNATURE_NOT_ALLOWED", "Seu cargo técnico não possui permissão para assinar.", 403);
   }
   var demand = technicalRequireDemand_(p.demanda_id, identity);
   technicalAssertDemandOpen_(demand);
-  if(!bool_(demand.exige_assinatura)) err_("TECH_SIGNATURE_NOT_REQUIRED", "Esta demanda nÃ£o exige assinatura.", 409);
+  if(!bool_(demand.exige_assinatura)) err_("TECH_SIGNATURE_NOT_REQUIRED", "Esta demanda não exige assinatura.", 409);
   if(bool_(demand.exige_segregacao) && String(demand.criado_por) === String(identity.usuario_id)){
-    err_("TECH_SIGNATURE_SEGREGATION", "O autor da demanda nÃ£o pode assinÃ¡-la quando hÃ¡ segregaÃ§Ã£o de funÃ§Ãµes.", 409);
+    err_("TECH_SIGNATURE_SEGREGATION", "O autor da demanda não pode assiná-la quando há segregação de funções.", 409);
   }
   var duplicate = rows_("assinaturas_tecnicas", true).find(function(item){
     return String(item.demanda_id) === String(demand.id) && String(item.usuario_id) === String(identity.usuario_id) && !clean_(item.revogado_em);
@@ -582,14 +609,14 @@ function gestorDemandaDecidir_(p, auth){
   technicalAssertDemandOpen_(demand);
   var decision = upper_(p.decisao);
   if(["APROVAR","DEVOLVER_ADMIN","LIBERAR_OPERACAO"].indexOf(decision) < 0){
-    err_("TECH_DECISION_INVALID", "DecisÃ£o deve ser APROVAR, DEVOLVER_ADMIN ou LIBERAR_OPERACAO.", 400);
+    err_("TECH_DECISION_INVALID", "Decisão deve ser APROVAR, DEVOLVER_ADMIN ou LIBERAR_OPERACAO.", 400);
   }
-  if(clean_(p.parecer).length < 5) err_("TECH_OPINION_REQUIRED", "Registre um parecer tÃ©cnico objetivo.", 400);
+  if(clean_(p.parecer).length < 5) err_("TECH_OPINION_REQUIRED", "Registre um parecer técnico objetivo.", 400);
   if(bool_(demand.exige_segregacao) && String(demand.criado_por) === String(identity.usuario_id)){
-    err_("TECH_DECISION_SEGREGATION", "O autor nÃ£o pode aprovar a prÃ³pria demanda.", 409);
+    err_("TECH_DECISION_SEGREGATION", "O autor não pode aprovar a própria demanda.", 409);
   }
   if(decision !== "DEVOLVER_ADMIN" && bool_(demand.exige_assinatura) && num_(demand.assinaturas_realizadas,0) < num_(demand.assinaturas_necessarias,1)){
-    err_("TECH_SIGNATURES_PENDING", "Ainda existem assinaturas tÃ©cnicas obrigatÃ³rias pendentes.", 409);
+    err_("TECH_SIGNATURES_PENDING", "Ainda existem assinaturas técnicas obrigatórias pendentes.", 409);
   }
   var status = decision === "DEVOLVER_ADMIN"
     ? TECH_DEMAND_STATUS.DEVOLVIDA_ADMIN
@@ -602,7 +629,7 @@ function gestorDemandaDecidir_(p, auth){
   update_("demandas_tecnicas", demand.__rowIndex, patch);
   technicalAppendTransition_(Object.assign({}, demand, patch), "DECIDIDA", identity, {}, decision, p.parecer, p.motivo);
   if(decision === "DEVOLVER_ADMIN") technicalApplyReturnedEntity_(demand, identity);
-  technicalNotify_({perfil:ROLE.ADMIN}, "DECISAO_TECNICA", demand.titulo, "DecisÃ£o: " + decision + ". Parecer: " + clean_(p.parecer), "demandas_tecnicas", demand.id, demand.prioridade);
+  technicalNotify_({perfil:ROLE.ADMIN}, "DECISAO_TECNICA", demand.titulo, "Decisão: " + decision + ". Parecer: " + clean_(p.parecer), "demandas_tecnicas", demand.id, demand.prioridade);
   audit_(auth, "TECH_DEMAND_DECIDED", "demandas_tecnicas", demand.id, strip_(demand), Object.assign({}, strip_(demand), patch), clean_(p.user_agent));
   return {decided:true, decisao:decision, demanda:technicalDemandPublic_(Object.assign({}, demand, patch))};
 }
@@ -614,12 +641,12 @@ function gestorAnaliseSalvar_(p, auth){
   req_(data, ["ocorrencia_id","titulo","diagnostico","recomendacao"]);
   var identity = technicalIdentity_(auth);
   var occurrence = find_("ocorrencias_operacionais", "id", data.ocorrencia_id);
-  if(!occurrence) err_("OCCURRENCE_NOT_FOUND", "OcorrÃªncia operacional nÃ£o encontrada.", 404);
+  if(!occurrence) err_("OCCURRENCE_NOT_FOUND", "Ocorrência operacional não encontrada.", 404);
   var old = data.id ? find_("analises_tecnicas", "id", data.id) : null;
   if(old && String(old.autor_id) !== String(identity.usuario_id) && identity.perfil !== ROLE.ADMIN){
-    err_("TECH_ANALYSIS_FORBIDDEN", "Somente o autor pode editar esta anÃ¡lise.", 403);
+    err_("TECH_ANALYSIS_FORBIDDEN", "Somente o autor pode editar esta análise.", 403);
   }
-  if(old && upper_(old.status) !== ST.RASCUNHO) err_("TECH_ANALYSIS_LOCKED", "AnÃ¡lise enviada nÃ£o pode ser alterada.", 409);
+  if(old && upper_(old.status) !== ST.RASCUNHO) err_("TECH_ANALYSIS_LOCKED", "Análise enviada não pode ser alterada.", 409);
   var saved = fit_("analises_tecnicas", Object.assign({}, old || {}, {
     id:old ? old.id : uuid_("ANT"), demanda_id:clean_(data.demanda_id),
     ocorrencia_id:occurrence.id, ativo_id:clean_(data.ativo_id || occurrence.ativo_id),
@@ -644,16 +671,16 @@ function gestorAnaliseEnviarAdmin_(p, auth){
   req_(p, ["analise_id"]);
   var identity = technicalIdentity_(auth);
   var analysis = find_("analises_tecnicas", "id", p.analise_id);
-  if(!analysis) err_("TECH_ANALYSIS_NOT_FOUND", "AnÃ¡lise tÃ©cnica nÃ£o encontrada.", 404);
+  if(!analysis) err_("TECH_ANALYSIS_NOT_FOUND", "Análise técnica não encontrada.", 404);
   if(String(analysis.autor_id) !== String(identity.usuario_id) && identity.perfil !== ROLE.ADMIN){
-    err_("TECH_ANALYSIS_FORBIDDEN", "Somente o autor pode enviar esta anÃ¡lise.", 403);
+    err_("TECH_ANALYSIS_FORBIDDEN", "Somente o autor pode enviar esta análise.", 403);
   }
   if(upper_(analysis.status) !== ST.RASCUNHO) return {sent:true, already_sent:true, analise:strip_(analysis)};
   var patch = {status:"ENVIADA_ADMIN", enviado_admin_em:now_(), atualizado_em:now_()};
   update_("analises_tecnicas", analysis.__rowIndex, patch);
   var occurrence = find_("ocorrencias_operacionais", "id", analysis.ocorrencia_id);
   if(occurrence) update_("ocorrencias_operacionais", occurrence.__rowIndex, {status:"ANALISADA_TECNICAMENTE", atualizado_em:now_()});
-  technicalNotify_({perfil:ROLE.ADMIN}, "ANALISE_TECNICA", analysis.titulo, "AnÃ¡lise tÃ©cnica recebida com recomendaÃ§Ã£o para decisÃ£o administrativa.", "analises_tecnicas", analysis.id, analysis.prioridade);
+  technicalNotify_({perfil:ROLE.ADMIN}, "ANALISE_TECNICA", analysis.titulo, "Análise técnica recebida com recomendação para decisão administrativa.", "analises_tecnicas", analysis.id, analysis.prioridade);
   audit_(auth, "TECH_ANALYSIS_SENT_ADMIN", "analises_tecnicas", analysis.id, strip_(analysis), Object.assign({}, strip_(analysis), patch), clean_(p.user_agent));
   return {sent:true, already_sent:false, analise:Object.assign({}, strip_(analysis), patch)};
 }
@@ -671,9 +698,9 @@ function adminAnaliseConverterChecklist_(p, auth){
   technicalEnsureSchema_();
   req_(p, ["analise_id","plano","itens"]);
   var analysis = find_("analises_tecnicas", "id", p.analise_id);
-  if(!analysis) err_("TECH_ANALYSIS_NOT_FOUND", "AnÃ¡lise tÃ©cnica nÃ£o encontrada.", 404);
+  if(!analysis) err_("TECH_ANALYSIS_NOT_FOUND", "Análise técnica não encontrada.", 404);
   if(["ENVIADA_ADMIN","EM_TRATAMENTO_ADMIN"].indexOf(upper_(analysis.status)) < 0){
-    err_("TECH_ANALYSIS_STATUS_INVALID", "A anÃ¡lise nÃ£o estÃ¡ disponÃ­vel para conversÃ£o.", 409);
+    err_("TECH_ANALYSIS_STATUS_INVALID", "A análise não está disponível para conversão.", 409);
   }
   var plan = Object.assign({}, p.plano || {});
   plan.ativo_id = clean_(plan.ativo_id || analysis.ativo_id);
@@ -703,7 +730,7 @@ function gestorNotificacaoMarcarLida_(p, auth){
   technicalEnsureSchema_();
   req_(p, ["notificacao_id"]);
   var item = find_("notificacoes", "id", p.notificacao_id);
-  if(!item || String(item.usuario_id) !== String(auth.usuario_id)) err_("NOTIFICATION_NOT_FOUND", "NotificaÃ§Ã£o nÃ£o encontrada.", 404);
+  if(!item || String(item.usuario_id) !== String(auth.usuario_id)) err_("NOTIFICATION_NOT_FOUND", "Notificação não encontrada.", 404);
   if(upper_(item.status) === "LIDA") return {read:true, already_read:true, notificacao_id:item.id};
   update_("notificacoes", item.__rowIndex, {status:"LIDA", lida_em:now_()});
   return {read:true, already_read:false, notificacao_id:item.id};
@@ -772,7 +799,7 @@ function cmmsKpisTecnicos_(p, auth){
   var endMs = clean_(p.fim_em) ? new Date(clean_(p.fim_em)).getTime() : Date.now();
   var defaultWindowDays = Math.max(1, Math.min(365, num_(configurationRuntimeValue_("kpi.janela_padrao_dias", 30), 30)));
   var startMs = clean_(p.inicio_em) ? new Date(clean_(p.inicio_em)).getTime() : endMs - defaultWindowDays * 86400000;
-  if(!startMs || !endMs || startMs >= endMs) err_("KPI_PERIOD_INVALID", "PerÃ­odo de indicadores invÃ¡lido.", 400);
+  if(!startMs || !endMs || startMs >= endMs) err_("KPI_PERIOD_INVALID", "Período de indicadores inválido.", 400);
   var assetId = clean_(p.ativo_id);
   var activeAssets = rows_("ativos", true).filter(function(asset){
     return (!assetId || String(asset.id) === String(assetId)) && upper_(asset.status || ST.ATIVO) !== ST.INATIVO;
@@ -836,6 +863,6 @@ function cmmsKpisTecnicos_(p, auth){
       disponibilidade_pct:num_(configurationRuntimeValue_("kpi.meta.disponibilidade_pct", 90), 90),
       oee_pct:num_(configurationRuntimeValue_("kpi.meta.oee_pct", 75), 75)
     },
-    metodologia:"MTBF/MTTR por falhas nÃ£o planejadas; OEE somente com apontamento de produÃ§Ã£o."
+    metodologia:"MTBF/MTTR por falhas não planejadas; OEE somente com apontamento de produção."
   }, metrics);
 }

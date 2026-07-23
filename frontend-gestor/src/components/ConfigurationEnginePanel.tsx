@@ -28,6 +28,32 @@ const GROUP_LABELS: Record<ConfigurationDefinition['grupo'], string> = {
   INDICADORES: 'Indicadores e metas',
 }
 
+const CONFIG_OPTION_LABELS: Record<string, string> = {
+  OBRIGATORIA: 'Obrigatória',
+  DECISAO_EXECUTOR: 'Decisão do executor',
+  SEM_PARADA: 'Sem parada',
+}
+
+const PROTECTED_KEY_LABELS: Record<string, string> = {
+  'release.version': 'Versão de lançamento',
+  'app.version': 'Versão do aplicativo',
+  'api.version': 'Integração do sistema',
+  'schema.version': 'Estrutura de dados',
+  'contract.version': 'Contrato de integração',
+  'frontend.version': 'Interface administrativa',
+  'app.environment': 'Ambiente',
+  'auth.schema.version': 'Segurança de acesso',
+  'permissions.matrix.capabilities.v1': 'Matriz de permissões',
+  'horimetro.regra': 'Regra de horímetro',
+  'workflow.tecnico.schema.version': 'Fluxo técnico',
+  'configuration.engine.schema.version': 'Motor de configuração',
+  'configuration.runtime.snapshot.v1': 'Configuração publicada',
+}
+
+function configOptionLabel(value: string): string {
+  return CONFIG_OPTION_LABELS[value] ?? value.replaceAll('_', ' ')
+}
+
 function formatDate(value?: string): string {
   if (!value) return 'Ainda não publicada'
   const date = new Date(value)
@@ -229,7 +255,7 @@ export function ConfigurationEnginePanel({ onSessionExpired }: ConfigurationEngi
 
           {groups.map((group) => (
             <section className="config-group" key={group}>
-              <header><span>{GROUP_LABELS[group]}</span><small>{engine.catalogo.filter((item) => item.grupo === group).length} controles</small></header>
+              <header><span>{GROUP_LABELS[group]}</span><small>{engine.catalogo.filter((item) => item.grupo === group).length} {engine.catalogo.filter((item) => item.grupo === group).length === 1 ? 'controle' : 'controles'}</small></header>
               <div className="config-fields">
                 {engine.catalogo.filter((item) => item.grupo === group).map((definition) => {
                   const issue = validation?.erros.find((item) => item.chave === definition.chave)
@@ -243,7 +269,7 @@ export function ConfigurationEnginePanel({ onSessionExpired }: ConfigurationEngi
                         </span>
                       ) : definition.tipo === 'ENUM' ? (
                         <select value={String(values[definition.chave] ?? definition.padrao)} onChange={(event) => updateValue(definition, event.target.value)}>
-                          {definition.opcoes?.map((option) => <option key={option} value={option}>{option.replaceAll('_', ' ')}</option>)}
+                          {definition.opcoes?.map((option) => <option key={option} value={option}>{configOptionLabel(option)}</option>)}
                         </select>
                       ) : (
                         <span className="config-number-input">
@@ -289,7 +315,7 @@ export function ConfigurationEnginePanel({ onSessionExpired }: ConfigurationEngi
 
           <section>
             <header><ShieldIcon /><span><strong>Chaves bloqueadas</strong><small>{engine.protegidas.length} controles estruturais</small></span></header>
-            <div className="config-protected-keys">{engine.protegidas.map((key) => <code key={key}>{key}</code>)}</div>
+            <div className="config-protected-keys">{engine.protegidas.map((key) => <span key={key}>{PROTECTED_KEY_LABELS[key] ?? 'Controle protegido'}</span>)}</div>
           </section>
 
           <section>
