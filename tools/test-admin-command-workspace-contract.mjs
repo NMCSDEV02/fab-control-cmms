@@ -15,6 +15,7 @@ const catalog = read('frontend-gestor/src/components/AdminCatalogWorkspace.tsx')
 const checklist = read('frontend-gestor/src/components/AdminChecklistBuilder.tsx')
 const checklistApi = read('frontend-gestor/src/services/api/checklists.ts')
 const adminApi = read('frontend-gestor/src/services/api/admin.ts')
+const companyDialog = read('frontend-gestor/src/components/AdminCompanyDialog.tsx')
 const technicalStructure = read('frontend-gestor/src/components/AdminTechnicalStructure.tsx')
 const interventions = read('frontend-gestor/src/components/AdminInterventionsWorkspace.tsx')
 const interventionsApi = read('frontend-gestor/src/services/api/interventions.ts')
@@ -36,6 +37,7 @@ assert(workspace.includes('snapWindow('), 'arraste nao aplica o encaixe selecion
 assert(workspace.includes('windowLayerRef'), 'coordenadas das janelas nao usam a area util do Workspace')
 assert(workspace.includes('const restoresOnDrag = item.maximized'), 'janela maximizada nao restaura sob o ponteiro ao arrastar')
 assert(workspace.includes('if (distance < 5) return'), 'clique simples no titulo pode ser confundido com arraste')
+assert(workspace.includes('admin-app-window__controls" onPointerDown={(event) => event.stopPropagation()}'), 'controles da janela propagam foco e podem reabrir uma janela fechada')
 assert(workspace.includes('restoreBounds'), 'encaixe perde o tamanho anterior da janela')
 assert(workspace.includes('tiled: true'), 'janelas organizadas nao usam modo compacto')
 assert(workspace.includes('const divider = 1'), 'layout organizado nao preserva o divisor de 1 px')
@@ -55,6 +57,10 @@ assert(styles.includes('.admin-app-window__body .admin-filter-bar'), 'filtros de
 assert(styles.includes('.admin-app-window__body .admin-user-row'), 'diretorio de usuarios nao converte linhas em cartoes compactos')
 assert(styles.includes('.admin-status-layout-menu'), 'seletor rapido de layout nao foi estilizado')
 assert(styles.includes('.admin-status-quick-access'), 'atalhos inferiores nao foram estilizados')
+assert(styles.includes('.admin-governance-toolbar .search-field:focus-within'), 'busca da auditoria não preserva foco e espaçamento')
+assert(styles.includes('.admin-governance-toolbar .search-field svg') && styles.includes('position: static'), 'ícone da busca da auditoria pode sobrepor o texto')
+assert(styles.includes('.admin-desktop-window-layer') && styles.includes('pointer-events: none'), 'camada vazia das janelas bloqueia os botoes iniciais')
+assert(styles.includes('.admin-app-window') && styles.includes('pointer-events: auto'), 'janelas perderam interacao ao liberar o canvas inicial')
 
 for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
@@ -85,6 +91,19 @@ assert(new Set(railIcons).size === railIcons.length, 'rail repete ícones entre 
 assert(styles.includes('.admin-desktop-workspace'), 'canvas do Workspace não foi estilizado')
 assert(styles.includes('resize: both'), 'janelas administrativas não podem ser redimensionadas')
 assert(styles.includes('.admin-window-manager__performance'), 'gerenciador não exibe desempenho e cache')
+
+for (const action of ['admin.empresa.obter', 'admin.empresa.salvar']) {
+  assert(router.includes(`case "${action}"`), `rota da empresa ausente: ${action}`)
+  assert(adminApi.includes(`'${action}'`), `cliente da empresa não usa ${action}`)
+}
+assert(workspace.includes('admin-status-company') && workspace.includes('setCompanyOpen(true)'), 'Empresa na barra inferior não abre a configuração')
+assert(workspace.includes('companyProfile.logo_data_url') && workspace.includes('<img'), 'logomarca salva não aparece no cabeçalho')
+assert(companyDialog.includes('accept="image/png,image/jpeg,image/webp"'), 'upload não restringe formatos seguros')
+assert(companyDialog.includes('prepareCompanyLogo'), 'imagem não é compactada antes do envio')
+assert(companyDialog.includes('COMPANY_LOGO_MAX_DATA_URL_LENGTH'), 'frontend não limita a imagem do cabeçalho')
+assert(admin.includes('ADMIN_COMPANY_IDENTITY_UPDATED'), 'alteração da empresa não gera auditoria')
+assert(admin.includes('adminCompanyLogo_'), 'backend não valida o conteúdo da imagem')
+assert(admin.includes('ADMIN_COMPANY_LOGO_MAX_LENGTH'), 'backend não limita o tamanho da imagem')
 
 assert(router.includes('case "admin.salvar": return adminSalvarSeguro_(p, p.__auth)'), 'cadastro manual não usa barreira segura')
 assert(admin.includes('adminAssertEntityReferences_'), 'vínculos não são validados no backend')

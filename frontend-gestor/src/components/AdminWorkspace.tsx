@@ -8,7 +8,11 @@ import {
 } from 'react'
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
+import { getAdminCompanyProfile, saveAdminCompanyProfile } from '../services/api/admin'
+import { isGestorAuthenticationError } from '../services/api/gestor'
+import type { AdminCompanyProfile } from '../types/admin'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
+import { AdminCompanyDialog } from './AdminCompanyDialog'
 import {
   AssetIcon,
   AuditIcon,
@@ -106,6 +110,33 @@ const MODULES: WorkspaceModule[] = [
 ]
 
 const QUICK_ACCESS_MODULES: AdminModule[] = ['overview', 'checklists', 'operations', 'configuration']
+const COMPANY_PROFILE_CACHE_KEY = 'fab_control_admin_company_profile_v1'
+const DEFAULT_COMPANY_PROFILE: AdminCompanyProfile = {
+  nome: 'Empresa Demonstração',
+  logo_data_url: '',
+}
+
+function readCachedCompanyProfile(): AdminCompanyProfile {
+  if (typeof window === 'undefined') return DEFAULT_COMPANY_PROFILE
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(COMPANY_PROFILE_CACHE_KEY) ?? '{}') as Partial<AdminCompanyProfile>
+    const name = typeof cached.nome === 'string' ? cached.nome.trim() : ''
+    const logo = typeof cached.logo_data_url === 'string' && cached.logo_data_url.startsWith('data:image/')
+      ? cached.logo_data_url
+      : ''
+    return name ? { nome: name, logo_data_url: logo, atualizado_em: cached.atualizado_em } : DEFAULT_COMPANY_PROFILE
+  } catch {
+    return DEFAULT_COMPANY_PROFILE
+  }
+}
+
+function cacheCompanyProfile(profile: AdminCompanyProfile) {
+  try {
+    window.localStorage.setItem(COMPANY_PROFILE_CACHE_KEY, JSON.stringify(profile))
+  } catch {
+    // A identidade continua disponível na sessão mesmo sem armazenamento local.
+  }
+}
 
 const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; subtitle: string }> = {
   overview: {
@@ -308,6 +339,9 @@ export function AdminWorkspace({
   const [layoutQuickOpen, setLayoutQuickOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [companyOpen, setCompanyOpen] = useState(false)
+  const [companyProfile, setCompanyProfile] = useState<AdminCompanyProfile>(readCachedCompanyProfile)
+  const [companyLoadError, setCompanyLoadError] = useState('')
   const [paletteQuery, setPaletteQuery] = useState('')
   const [dragging, setDragging] = useState(false)
   const [snapTarget, setSnapTarget] = useState<WindowSnapTarget | null>(null)
@@ -342,8 +376,28 @@ export function AdminWorkspace({
     setWindowManagerOpen(false)
     setLayoutQuickOpen(false)
     setProfileOpen(false)
+    setCompanyOpen(false)
     if (notify) onModuleChange(module)
   }, [onModuleChange])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getAdminCompanyProfile(controller.signal)
+      .then((profile) => {
+        setCompanyProfile(profile)
+        cacheCompanyProfile(profile)
+        setCompanyLoadError('')
+      })
+      .catch((cause) => {
+        if (controller.signal.aborted) return
+        if (isGestorAuthenticationError(cause)) {
+          onSessionExpired()
+          return
+        }
+        setCompanyLoadError(cause instanceof Error ? cause.message : 'Não foi possível sincronizar a empresa.')
+      })
+    return () => controller.abort()
+  }, [onSessionExpired])
 
   useEffect(() => {
     if (lastActiveModuleRef.current === activeModule) return
@@ -365,6 +419,7 @@ export function AdminWorkspace({
         setLayoutQuickOpen(false)
         setHelpOpen(false)
         setProfileOpen(false)
+        setCompanyOpen(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -660,6 +715,19 @@ export function AdminWorkspace({
     setCacheMessage('Cache temporário limpo. A sessão e os dados do sistema foram preservados.')
   }
 
+  async function handleSaveCompany(profile: Pick<AdminCompanyProfile, 'nome' | 'logo_data_url'>) {
+    try {
+      const result = await saveAdminCompanyProfile(profile)
+      setCompanyProfile(result.empresa)
+      cacheCompanyProfile(result.empresa)
+      setCompanyLoadError('')
+      setCompanyOpen(false)
+    } catch (cause) {
+      if (isGestorAuthenticationError(cause)) onSessionExpired()
+      throw cause
+    }
+  }
+
   return (
     <div className={`admin-desktop-shell${dragging ? ' is-dragging' : ''}`}>
       <section className="admin-command-mobile-block">
@@ -671,8 +739,10 @@ export function AdminWorkspace({
 
       <header className="admin-desktop-topbar">
         <div className="admin-desktop-brand">
-          <span aria-hidden="true">TOZ</span>
-          <strong>tozzi</strong>
+          {companyProfile.logo_data_url
+            ? <img src={companyProfile.logo_data_url} alt="" />
+            : <span aria-hidden="true">TOZ</span>}
+          <strong title={companyProfile.nome}>{companyProfile.nome}</strong>
         </div>
 
         <button className="admin-desktop-command" type="button" onClick={() => setPaletteOpen(true)}>
@@ -694,7 +764,7 @@ export function AdminWorkspace({
           </button>
           {profileOpen ? (
             <aside className="admin-profile-menu" aria-label="Menu do perfil">
-              <header><span>{getInitials(session.user.nome)}</span><div><strong>{session.user.nome}</strong><small>Empresa Demonstração</small></div></header>
+              <header><span>{getInitials(session.user.nome)}</span><div><strong>{session.user.nome}</strong><small>{companyProfile.nome}</small></div></header>
               <button type="button" onClick={() => openModule('configuration')}>Personalizar sistema</button>
               <button type="button" onClick={() => openModule('configuration')}>Parâmetros técnicos</button>
               <button type="button" onClick={() => openModule('users')}>Meu perfil</button>
@@ -776,7 +846,7 @@ export function AdminWorkspace({
                     <span className="admin-app-window__code">{module.code}</span>
                     <strong>{module.label}</strong>
                     <span className="admin-app-window__state">Conectado</span>
-                    <div className="admin-app-window__controls">
+                    <div className="admin-app-window__controls" onPointerDown={(event) => event.stopPropagation()}>
                       <button type="button" aria-label={`Minimizar ${module.label}`} title="Minimizar" onClick={() => minimizeWindow(item.module)}>—</button>
                       <button type="button" aria-label={`${item.maximized ? 'Restaurar' : 'Maximizar'} ${module.label}`} title={item.maximized ? 'Restaurar' : 'Maximizar'} onClick={() => toggleMaximize(item.module)}>{item.maximized ? '❐' : '□'}</button>
                       <button className="is-close" type="button" aria-label={`Fechar ${module.label}`} title="Fechar" onClick={() => closeWindow(item.module)}>×</button>
@@ -843,7 +913,21 @@ export function AdminWorkspace({
                 )
               })}
             </div>
-            <span className="admin-status-company">Empresa: Empresa Demonstração</span>
+            <button
+              className="admin-status-company"
+              type="button"
+              title="Configurar empresa"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setPaletteOpen(false)
+                setWindowManagerOpen(false)
+                setLayoutQuickOpen(false)
+                setProfileOpen(false)
+                setCompanyOpen(true)
+              }}
+            >
+              Empresa: {companyProfile.nome}
+            </button>
             <div className="admin-desktop-statusbar__right">
               <button type="button" onClick={optimizeCache}>Otimizar cache</button>
               <span>Workspace: {memoryMb} MB</span>
@@ -937,6 +1021,15 @@ export function AdminWorkspace({
             <footer><span>O gerenciador completo continua disponível pelo ícone de janelas no cabeçalho.</span><button type="button" onClick={() => setHelpOpen(false)}>Entendi</button></footer>
           </section>
         </div>
+      ) : null}
+
+      {companyOpen ? (
+        <AdminCompanyDialog
+          company={companyProfile}
+          initialError={companyLoadError}
+          onClose={() => setCompanyOpen(false)}
+          onSave={handleSaveCompany}
+        />
       ) : null}
     </div>
   )

@@ -1,4 +1,6 @@
 import type {
+  AdminCompanyProfile,
+  AdminCompanySaveResult,
   AdminPasswordResetResult,
   AdminPermissionMatrix,
   AdminPermissionSaveResult,
@@ -222,6 +224,20 @@ export function saveAdminPermissionProfile(
     'admin.permissoes.salvar',
     { perfil: profile, permissoes: permissions },
   )
+}
+
+export function getAdminCompanyProfile(
+  signal?: AbortSignal,
+): Promise<AdminCompanyProfile> {
+  return readAdminData<AdminCompanyProfile>('admin.empresa.obter', {}, signal)
+}
+
+export function saveAdminCompanyProfile(
+  profile: Pick<AdminCompanyProfile, 'nome' | 'logo_data_url'>,
+): Promise<AdminCompanySaveResult> {
+  return writeAdminData<AdminCompanySaveResult>('admin.empresa.salvar', {
+    dados: profile,
+  })
 }
 
 export function getConfigurationEngineState(

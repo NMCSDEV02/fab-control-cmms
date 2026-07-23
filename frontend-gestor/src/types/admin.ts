@@ -130,6 +130,17 @@ export interface AdminPermissionSaveResult {
   matriz: AdminPermissionProfile
 }
 
+export interface AdminCompanyProfile {
+  nome: string
+  logo_data_url: string
+  atualizado_em?: string
+}
+
+export interface AdminCompanySaveResult {
+  saved: boolean
+  empresa: AdminCompanyProfile
+}
+
 export type ConfigurationValue = string | number | boolean
 
 export interface ConfigurationDefinition {

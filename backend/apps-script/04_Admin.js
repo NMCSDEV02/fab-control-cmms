@@ -109,6 +109,97 @@ function adminRequireIdentityAdmin_(auth){
   }
 }
 
+const ADMIN_COMPANY_NAME_KEY = "empresa.nome_exibicao";
+const ADMIN_COMPANY_LOGO_KEY = "empresa.logo_data_url";
+const ADMIN_COMPANY_DEFAULT_NAME = "Empresa Demonstração";
+const ADMIN_COMPANY_NAME_MAX_LENGTH = 80;
+const ADMIN_COMPANY_LOGO_MAX_LENGTH = 40000;
+const ADMIN_COMPANY_LOGO_MAX_BYTES = 30000;
+
+function adminCompanyName_(value){
+  var name = clean_(value).replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ");
+  if(name.length < 2) err_("COMPANY_NAME_REQUIRED", "Informe um nome de empresa com pelo menos 2 caracteres.", 400);
+  if(name.length > ADMIN_COMPANY_NAME_MAX_LENGTH) err_("COMPANY_NAME_TOO_LONG", "O nome da empresa pode ter no máximo 80 caracteres.", 400);
+  return name;
+}
+
+function adminCompanyLogo_(value){
+  var logo = clean_(value);
+  if(!logo) return "";
+  if(logo.length > ADMIN_COMPANY_LOGO_MAX_LENGTH){
+    err_("COMPANY_LOGO_TOO_LARGE", "A imagem ultrapassa o limite seguro para o cabeçalho.", 400);
+  }
+  var match = logo.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if(!match) err_("COMPANY_LOGO_INVALID", "Envie uma imagem PNG, JPEG ou WebP válida.", 400);
+  var bytes;
+  try{
+    bytes = Utilities.base64Decode(match[2]);
+  } catch(e){
+    err_("COMPANY_LOGO_INVALID", "Não foi possível validar o conteúdo da imagem.", 400);
+  }
+  if(!bytes || !bytes.length || bytes.length > ADMIN_COMPANY_LOGO_MAX_BYTES){
+    err_("COMPANY_LOGO_TOO_LARGE", "A imagem ultrapassa o limite seguro para o cabeçalho.", 400);
+  }
+  var mime = match[1];
+  var validSignature = mime === "png"
+    ? bytes.length >= 8 && bytes[0] === -119 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71
+    : mime === "jpeg"
+      ? bytes.length >= 3 && bytes[0] === -1 && bytes[1] === -40 && bytes[2] === -1
+      : bytes.length >= 12 && bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70 && bytes[8] === 87 && bytes[9] === 69 && bytes[10] === 66 && bytes[11] === 80;
+  if(!validSignature) err_("COMPANY_LOGO_INVALID", "O conteúdo da imagem não corresponde ao formato informado.", 400);
+  return logo;
+}
+
+function adminEmpresaObter_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  var nameRow = find_("config", "chave", ADMIN_COMPANY_NAME_KEY);
+  var logoRow = find_("config", "chave", ADMIN_COMPANY_LOGO_KEY);
+  return {
+    nome:clean_(nameRow && nameRow.valor) || ADMIN_COMPANY_DEFAULT_NAME,
+    logo_data_url:clean_(logoRow && logoRow.valor),
+    atualizado_em:clean_((logoRow && logoRow.atualizado_em) || (nameRow && nameRow.atualizado_em))
+  };
+}
+
+function adminCompanyAuditView_(company){
+  return {
+    nome:company.nome,
+    logo_configurada:!!company.logo_data_url,
+    logo_tamanho:company.logo_data_url ? company.logo_data_url.length : 0,
+    atualizado_em:company.atualizado_em || ""
+  };
+}
+
+function adminEmpresaSalvar_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  var data = p && p.dados && typeof p.dados === "object" ? p.dados : {};
+  var name = adminCompanyName_(data.nome);
+  var logo = adminCompanyLogo_(data.logo_data_url);
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(10000)) err_("ADMIN_WRITE_BUSY", "Outra alteração administrativa está em andamento.", 409);
+  try{
+    var before = adminEmpresaObter_({}, auth);
+    var updatedAt = now_();
+    upsert_("config", "chave", {
+      chave:ADMIN_COMPANY_NAME_KEY,
+      valor:name,
+      descricao:"Nome exibido no Command Workspace",
+      atualizado_em:updatedAt
+    });
+    upsert_("config", "chave", {
+      chave:ADMIN_COMPANY_LOGO_KEY,
+      valor:logo,
+      descricao:"Logomarca compactada exibida no Command Workspace",
+      atualizado_em:updatedAt
+    });
+    var saved = {nome:name, logo_data_url:logo, atualizado_em:updatedAt};
+    audit_(auth, "ADMIN_COMPANY_IDENTITY_UPDATED", "config", "empresa.identidade", adminCompanyAuditView_(before), adminCompanyAuditView_(saved), clean_(p.user_agent));
+    return {saved:true, empresa:saved};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function adminSanitizeEntityRow_(sheetName, row){
   var safe = strip_(row);
   if(sheetName === "usuarios"){
