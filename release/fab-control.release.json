@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "87A6415CD4EE93D57E22FE570FA46F425C0184A403A207259F86D94C3E6C5DB9",
-    "immutableAppsScriptVersion": 20,
-    "deploymentId": "AKfycbxR3ZOpsbo74fjWig9rPoKAPUX_pqCWjXjy2qeFDP5cULYhkZnMtWJabGkkZdDw-jpaPQ",
+    "backendSourceSha256": "308109AE8B40BC5231CF80BB36558800EF3BDD515E7C6F359313082D6C5192AE",
+    "immutableAppsScriptVersion": 21,
+    "deploymentId": "AKfycbxyezOF5RZTprADImdfN4IYEZposjKqYto7ZHSgbPKV571kO06q4sE0ppmo92Li38UvlQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "4a99b45"
+    "sourceGitCommit": "aaa713e"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -107,9 +107,11 @@
     "motorCommercialAccessE2E": "approved",
     "motorInternalMaintenanceAccessE2E": "approved",
     "motorInternalMaintenanceVisual": "approved-desktop-mobile-isolated-entry-no-horizontal-overflow",
-    "motorInternalCatalogContract": "approved-read-only-three-plans-ten-features-default-deny",
+    "motorInternalCatalogContract": "approved",
+    "motorInternalCatalogScope": "read-only-three-plans-ten-features-default-deny",
     "motorCommercialAccessRemote": "approved-legacy-complete",
     "motorInternalMaintenanceRemote": "approved-closed-by-default-hidden-from-bootstrap",
+    "motorInternalCatalogRemote": "approved-auth-required-hidden-from-bootstrap",
     "adminCommercialAccessVisual": "approved-chrome-plan-summary-and-module-locks",
     "adminImportContract": "approved",
     "adminImportE2E": "approved",
@@ -129,10 +131,10 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "87A6415CD4EE93D57E22FE570FA46F425C0184A403A207259F86D94C3E6C5DB9",
-    "immutableAppsScriptVersion": 20,
-    "sourceGitCommit": "4a99b45",
-    "deploymentId": "AKfycbxR3ZOpsbo74fjWig9rPoKAPUX_pqCWjXjy2qeFDP5cULYhkZnMtWJabGkkZdDw-jpaPQ",
+    "backendSourceSha256": "308109AE8B40BC5231CF80BB36558800EF3BDD515E7C6F359313082D6C5192AE",
+    "immutableAppsScriptVersion": 21,
+    "sourceGitCommit": "aaa713e",
+    "deploymentId": "AKfycbxyezOF5RZTprADImdfN4IYEZposjKqYto7ZHSgbPKV571kO06q4sE0ppmo92Li38UvlQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
@@ -149,6 +151,8 @@
       "commercialPolicyRuntime": "approved",
       "maintenanceExchangeClosedByDefault": "approved",
       "maintenanceAccessEndpointHiddenFromBootstrap": "approved",
+      "internalCatalogRequiresAuthentication": "approved",
+      "internalCatalogHiddenFromBootstrap": "approved",
       "adminImportEndpointDeclared": "approved",
       "adminImportRequiresAuthentication": "approved",
       "manualRegistrationEndpointDeclared": "approved",
