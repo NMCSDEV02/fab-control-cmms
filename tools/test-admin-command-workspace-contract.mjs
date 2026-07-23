@@ -78,7 +78,7 @@ for (const metric of ['MTTR', 'MTBF', 'Lead time de OS', 'SLA resposta', 'OEE'])
 }
 assert(analytics.includes('Sem amostra'), 'ausência de dados pode ser confundida com zero')
 assert(analytics.includes('Exportar CSV'), 'relatório exportável ausente')
-for (const action of ['admin.documentos.listar', 'admin.documentos.detalhe', 'admin.documentos.upload', 'admin.documentos.atualizar', 'admin.auditoria.listar', 'admin.monitoramento.estado', 'admin.backups.listar', 'admin.backups.criar']) {
+for (const action of ['admin.documentos.listar', 'admin.documentos.detalhe', 'admin.documentos.upload', 'admin.documentos.atualizar', 'admin.auditoria.listar', 'admin.monitoramento.estado', 'admin.backups.listar', 'admin.backups.criar', 'admin.backups.preparar_restauracao', 'admin.backups.confirmar_restauracao']) {
   assert(router.includes(`case "${action}"`), `rota de governança ausente: ${action}`)
   assert(governanceApi.includes(`'${action}'`), `cliente de governança não usa ${action}`)
 }
@@ -92,8 +92,11 @@ assert(governanceBackend.includes('adminGovernanceRedact_'), 'servidor não masc
 assert(governanceBackend.includes('ADMIN_DOCUMENT_MAX_BYTES'), 'upload documental não limita tamanho')
 assert(governanceBackend.includes('LockService.getScriptLock()'), 'documentos e backup não bloqueiam concorrência')
 assert(backup.includes('<select value={reasonType}'), 'motivo do backup não usa dropdown')
-assert(backup.includes('Restauração protegida'), 'risco de restauração não está sinalizado')
-assert(governanceBackend.includes('restauracao_disponivel:false'), 'backend pode expor restauração destrutiva prematura')
+assert(backup.includes('Restauração operacional protegida'), 'risco de restauração não está sinalizado')
+assert(backup.includes('<select value={selectedBackupId}'), 'seleção de backup não usa dropdown')
+assert(backup.includes('1ª confirmação') && backup.includes('2ª confirmação'), 'restauração sem dupla confirmação')
+assert(governanceBackend.includes('ADMIN_RESTORE_PROTECTED_SHEETS'), 'restauração não preserva o núcleo de segurança')
+assert(governanceBackend.includes('SAFETY_BACKUP_CREATED'), 'restauração não cria backup automático de segurança')
 assert(styles.includes('.admin-checklist-layout'), 'construtor sem layout de Command Workspace')
 assert(styles.includes('.admin-catalog-dialog'), 'cadastro sem formulário administrativo')
 assert(styles.includes('.admin-governance-table'), 'governança sem layout de Command Workspace')

@@ -6510,6 +6510,11 @@ p {
   font-weight: 850;
 }
 
+.admin-continuity-warning > button:not(:disabled) {
+  color: #fff;
+  background: #b55a28;
+}
+
 .admin-backup-form {
   display: grid;
   gap: 14px;
@@ -6539,6 +6544,115 @@ p {
   margin-top: 3px;
   color: #78899e;
   font-size: 0.59rem;
+}
+
+.admin-restore-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #cfe0f5;
+  border-radius: 10px;
+  color: #345579;
+  background: #f3f8ff;
+}
+
+.admin-restore-scope svg {
+  flex: 0 0 auto;
+  width: 18px;
+  color: #2c64d7;
+}
+
+.admin-restore-scope strong,
+.admin-restore-scope small {
+  display: block;
+}
+
+.admin-restore-scope strong {
+  font-size: 0.69rem;
+}
+
+.admin-restore-scope small {
+  margin-top: 3px;
+  color: #6d8096;
+  font-size: 0.61rem;
+  line-height: 1.45;
+}
+
+.admin-restore-confirmation {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.admin-restore-confirmation > section {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-restore-confirmation > section > span {
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+  border: 1px solid #dce5ef;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.admin-restore-confirmation > section small,
+.admin-restore-confirmation > article small {
+  color: #7a8ba0;
+  font-size: 0.58rem;
+}
+
+.admin-restore-confirmation > section strong {
+  overflow: hidden;
+  color: #2d4562;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-restore-confirmation > article {
+  padding: 12px;
+  border: 1px solid #dbe4ee;
+  border-radius: 9px;
+}
+
+.admin-restore-confirmation > article strong {
+  color: #415a78;
+  font-size: 0.67rem;
+}
+
+.admin-restore-confirmation > article p {
+  margin: 5px 0;
+  color: #596c83;
+  font: 0.6rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.admin-restore-confirmation > label:not(.admin-backup-confirm) {
+  display: grid;
+  gap: 6px;
+  color: #4e6179;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.admin-restore-confirmation > label b {
+  color: #b34e21;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.admin-restore-confirmation > label input[type="text"],
+.admin-restore-confirmation > label:not(.admin-backup-confirm) input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #cfdae7;
+  border-radius: 9px;
+  color: #263d59;
+  font: 700 0.75rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
 }
 
 @media (max-width: 1180px) and (min-width: 901px) {

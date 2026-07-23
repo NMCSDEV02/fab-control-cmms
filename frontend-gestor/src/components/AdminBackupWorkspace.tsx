@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
-import { createAdminBackup, listAdminBackups } from '../services/api/governance'
+import {
+  confirmAdminBackupRestore,
+  createAdminBackup,
+  listAdminBackups,
+  prepareAdminBackupRestore,
+} from '../services/api/governance'
 import { isGestorAuthenticationError } from '../services/api/gestor'
-import type { AdminBackup } from '../types/governance'
+import type { AdminBackup, AdminBackupRestorePreparation } from '../types/governance'
 import { RefreshIcon, ShieldIcon } from './Icons'
 
 interface AdminBackupWorkspaceProps {
   onSessionExpired: () => void
 }
+
+type DialogMode = 'backup' | 'restore' | null
 
 function formatDate(value?: string): string {
   if (!value) return '—'
@@ -21,12 +28,19 @@ function formatBytes(value: number): string {
 
 export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceProps) {
   const [backups, setBackups] = useState<AdminBackup[]>([])
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   const [reasonType, setReasonType] = useState('ANTES_DE_CONFIGURACAO')
   const [reasonDetail, setReasonDetail] = useState('')
   const [confirmed, setConfirmed] = useState(false)
+  const [selectedBackupId, setSelectedBackupId] = useState('')
+  const [restoreReason, setRestoreReason] = useState('')
+  const [preparation, setPreparation] = useState<AdminBackupRestorePreparation | null>(null)
+  const [challenge, setChallenge] = useState('')
+  const [finalConfirmed, setFinalConfirmed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [preparing, setPreparing] = useState(false)
+  const [restoring, setRestoring] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -41,6 +55,7 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
   const load = useCallback(async (signal?: AbortSignal) => {
     const data = await listAdminBackups(signal)
     setBackups(data.backups)
+    setSelectedBackupId((current) => current || data.backups[0]?.id || '')
   }, [])
 
   useEffect(() => {
@@ -52,6 +67,24 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
     }).finally(() => setLoading(false))
     return () => controller.abort()
   }, [handleFailure, load])
+
+  function openBackupDialog() {
+    setDialogMode('backup')
+    setError('')
+    setNotice('')
+    setConfirmed(false)
+  }
+
+  function openRestoreDialog(backupId?: string) {
+    setDialogMode('restore')
+    setSelectedBackupId(backupId || backups[0]?.id || '')
+    setRestoreReason('')
+    setPreparation(null)
+    setChallenge('')
+    setFinalConfirmed(false)
+    setError('')
+    setNotice('')
+  }
 
   async function createBackup() {
     const reasonLabels: Record<string, string> = {
@@ -70,7 +103,7 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
     setError('')
     try {
       await createAdminBackup(reason, 'CRIAR BACKUP')
-      setDialogOpen(false)
+      setDialogMode(null)
       setConfirmed(false)
       setReasonDetail('')
       setNotice('Backup integral criado e registrado na auditoria.')
@@ -79,6 +112,55 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
       handleFailure(cause)
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function prepareRestore() {
+    if (!selectedBackupId) {
+      setError('Selecione um ponto de backup.')
+      return
+    }
+    if (restoreReason.trim().length < 8) {
+      setError('Informe um motivo detalhado para a restauração.')
+      return
+    }
+    setPreparing(true)
+    setError('')
+    try {
+      setPreparation(await prepareAdminBackupRestore(selectedBackupId))
+      setChallenge('')
+      setFinalConfirmed(false)
+    } catch (cause) {
+      handleFailure(cause)
+    } finally {
+      setPreparing(false)
+    }
+  }
+
+  async function restoreBackup() {
+    if (!preparation) return
+    if (challenge.trim().toUpperCase() !== preparation.desafio.toUpperCase() || !finalConfirmed) {
+      setError('Conclua as duas confirmações exatamente como apresentado.')
+      return
+    }
+    setRestoring(true)
+    setError('')
+    try {
+      const result = await confirmAdminBackupRestore({
+        token: preparation.token,
+        backupId: preparation.backup.id,
+        challenge,
+        finalConfirmation: preparation.confirmacao_final,
+        reason: restoreReason.trim(),
+      })
+      setDialogMode(null)
+      setPreparation(null)
+      setNotice(`${result.abas_restauradas.length} abas operacionais restauradas. Identidades, sessões, configuração e auditoria foram preservadas.`)
+      await load()
+    } catch (cause) {
+      handleFailure(cause)
+    } finally {
+      setRestoring(false)
     }
   }
 
@@ -95,24 +177,39 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
         <article><ShieldIcon /><span><small>Última cópia</small><strong>{backups[0] ? formatDate(backups[0].criado_em) : 'Ainda não criada'}</strong><i>{backups[0]?.nome || 'Crie o primeiro ponto de restauração'}</i></span></article>
       </section>
 
-      <section className="admin-continuity-warning"><ShieldIcon /><span><strong>Restauração protegida</strong><small>A restauração permanece desativada nesta versão porque substitui dados operacionais. O bloco seguro de dupla confirmação será publicado separadamente.</small></span><button type="button" disabled>Restaurar indisponível</button></section>
+      <section className="admin-continuity-warning"><ShieldIcon /><span><strong>Restauração operacional protegida</strong><small>Substitui somente dados operacionais. Configuração, usuários, sessões, auditoria e locks permanecem intactos. Antes da troca, o sistema cria outro backup integral automaticamente.</small></span><button type="button" disabled={!backups.length} onClick={() => openRestoreDialog()}>{backups.length ? 'Preparar restauração' : 'Sem backup disponível'}</button></section>
 
       <section className="admin-governance-table-card">
-        <header><div><span className="eyebrow">CONTINUIDADE OPERACIONAL</span><h2>Pontos de backup</h2></div><div className="admin-backup-header-actions"><button type="button" onClick={() => void load()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={() => { setDialogOpen(true); setError(''); setNotice('') }}>Criar backup</button></div></header>
+        <header><div><span className="eyebrow">CONTINUIDADE OPERACIONAL</span><h2>Pontos de backup</h2></div><div className="admin-backup-header-actions"><button type="button" onClick={() => void load()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={openBackupDialog}>Criar backup</button></div></header>
         <div className="admin-governance-table-wrap"><table className="admin-governance-table"><thead><tr><th>Arquivo</th><th>Data de criação</th><th>Tamanho</th><th>Armazenamento</th><th>Ação segura</th></tr></thead><tbody>
-          {backups.map((backup) => <tr key={backup.id}><td><strong>{backup.nome}</strong><small>{backup.id}</small></td><td><strong>{formatDate(backup.criado_em)}</strong><small>cópia imutável</small></td><td><strong>{formatBytes(backup.tamanho_bytes)}</strong><small>base integral</small></td><td><strong>Drive privado</strong><small>acesso controlado pela conta proprietária</small></td><td><button type="button" onClick={() => window.open(backup.url, '_blank', 'noopener,noreferrer')}>Abrir no Drive</button></td></tr>)}
+          {backups.map((backup) => <tr key={backup.id}><td><strong>{backup.nome}</strong><small>{backup.id}</small></td><td><strong>{formatDate(backup.criado_em)}</strong><small>cópia imutável</small></td><td><strong>{formatBytes(backup.tamanho_bytes)}</strong><small>base integral</small></td><td><strong>Drive privado</strong><small>acesso controlado pela conta proprietária</small></td><td><div className="admin-governance-actions"><button type="button" onClick={() => window.open(backup.url, '_blank', 'noopener,noreferrer')}>Abrir</button><button type="button" onClick={() => openRestoreDialog(backup.id)}>Restaurar</button></div></td></tr>)}
           {!backups.length ? <tr><td colSpan={5}><div className="admin-empty-state">Nenhum backup administrativo foi criado.</div></td></tr> : null}
         </tbody></table></div>
       </section>
 
-      {dialogOpen ? <div className="admin-catalog-dialog" role="dialog" aria-modal="true" aria-label="Criar backup"><section>
-        <header><div><span className="eyebrow">OPERAÇÃO AUDITADA</span><h2>Criar ponto de backup</h2></div><button type="button" onClick={() => setDialogOpen(false)}>Fechar</button></header>
+      {dialogMode === 'backup' ? <div className="admin-catalog-dialog" role="dialog" aria-modal="true" aria-label="Criar backup"><section>
+        <header><div><span className="eyebrow">OPERAÇÃO AUDITADA</span><h2>Criar ponto de backup</h2></div><button type="button" onClick={() => setDialogMode(null)}>Fechar</button></header>
         <div className="admin-backup-form">
           <label><span>Motivo *</span><select value={reasonType} onChange={(event) => setReasonType(event.target.value)}><option value="ANTES_DE_CONFIGURACAO">Antes de alteração de configuração</option><option value="ANTES_DE_IMPORTACAO">Antes de importação de dados</option><option value="FECHAMENTO_DE_TURNO">Fechamento de turno</option><option value="MARCO_DE_RELEASE">Marco de release</option><option value="OUTRO">Outro motivo</option></select></label>
           <label><span>Complemento</span><textarea rows={3} value={reasonDetail} onChange={(event) => setReasonDetail(event.target.value)} placeholder="Informe o contexto para a auditoria" /></label>
           <label className="admin-backup-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span><strong>Confirmo a criação da cópia integral</strong><small>Esta operação não altera nem interrompe a produção.</small></span></label>
         </div>
-        <footer><div><button type="button" onClick={() => setDialogOpen(false)}>Cancelar</button><button className="primary-button" type="button" disabled={creating || !confirmed} onClick={() => void createBackup()}>{creating ? 'Criando cópia…' : 'Confirmar backup'}</button></div></footer>
+        <footer><div><button type="button" onClick={() => setDialogMode(null)}>Cancelar</button><button className="primary-button" type="button" disabled={creating || !confirmed} onClick={() => void createBackup()}>{creating ? 'Criando cópia…' : 'Confirmar backup'}</button></div></footer>
+      </section></div> : null}
+
+      {dialogMode === 'restore' ? <div className="admin-catalog-dialog" role="dialog" aria-modal="true" aria-label="Restaurar backup"><section>
+        <header><div><span className="eyebrow">DUPLA CONFIRMAÇÃO</span><h2>Restauração operacional segura</h2></div><button type="button" onClick={() => setDialogMode(null)}>Fechar</button></header>
+        {!preparation ? <div className="admin-backup-form">
+          <label><span>Ponto de backup *</span><select value={selectedBackupId} onChange={(event) => setSelectedBackupId(event.target.value)}><option value="">Selecione…</option>{backups.map((backup) => <option key={backup.id} value={backup.id}>{backup.nome} · {formatDate(backup.criado_em)}</option>)}</select></label>
+          <label><span>Motivo detalhado *</span><textarea rows={3} value={restoreReason} onChange={(event) => setRestoreReason(event.target.value)} placeholder="Explique por que os dados operacionais precisam voltar a este ponto" /></label>
+          <aside className="admin-restore-scope"><ShieldIcon /><span><strong>Escopo operacional seguro</strong><small>Usuários, senhas, sessões, configuração versionada, auditoria e locks não serão substituídos.</small></span></aside>
+        </div> : <div className="admin-restore-confirmation">
+          <section><span><small>Backup selecionado</small><strong>{preparation.backup.nome}</strong></span><span><small>Abas operacionais</small><strong>{preparation.abas_restauradas.length}</strong></span><span><small>Células analisadas</small><strong>{preparation.total_celulas.toLocaleString('pt-BR')}</strong></span><span><small>Expira em</small><strong>{formatDate(preparation.expira_em)}</strong></span></section>
+          <article><strong>Preservadas</strong><p>{preparation.abas_protegidas.join(', ')}</p><small>{preparation.abas_ausentes.length ? `Ausentes no backup e mantidas como estão: ${preparation.abas_ausentes.join(', ')}` : 'Todas as demais abas declaradas estão presentes.'}</small></article>
+          <label><span>1ª confirmação · digite <b>{preparation.desafio}</b></span><input value={challenge} onChange={(event) => setChallenge(event.target.value.toUpperCase())} autoComplete="off" /></label>
+          <label className="admin-backup-confirm"><input type="checkbox" checked={finalConfirmed} onChange={(event) => setFinalConfirmed(event.target.checked)} /><span><strong>2ª confirmação · autorizo substituir os dados operacionais</strong><small>Uma cópia integral de segurança será criada automaticamente antes da primeira alteração.</small></span></label>
+        </div>}
+        <footer><div><button type="button" onClick={() => setDialogMode(null)}>Cancelar</button>{preparation ? <button className="primary-button" type="button" disabled={restoring || !finalConfirmed || challenge.trim().toUpperCase() !== preparation.desafio.toUpperCase()} onClick={() => void restoreBackup()}>{restoring ? 'Restaurando com proteção…' : 'Executar restauração'}</button> : <button className="primary-button" type="button" disabled={preparing || !selectedBackupId || restoreReason.trim().length < 8} onClick={() => void prepareRestore()}>{preparing ? 'Analisando backup…' : 'Analisar e gerar desafio'}</button>}</div></footer>
       </section></div> : null}
     </section>
   )

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
+import crypto from 'node:crypto'
 
 const root = path.resolve(import.meta.dirname, '..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8').replace(/^\uFEFF/, '')
@@ -14,6 +15,75 @@ let folderSequence = 0
 const properties = new Map()
 const files = new Map()
 const folders = new Map()
+const caches = new Map()
+const spreadsheets = new Map()
+
+class FakeRange {
+  constructor(sheet, row, column, rows, columns) {
+    this.sheet = sheet
+    this.row = row
+    this.column = column
+    this.rows = rows
+    this.columns = columns
+  }
+
+  getValues() {
+    return Array.from({ length: this.rows }, (_, rowOffset) => (
+      Array.from({ length: this.columns }, (_, columnOffset) => (
+        this.sheet.values[this.row - 1 + rowOffset]?.[this.column - 1 + columnOffset] ?? ''
+      ))
+    ))
+  }
+
+  setValues(values) {
+    if (this.sheet.failNextSet) {
+      this.sheet.failNextSet = false
+      throw new Error(`Falha simulada em ${this.sheet.name}`)
+    }
+    values.forEach((row, rowOffset) => {
+      const targetRow = this.row - 1 + rowOffset
+      this.sheet.values[targetRow] ||= []
+      row.forEach((value, columnOffset) => {
+        this.sheet.values[targetRow][this.column - 1 + columnOffset] = value
+      })
+    })
+    return this
+  }
+}
+
+class FakeSheet {
+  constructor(name, values = [['id'], [`VALUE-${name}`]]) {
+    this.name = name
+    this.values = values.map((row) => [...row])
+    this.maxRows = Math.max(this.values.length, 10)
+    this.maxColumns = Math.max(...this.values.map((row) => row.length), 1)
+  }
+
+  clone() { return new FakeSheet(this.name, this.values) }
+  getName() { return this.name }
+  getLastRow() { return this.values.length }
+  getLastColumn() { return Math.max(...this.values.map((row) => row.length), 0) }
+  getMaxRows() { return this.maxRows }
+  getMaxColumns() { return this.maxColumns }
+  insertRowsAfter(_after, count) { this.maxRows += count; return this }
+  insertColumnsAfter(_after, count) { this.maxColumns += count; return this }
+  getRange(row, column, rows, columns) { return new FakeRange(this, row, column, rows, columns) }
+  clearContents() { this.values = []; return this }
+}
+
+class FakeSpreadsheet {
+  constructor(id, sheets) {
+    this.id = id
+    this.sheets = sheets
+  }
+
+  clone(id) { return new FakeSpreadsheet(id, this.sheets.map((sheet) => sheet.clone())) }
+  getId() { return this.id }
+  getSheets() { return this.sheets }
+  getSheetByName(name) { return this.sheets.find((sheet) => sheet.getName() === name) || null }
+  insertSheet(name) { const sheet = new FakeSheet(name, []); this.sheets.push(sheet); return sheet }
+  deleteSheet(sheet) { this.sheets = this.sheets.filter((item) => item !== sheet) }
+}
 
 class FakeFile {
   constructor(id, name, size, folderId = '') {
@@ -35,7 +105,12 @@ class FakeFile {
   getUrl() { return `https://drive.google.test/file/${this.id}` }
   setDescription(value) { this.description = String(value); return this }
   setTrashed(value) { this.trashed = Boolean(value); return this }
-  makeCopy(name, folder) { return folder.createStoredFile(name, this.size) }
+  makeCopy(name, folder) {
+    const copy = folder.createStoredFile(name, this.size)
+    const spreadsheet = spreadsheets.get(this.id)
+    if (spreadsheet) spreadsheets.set(copy.id, spreadsheet.clone(copy.id))
+    return copy
+  }
 }
 
 class FakeFolder {
@@ -60,6 +135,13 @@ class FakeFolder {
 }
 
 files.set('SHEET-CANARY', new FakeFile('SHEET-CANARY', 'FAB Control - CANARIO', 2048))
+const requiredSheets = ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos_manutencao', 'plano_itens', 'ordens_servico', 'os_acoes']
+const protectedSheets = ['config', 'usuarios', 'sessoes', 'audit_log', 'configuracao_versoes', 'configuracao_rascunhos', 'execucao_locks']
+const currentSpreadsheet = new FakeSpreadsheet(
+  'SHEET-CANARY',
+  [...requiredSheets, ...protectedSheets].map((name) => new FakeSheet(name)),
+)
+spreadsheets.set(currentSpreadsheet.id, currentSpreadsheet)
 
 const context = vm.createContext({
   console,
@@ -71,6 +153,15 @@ const context = vm.createContext({
       return {
         getProperty(key) { return properties.get(key) || '' },
         setProperty(key, value) { properties.set(key, String(value)) },
+      }
+    },
+  },
+  CacheService: {
+    getScriptCache() {
+      return {
+        put(key, value) { caches.set(String(key), String(value)) },
+        get(key) { return caches.get(String(key)) || null },
+        remove(key) { caches.delete(String(key)) },
       }
     },
   },
@@ -92,11 +183,21 @@ const context = vm.createContext({
       return file
     },
   },
-  SpreadsheetApp: { flush() {} },
+  SpreadsheetApp: {
+    flush() {},
+    openById(id) {
+      const spreadsheet = spreadsheets.get(String(id))
+      if (!spreadsheet) throw new Error('Spreadsheet not found')
+      return spreadsheet
+    },
+  },
   LockService: {
     getScriptLock() { return { tryLock() { return true }, releaseLock() {} } },
   },
   Utilities: {
+    DigestAlgorithm: { SHA_256: 'SHA_256' },
+    Charset: { UTF_8: 'UTF_8' },
+    computeDigest(_algorithm, value) { return [...crypto.createHash('sha256').update(String(value), 'utf8').digest()] },
     formatDate(date) { return new Date(date).toISOString().slice(0, 19) },
     getUuid() {
       uuidSequence += 1
@@ -105,6 +206,7 @@ const context = vm.createContext({
     base64Decode(value) { return [...Buffer.from(String(value), 'base64')] },
     newBlob(bytes, mimeType, name) { return { bytes, mimeType, name } },
   },
+  TEST_CURRENT_SPREADSHEET: currentSpreadsheet,
 })
 
 vm.runInContext([
@@ -123,7 +225,7 @@ vm.runInContext([
       componentes:[{id:'CMP-01',ativo_id:'ATV-01',tag:'M01',nome:'Motor',__rowIndex:2}],
       documentos_tecnicos:[], documento_revisoes:[], audit_log:[]
     };
-    function getSpreadsheet_(){ return {getId:function(){ return 'SHEET-CANARY'; }}; }
+    function getSpreadsheet_(){ return TEST_CURRENT_SPREADSHEET; }
     function ensureSheet_(ss,name){ if(!TEST_DB[name]) TEST_DB[name] = []; }
     function rows_(name){ return TEST_DB[name] || []; }
     function find_(name,key,value){ return rows_(name).find(function(row){ return String(row[key]) === String(value); }) || null; }
@@ -207,13 +309,44 @@ assert([...files.values()].filter((file) => !file.trashed).length === beforeActi
 const backupWithoutConfirmation = vm.runInContext(`try { adminBackupCriar_({motivo:'Antes da release',confirmacao:'NAO'}, ${admin}); false } catch(error) { error.code === 'BACKUP_CONFIRMATION_REQUIRED' }`, context)
 assert(backupWithoutConfirmation, 'backup foi criado sem confirmação explícita')
 const backup = evaluate(`adminBackupCriar_({motivo:'Antes da release canário',confirmacao:'CRIAR BACKUP'}, ${admin})`)
-assert(backup.created && backup.restauracao_disponivel === false, 'backup seguro não foi criado ou restauração foi exposta')
+assert(backup.created && backup.restauracao_disponivel === true, 'backup seguro não foi criado ou restauração protegida permaneceu indisponível')
 const backups = evaluate(`adminBackupsListar_({}, ${admin})`)
 assert(backups.total === 1 && backups.backups[0].id === backup.backup.id, 'backup criado não apareceu na listagem')
+
+currentSpreadsheet.getSheetByName('ativos').getRange(2, 1, 1, 1).setValues([['CURRENT-AFTER-BACKUP']])
+currentSpreadsheet.getSheetByName('usuarios').getRange(2, 1, 1, 1).setValues([['SECURITY-CURRENT']])
+context.restoreBackupId = backup.backup.id
+const preparation = evaluate(`adminBackupPrepararRestauracao_({backup_id:restoreBackupId}, ${admin})`)
+assert(preparation.prepared && preparation.abas_restauradas.includes('ativos'), 'restauração não analisou as abas operacionais')
+assert(preparation.abas_protegidas.includes('usuarios') && preparation.abas_protegidas.includes('sessoes'), 'núcleo de identidade não foi protegido')
+context.restorePreparation = preparation
+const missingSafetyBlocked = vm.runInContext(`try { adminBackupConfirmarRestauracao_({token:restorePreparation.token,backup_id:restoreBackupId,confirmacao:restorePreparation.desafio,confirmacao_final:restorePreparation.confirmacao_final,motivo:'Retorno operacional validado',criar_backup_seguranca:false}, ${admin}); false } catch(error) { error.code === 'BACKUP_SAFETY_COPY_REQUIRED' }`, context)
+assert(missingSafetyBlocked, 'restauração foi aceita sem backup automático de segurança')
+const wrongChallengeBlocked = vm.runInContext(`try { adminBackupConfirmarRestauracao_({token:restorePreparation.token,backup_id:restoreBackupId,confirmacao:'RESTAURAR ERRADO',confirmacao_final:restorePreparation.confirmacao_final,motivo:'Retorno operacional validado',criar_backup_seguranca:true}, ${admin}); false } catch(error) { error.code === 'BACKUP_RESTORE_CHALLENGE_REQUIRED' }`, context)
+assert(wrongChallengeBlocked, 'primeira confirmação incorreta foi aceita')
+assert(currentSpreadsheet.getSheetByName('ativos').values[1][0] === 'CURRENT-AFTER-BACKUP', 'pré-validação alterou a base')
+const restored = evaluate(`adminBackupConfirmarRestauracao_({token:restorePreparation.token,backup_id:restoreBackupId,confirmacao:restorePreparation.desafio,confirmacao_final:restorePreparation.confirmacao_final,motivo:'Retorno operacional validado',criar_backup_seguranca:true}, ${admin})`)
+assert(restored.restored && restored.abas_restauradas.includes('ativos'), 'restauração operacional não foi concluída')
+assert(currentSpreadsheet.getSheetByName('ativos').values[1][0] === 'VALUE-ativos', 'dados operacionais não voltaram ao backup selecionado')
+assert(currentSpreadsheet.getSheetByName('usuarios').values[1][0] === 'SECURITY-CURRENT', 'restauração substituiu usuários protegidos')
+assert(evaluate(`rows_('audit_log').some(function(item){ return item.acao === 'SAFETY_BACKUP_CREATED'; })`) === true, 'backup automático de segurança não foi auditado')
+assert(evaluate(`rows_('audit_log').some(function(item){ return item.acao === 'BACKUP_OPERATIONAL_RESTORED'; })`) === true, 'restauração concluída não foi auditada')
+const reusedTokenBlocked = vm.runInContext(`try { adminBackupConfirmarRestauracao_({token:restorePreparation.token,backup_id:restoreBackupId,confirmacao:restorePreparation.desafio,confirmacao_final:restorePreparation.confirmacao_final,motivo:'Tentativa de repetição',criar_backup_seguranca:true}, ${admin}); false } catch(error) { error.code === 'BACKUP_RESTORE_TOKEN_EXPIRED' }`, context)
+assert(reusedTokenBlocked, 'token de restauração pôde ser reutilizado')
+
+currentSpreadsheet.getSheetByName('ativos').getRange(2, 1, 1, 1).setValues([['CURRENT-BEFORE-FAILURE']])
+currentSpreadsheet.getSheetByName('os_acoes').getRange(2, 1, 1, 1).setValues([['CURRENT-OS-BEFORE-FAILURE']])
+const failurePreparation = evaluate(`adminBackupPrepararRestauracao_({backup_id:restoreBackupId}, ${admin})`)
+context.failurePreparation = failurePreparation
+currentSpreadsheet.getSheetByName('os_acoes').failNextSet = true
+const restoreFailureRolledBack = vm.runInContext(`try { adminBackupConfirmarRestauracao_({token:failurePreparation.token,backup_id:restoreBackupId,confirmacao:failurePreparation.desafio,confirmacao_final:failurePreparation.confirmacao_final,motivo:'Teste de rollback da restauração',criar_backup_seguranca:true}, ${admin}); false } catch(error) { error.code === 'BACKUP_RESTORE_FAILED' }`, context)
+assert(restoreFailureRolledBack, 'falha de restauração não acionou rollback automático')
+assert(currentSpreadsheet.getSheetByName('ativos').values[1][0] === 'CURRENT-BEFORE-FAILURE', 'rollback não recuperou aba já restaurada')
+assert(currentSpreadsheet.getSheetByName('os_acoes').values[1][0] === 'CURRENT-OS-BEFORE-FAILURE', 'rollback não recuperou a aba que falhou durante a escrita')
 
 const monitoring = evaluate(`adminMonitoramentoEstado_({}, ${admin})`)
 assert(monitoring.health.ok && monitoring.diagnostico.dry_run, 'monitoramento alterou a base ou não retornou saúde')
 
 console.log('GOVERNANÇA ADMINISTRATIVA E2E EM MEMÓRIA APROVADA')
 console.log('Documentos, revisões, vínculos, redação de segredos e rollback transacional conferidos')
-console.log('Backup exige confirmação, permanece privado e não expõe restauração destrutiva')
+console.log('Restauração exige duas confirmações, cria safety backup e preserva identidade, sessões e configuração')

@@ -17,6 +17,14 @@ const ADMIN_DOCUMENT_ALLOWED_MIME = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "text/csv"
 ];
+const ADMIN_RESTORE_PROTECTED_SHEETS = [
+  "config","usuarios","sessoes","audit_log","configuracao_versoes","configuracao_rascunhos","execucao_locks"
+];
+const ADMIN_RESTORE_REQUIRED_SHEETS = [
+  "plantas","setores","linhas","ativos","componentes","planos_manutencao","plano_itens","ordens_servico","os_acoes"
+];
+const ADMIN_RESTORE_MAX_CELLS = 600000;
+const ADMIN_RESTORE_FINAL_CONFIRMATION = "ENTENDO QUE OS DADOS OPERACIONAIS SERAO SUBSTITUIDOS";
 
 function adminGovernanceEnsureSchema_(){
   var ss = getSpreadsheet_();
@@ -275,7 +283,23 @@ function adminBackupsListar_(p, auth){
     });
   }
   items.sort(function(a,b){ return clean_(b.criado_em).localeCompare(clean_(a.criado_em)); });
-  return {total:items.length, backups:items, pasta_id:folder.getId(), restauracao_disponivel:false};
+  return {
+    total:items.length, backups:items, pasta_id:folder.getId(), restauracao_disponivel:items.length > 0,
+    escopo_restauracao:"OPERACIONAL_SEGURO", abas_protegidas:ADMIN_RESTORE_PROTECTED_SHEETS.slice()
+  };
+}
+
+function adminBackupCreateCopy_(auth, reason, userAgent, auditAction){
+  var spreadsheet = getSpreadsheet_();
+  SpreadsheetApp.flush();
+  var source = DriveApp.getFileById(spreadsheet.getId());
+  var prefix = auditAction === "SAFETY_BACKUP_CREATED" ? "FAB-Control-Safety" : "FAB-Control-Backup";
+  var name = prefix+"-"+FAB.VERSION+"-"+Utilities.formatDate(new Date(), FAB.TZ, "yyyyMMdd-HHmmss");
+  var copy = source.makeCopy(name, adminBackupFolder_());
+  copy.setDescription("Backup criado pelo Fab Control. Motivo: "+clean_(reason));
+  var result = {id:copy.getId(), nome:copy.getName(), tamanho_bytes:copy.getSize(), criado_em:copy.getDateCreated().toISOString(), url:copy.getUrl()};
+  audit_(auth, auditAction || "BACKUP_CREATED", "spreadsheet", spreadsheet.getId(), null, result, clean_(userAgent));
+  return result;
 }
 
 function adminBackupCriar_(p, auth){
@@ -285,15 +309,153 @@ function adminBackupCriar_(p, auth){
   var lock = LockService.getScriptLock();
   if(!lock.tryLock(20000)) err_("BACKUP_BUSY", "Outro processo administrativo está em andamento.", 409);
   try{
-    var spreadsheet = getSpreadsheet_();
+    return {created:true, backup:adminBackupCreateCopy_(auth, p.motivo, p.user_agent, "BACKUP_CREATED"), restauracao_disponivel:true};
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminBackupFindManaged_(backupId){
+  var id = clean_(backupId);
+  if(!id) err_("BACKUP_REQUIRED", "Selecione um backup para restaurar.", 400);
+  var iterator = adminBackupFolder_().getFiles();
+  while(iterator.hasNext()){
+    var file = iterator.next();
+    if(String(file.getId()) === id) return file;
+  }
+  err_("BACKUP_NOT_MANAGED", "O arquivo selecionado não pertence ao diretório privado de backups.", 404);
+}
+
+function adminBackupRestorePreview_(backupId){
+  var currentId = getSpreadsheet_().getId();
+  if(String(backupId) === String(currentId)) err_("BACKUP_CURRENT_FILE_FORBIDDEN", "A base atual não pode ser usada como origem de restauração.", 409);
+  var spreadsheet;
+  try { spreadsheet = SpreadsheetApp.openById(backupId); }
+  catch(error){ err_("BACKUP_SPREADSHEET_INVALID", "O backup não é uma planilha Google válida ou acessível.", 400); }
+  var sourceNames = spreadsheet.getSheets().map(function(sheet){ return sheet.getName(); });
+  var restorable = Object.keys(SH).filter(function(name){
+    return ADMIN_RESTORE_PROTECTED_SHEETS.indexOf(name) < 0 && sourceNames.indexOf(name) >= 0;
+  });
+  var requiredMissing = ADMIN_RESTORE_REQUIRED_SHEETS.filter(function(name){ return sourceNames.indexOf(name) < 0; });
+  if(requiredMissing.length) err_("BACKUP_REQUIRED_SHEETS_MISSING", "O backup não possui as abas operacionais obrigatórias: "+requiredMissing.join(", ")+".", 409);
+  var totalCells = restorable.reduce(function(total, name){
+    var sheet = spreadsheet.getSheetByName(name);
+    return total + Math.max(sheet.getLastRow(), 1) * Math.max(sheet.getLastColumn(), 1);
+  }, 0);
+  if(totalCells > ADMIN_RESTORE_MAX_CELLS) err_("BACKUP_RESTORE_TOO_LARGE", "O backup excede o limite seguro de "+ADMIN_RESTORE_MAX_CELLS+" células por restauração.", 413);
+  return {
+    spreadsheet:spreadsheet, abas_restauradas:restorable,
+    abas_ausentes:Object.keys(SH).filter(function(name){ return sourceNames.indexOf(name) < 0; }),
+    total_celulas:totalCells
+  };
+}
+
+function adminBackupPrepararRestauracao_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  var file = adminBackupFindManaged_(p.backup_id);
+  var preview = adminBackupRestorePreview_(file.getId());
+  var token = authRandomToken_("RESTORE");
+  var tokenHash = sha256_(token);
+  var challenge = "RESTAURAR "+tokenHash.slice(0, 6).toUpperCase();
+  var expiresAt = addMinutes_(new Date(), 10);
+  var pending = {
+    backup_id:file.getId(), backup_nome:file.getName(), usuario_id:auth.usuario_id,
+    challenge:challenge, abas_restauradas:preview.abas_restauradas,
+    abas_ausentes:preview.abas_ausentes, total_celulas:preview.total_celulas,
+    expira_em:iso_(expiresAt)
+  };
+  CacheService.getScriptCache().put("ADMIN_RESTORE_"+tokenHash, JSON.stringify(pending), 600);
+  return {
+    prepared:true, token:token, desafio:challenge,
+    confirmacao_final:ADMIN_RESTORE_FINAL_CONFIRMATION,
+    backup:{id:file.getId(), nome:file.getName(), criado_em:file.getDateCreated().toISOString()},
+    escopo:"OPERACIONAL_SEGURO", abas_restauradas:preview.abas_restauradas,
+    abas_protegidas:ADMIN_RESTORE_PROTECTED_SHEETS.slice(), abas_ausentes:preview.abas_ausentes,
+    total_celulas:preview.total_celulas, expira_em:pending.expira_em
+  };
+}
+
+function adminBackupRestoreSheetValues_(sourceSheet, targetSheet){
+  var rowsCount = Math.max(sourceSheet.getLastRow(), 1);
+  var columnsCount = Math.max(sourceSheet.getLastColumn(), 1);
+  if(targetSheet.getMaxRows() < rowsCount) targetSheet.insertRowsAfter(targetSheet.getMaxRows(), rowsCount - targetSheet.getMaxRows());
+  if(targetSheet.getMaxColumns() < columnsCount) targetSheet.insertColumnsAfter(targetSheet.getMaxColumns(), columnsCount - targetSheet.getMaxColumns());
+  var values = sourceSheet.getRange(1, 1, rowsCount, columnsCount).getValues();
+  targetSheet.clearContents();
+  targetSheet.getRange(1, 1, rowsCount, columnsCount).setValues(values);
+}
+
+function adminBackupRestoreOperational_(sourceSpreadsheet, targetSpreadsheet, sheetNames, safetySpreadsheet){
+  var affected = [];
+  var created = [];
+  try{
+    sheetNames.forEach(function(name){
+      var source = sourceSpreadsheet.getSheetByName(name);
+      var target = targetSpreadsheet.getSheetByName(name);
+      if(!target){
+        target = targetSpreadsheet.insertSheet(name);
+        target.getRange(1, 1, 1, SH[name].length).setValues([SH[name]]);
+        created.push(name);
+      }
+      affected.push(name);
+      adminBackupRestoreSheetValues_(source, target);
+    });
     SpreadsheetApp.flush();
-    var source = DriveApp.getFileById(spreadsheet.getId());
-    var name = "FAB-Control-Backup-"+FAB.VERSION+"-"+Utilities.formatDate(new Date(), FAB.TZ, "yyyyMMdd-HHmmss");
-    var copy = source.makeCopy(name, adminBackupFolder_());
-    copy.setDescription("Backup criado pelo Fab Control. Motivo: "+clean_(p.motivo));
-    var result = {id:copy.getId(), nome:copy.getName(), tamanho_bytes:copy.getSize(), criado_em:copy.getDateCreated().toISOString(), url:copy.getUrl()};
-    audit_(auth, "BACKUP_CREATED", "spreadsheet", spreadsheet.getId(), null, result, clean_(p.user_agent));
-    return {created:true, backup:result, restauracao_disponivel:false};
+    return affected;
+  } catch(error){
+    var rollbackErrors = [];
+    affected.slice().reverse().forEach(function(name){
+      try{
+        if(created.indexOf(name) >= 0){
+          var createdSheet = targetSpreadsheet.getSheetByName(name);
+          if(createdSheet) targetSpreadsheet.deleteSheet(createdSheet);
+          return;
+        }
+        var rollbackSource = safetySpreadsheet.getSheetByName(name);
+        var rollbackTarget = targetSpreadsheet.getSheetByName(name);
+        if(rollbackSource && rollbackTarget) adminBackupRestoreSheetValues_(rollbackSource, rollbackTarget);
+      } catch(rollbackError){ rollbackErrors.push(name); }
+    });
+    SpreadsheetApp.flush();
+    if(rollbackErrors.length) err_("BACKUP_RESTORE_ROLLBACK_FAILED", "A restauração falhou e exige recuperação manual das abas: "+rollbackErrors.join(", ")+".", 500);
+    err_("BACKUP_RESTORE_FAILED", "A restauração falhou e as abas já alteradas foram revertidas pelo backup de segurança.", 500);
+  }
+}
+
+function adminBackupConfirmarRestauracao_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["token","backup_id","confirmacao","confirmacao_final","motivo"]);
+  if(p.criar_backup_seguranca !== true) err_("BACKUP_SAFETY_COPY_REQUIRED", "A cópia automática de segurança é obrigatória.", 400);
+  if(clean_(p.motivo).length < 8) err_("BACKUP_RESTORE_REASON_REQUIRED", "Informe o motivo detalhado da restauração.", 400);
+  var tokenHash = sha256_(clean_(p.token));
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get("ADMIN_RESTORE_"+tokenHash);
+  if(!cached) err_("BACKUP_RESTORE_TOKEN_EXPIRED", "A preparação expirou. Analise o backup novamente.", 409);
+  var pending;
+  try { pending = JSON.parse(cached); } catch(error){ err_("BACKUP_RESTORE_TOKEN_INVALID", "Preparação de restauração inválida.", 409); }
+  if(String(pending.usuario_id) !== String(auth.usuario_id) || String(pending.backup_id) !== String(p.backup_id)) err_("BACKUP_RESTORE_CONTEXT_MISMATCH", "O backup ou administrador não corresponde à preparação.", 403);
+  if(upper_(p.confirmacao) !== upper_(pending.challenge)) err_("BACKUP_RESTORE_CHALLENGE_REQUIRED", "Digite exatamente o desafio de restauração apresentado.", 400);
+  if(upper_(p.confirmacao_final) !== ADMIN_RESTORE_FINAL_CONFIRMATION) err_("BACKUP_RESTORE_FINAL_CONFIRMATION_REQUIRED", "A segunda confirmação obrigatória não foi aceita.", 400);
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(30000)) err_("BACKUP_RESTORE_BUSY", "Outra operação administrativa está em andamento.", 409);
+  try{
+    var file = adminBackupFindManaged_(pending.backup_id);
+    var preview = adminBackupRestorePreview_(file.getId());
+    var target = getSpreadsheet_();
+    var safety = adminBackupCreateCopy_(auth, "Cópia automática antes da restauração: "+clean_(p.motivo), p.user_agent, "SAFETY_BACKUP_CREATED");
+    var safetySpreadsheet;
+    try { safetySpreadsheet = SpreadsheetApp.openById(safety.id); }
+    catch(error){ err_("BACKUP_SAFETY_COPY_UNAVAILABLE", "A cópia de segurança foi criada, mas ainda não está disponível. Nenhum dado foi alterado.", 503); }
+    cache.remove("ADMIN_RESTORE_"+tokenHash);
+    var restored = adminBackupRestoreOperational_(preview.spreadsheet, target, preview.abas_restauradas, safetySpreadsheet);
+    DB_CACHE = {};
+    var result = {
+      restored:true, backup_id:file.getId(), backup_nome:file.getName(), escopo:"OPERACIONAL_SEGURO",
+      abas_restauradas:restored, abas_protegidas:ADMIN_RESTORE_PROTECTED_SHEETS.slice(),
+      backup_seguranca:safety, motivo:clean_(p.motivo), restaurado_em:now_()
+    };
+    audit_(auth, "BACKUP_OPERATIONAL_RESTORED", "spreadsheet", target.getId(), null, result, clean_(p.user_agent));
+    return result;
   } finally {
     lock.releaseLock();
   }

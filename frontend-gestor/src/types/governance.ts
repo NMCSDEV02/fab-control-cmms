@@ -136,10 +136,38 @@ export interface AdminBackupListData {
   backups: AdminBackup[]
   pasta_id: string
   restauracao_disponivel: boolean
+  escopo_restauracao: 'OPERACIONAL_SEGURO'
+  abas_protegidas: string[]
 }
 
 export interface AdminBackupCreateData {
   created: boolean
   backup: AdminBackup
   restauracao_disponivel: boolean
+}
+
+export interface AdminBackupRestorePreparation {
+  prepared: boolean
+  token: string
+  desafio: string
+  confirmacao_final: string
+  backup: Pick<AdminBackup, 'id' | 'nome' | 'criado_em'>
+  escopo: 'OPERACIONAL_SEGURO'
+  abas_restauradas: string[]
+  abas_protegidas: string[]
+  abas_ausentes: string[]
+  total_celulas: number
+  expira_em: string
+}
+
+export interface AdminBackupRestoreResult {
+  restored: boolean
+  backup_id: string
+  backup_nome: string
+  escopo: 'OPERACIONAL_SEGURO'
+  abas_restauradas: string[]
+  abas_protegidas: string[]
+  backup_seguranca: AdminBackup
+  motivo: string
+  restaurado_em: string
 }

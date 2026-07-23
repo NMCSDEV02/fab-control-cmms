@@ -2,6 +2,8 @@ import type {
   AdminAuditListData,
   AdminBackupCreateData,
   AdminBackupListData,
+  AdminBackupRestorePreparation,
+  AdminBackupRestoreResult,
   AdminDocumentDetailData,
   AdminDocumentFileInput,
   AdminDocumentListData,
@@ -86,4 +88,25 @@ export function listAdminBackups(signal?: AbortSignal): Promise<AdminBackupListD
 
 export function createAdminBackup(reason: string, confirmation: string): Promise<AdminBackupCreateData> {
   return writeGovernance('admin.backups.criar', { motivo: reason, confirmacao: confirmation })
+}
+
+export function prepareAdminBackupRestore(backupId: string): Promise<AdminBackupRestorePreparation> {
+  return writeGovernance('admin.backups.preparar_restauracao', { backup_id: backupId })
+}
+
+export function confirmAdminBackupRestore(input: {
+  token: string
+  backupId: string
+  challenge: string
+  finalConfirmation: string
+  reason: string
+}): Promise<AdminBackupRestoreResult> {
+  return writeGovernance('admin.backups.confirmar_restauracao', {
+    token: input.token,
+    backup_id: input.backupId,
+    confirmacao: input.challenge,
+    confirmacao_final: input.finalConfirmation,
+    motivo: input.reason,
+    criar_backup_seguranca: true,
+  })
 }
