@@ -192,6 +192,8 @@ const publicChecks = [
   'configurationEngineRequiresAuthentication',
   'commercialAccessEndpointDeclared',
   'commercialAccessRequiresAuthentication',
+  'maintenanceExchangeClosedByDefault',
+  'maintenanceAccessEndpointHiddenFromBootstrap',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
   'governanceEndpointsDeclared',

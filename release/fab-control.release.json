@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "CEB8364CD5B7B4580E2648DCE386AED217CFB2FD7215ACD31BAC8FF0F1B7CE23",
-    "immutableAppsScriptVersion": 19,
-    "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
+    "backendSourceSha256": "87A6415CD4EE93D57E22FE570FA46F425C0184A403A207259F86D94C3E6C5DB9",
+    "immutableAppsScriptVersion": 20,
+    "deploymentId": "AKfycbxR3ZOpsbo74fjWig9rPoKAPUX_pqCWjXjy2qeFDP5cULYhkZnMtWJabGkkZdDw-jpaPQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "948ae5a"
+    "sourceGitCommit": "4a99b45"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -107,6 +107,7 @@
     "motorInternalMaintenanceAccessE2E": "approved",
     "motorInternalMaintenanceVisual": "approved-desktop-mobile-isolated-entry-no-horizontal-overflow",
     "motorCommercialAccessRemote": "approved-legacy-complete",
+    "motorInternalMaintenanceRemote": "approved-closed-by-default-hidden-from-bootstrap",
     "adminCommercialAccessVisual": "approved-chrome-plan-summary-and-module-locks",
     "adminImportContract": "approved",
     "adminImportE2E": "approved",
@@ -126,10 +127,10 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "CEB8364CD5B7B4580E2648DCE386AED217CFB2FD7215ACD31BAC8FF0F1B7CE23",
-    "immutableAppsScriptVersion": 19,
-    "sourceGitCommit": "948ae5a",
-    "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
+    "backendSourceSha256": "87A6415CD4EE93D57E22FE570FA46F425C0184A403A207259F86D94C3E6C5DB9",
+    "immutableAppsScriptVersion": 20,
+    "sourceGitCommit": "4a99b45",
+    "deploymentId": "AKfycbxR3ZOpsbo74fjWig9rPoKAPUX_pqCWjXjy2qeFDP5cULYhkZnMtWJabGkkZdDw-jpaPQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
@@ -144,6 +145,8 @@
       "commercialAccessEndpointDeclared": "approved",
       "commercialAccessRequiresAuthentication": "approved",
       "commercialPolicyRuntime": "approved",
+      "maintenanceExchangeClosedByDefault": "approved",
+      "maintenanceAccessEndpointHiddenFromBootstrap": "approved",
       "adminImportEndpointDeclared": "approved",
       "adminImportRequiresAuthentication": "approved",
       "manualRegistrationEndpointDeclared": "approved",
