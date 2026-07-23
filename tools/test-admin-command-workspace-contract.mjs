@@ -28,6 +28,27 @@ const governanceApi = read('frontend-gestor/src/services/api/governance.ts')
 const governanceBackend = read('backend/apps-script/29_Admin_Governanca.js')
 const styles = read('frontend-gestor/src/styles/global.css')
 
+for (const snapTarget of ['maximize', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+  assert(workspace.includes(`'${snapTarget}'`), `encaixe de janela ausente: ${snapTarget}`)
+}
+assert(workspace.includes('detectSnapTarget('), 'arraste nao detecta bordas e cantos do Workspace')
+assert(workspace.includes('snapWindow('), 'arraste nao aplica o encaixe selecionado')
+assert(workspace.includes('windowLayerRef'), 'coordenadas das janelas nao usam a area util do Workspace')
+assert(workspace.includes('const restoresOnDrag = item.maximized'), 'janela maximizada nao restaura sob o ponteiro ao arrastar')
+assert(workspace.includes('if (distance < 5) return'), 'clique simples no titulo pode ser confundido com arraste')
+assert(workspace.includes('restoreBounds'), 'encaixe perde o tamanho anterior da janela')
+assert(workspace.includes('tiled: true'), 'janelas organizadas nao usam modo compacto')
+assert(workspace.includes('const divider = 1'), 'layout organizado nao preserva o divisor de 1 px')
+assert(workspace.includes('admin-window-snap-preview'), 'encaixe nao possui pre-visualizacao visual')
+assert(styles.includes('container-type: inline-size'), 'modulos nao respondem a largura da propria janela')
+assert(styles.includes('@container admin-window'), 'layouts internos nao possuem pontos de adaptacao por janela')
+assert(styles.includes('scrollbar-width: none'), 'barra de rolagem permanece visivel no Firefox')
+assert(styles.includes('::-webkit-scrollbar'), 'barra de rolagem permanece visivel no Chromium')
+assert(styles.includes('touch-action: none'), 'barra de titulo nao protege o gesto de arraste por ponteiro')
+assert(styles.includes('.admin-app-window.is-tiled'), 'janela encaixada nao possui acabamento proprio')
+assert(styles.includes('flex-basis: 24px'), 'cabecalho encaixado nao foi compactado')
+assert(styles.includes('max-height: none'), 'janela encaixada nao ocupa toda a altura util')
+
 for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
   assert(page.includes(`tab === '${moduleId}'`), `módulo sem conteúdo: ${moduleId}`)

@@ -7195,6 +7195,47 @@ p {
   resize: none;
 }
 
+.admin-app-window.is-tiled {
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  resize: none;
+}
+
+.admin-app-window.is-tiled .admin-app-window__bar {
+  height: 24px;
+  flex-basis: 24px;
+  padding: 0 3px 0 7px;
+  border-bottom-color: #e8edf1;
+  background: rgb(248 250 251 / 88%);
+}
+
+.admin-app-window.is-tiled .admin-app-window__code,
+.admin-app-window.is-tiled .admin-app-window__state {
+  display: none;
+}
+
+.admin-app-window.is-tiled .admin-app-window__bar > strong {
+  color: #51636b;
+  font-size: 0.6rem;
+  font-weight: 700;
+  opacity: 0.38;
+  transition: opacity 120ms ease;
+}
+
+.admin-app-window.is-tiled .admin-app-window__bar:hover > strong {
+  opacity: 0.8;
+}
+
+.admin-app-window.is-tiled .admin-app-window__controls button {
+  width: 19px;
+  height: 19px;
+  border-radius: 3px;
+  font-size: 0.63rem;
+}
+
 .admin-app-window.is-minimized,
 .admin-app-window.is-layout-hidden {
   display: none;
@@ -7861,6 +7902,313 @@ p {
   margin-top: 2px;
   color: #667982;
   font-size: 0.57rem;
+}
+
+/* Responsividade e encaixe são calculados pela janela, não pelo viewport. */
+.admin-app-window {
+  container-name: admin-window;
+  container-type: inline-size;
+}
+
+.admin-app-window__bar {
+  touch-action: none;
+  user-select: none;
+}
+
+.admin-app-window__body,
+.admin-app-window__body * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-app-window__body::-webkit-scrollbar,
+.admin-app-window__body *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.admin-window-snap-preview {
+  position: absolute;
+  z-index: 20000;
+  border: 1px solid rgb(18 108 115 / 62%);
+  border-radius: 7px;
+  background: rgb(18 108 115 / 13%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 55%);
+  pointer-events: none;
+  transition: inset 90ms ease, width 90ms ease, height 90ms ease;
+}
+
+.admin-window-snap-preview.is-maximize {
+  inset: 0;
+}
+
+.admin-window-snap-preview.is-left,
+.admin-window-snap-preview.is-right {
+  top: 0;
+  bottom: 0;
+  width: calc(50% - 0.5px);
+}
+
+.admin-window-snap-preview.is-left {
+  left: 0;
+}
+
+.admin-window-snap-preview.is-right {
+  right: 0;
+}
+
+.admin-window-snap-preview.is-top-left,
+.admin-window-snap-preview.is-top-right,
+.admin-window-snap-preview.is-bottom-left,
+.admin-window-snap-preview.is-bottom-right {
+  width: calc(50% - 0.5px);
+  height: calc(50% - 0.5px);
+}
+
+.admin-window-snap-preview.is-top-left {
+  top: 0;
+  left: 0;
+}
+
+.admin-window-snap-preview.is-top-right {
+  top: 0;
+  right: 0;
+}
+
+.admin-window-snap-preview.is-bottom-left {
+  bottom: 0;
+  left: 0;
+}
+
+.admin-window-snap-preview.is-bottom-right {
+  right: 0;
+  bottom: 0;
+}
+
+@container admin-window (max-width: 1050px) {
+  .admin-app-window__body .admin-command-kpis,
+  .admin-app-window__body .admin-technical-metrics,
+  .admin-app-window__body .admin-intervention-metrics,
+  .admin-app-window__body .admin-analytics-kpis,
+  .admin-app-window__body .config-engine__status-grid,
+  .admin-app-window__body .admin-monitoring-grid,
+  .admin-app-window__body .admin-continuity-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-app-window__body .admin-command-dashboard-grid,
+  .admin-app-window__body .admin-command-flow-panel,
+  .admin-app-window__body .admin-technical-columns,
+  .admin-app-window__body .admin-analytics-grid,
+  .admin-app-window__body .config-engine__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-checklist-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-checklist-library {
+    position: static;
+    top: auto;
+    max-height: none;
+  }
+
+  .admin-app-window__body .admin-checklist-models {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    max-height: 220px;
+  }
+
+  .admin-app-window__body .config-sidebar {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-app-window__body .admin-import-layout,
+  .admin-app-window__body .permission-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-import-models {
+    border-right: 0;
+    border-bottom: 1px solid #dce4ee;
+  }
+
+  .admin-app-window__body .admin-analytics-filters {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .admin-app-window__body .admin-governance-toolbar,
+  .admin-app-window__body .admin-documents-workspace .admin-governance-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container admin-window (max-width: 760px) {
+  .admin-app-window__body {
+    padding: 11px;
+  }
+
+  .admin-app-window__body .admin-window-module-heading {
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .admin-app-window__body .admin-window-module-heading h1 {
+    font-size: 1rem;
+  }
+
+  .admin-app-window__body .admin-window-module-heading p {
+    font-size: 0.61rem;
+  }
+
+  .admin-app-window__body .admin-catalog-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-app-window__body .admin-catalog-summary > button,
+  .admin-app-window__body .admin-technical-metrics > article,
+  .admin-app-window__body .admin-technical-metrics > button,
+  .admin-app-window__body .admin-intervention-metrics article {
+    min-height: 60px;
+    padding: 9px 10px;
+  }
+
+  .admin-app-window__body .admin-catalog-panel,
+  .admin-app-window__body .admin-technical-panel,
+  .admin-app-window__body .admin-checklist-builder,
+  .admin-app-window__body .admin-intervention-panel,
+  .admin-app-window__body .config-editor {
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .admin-app-window__body .admin-catalog-panel > header,
+  .admin-app-window__body .admin-technical-panel > header,
+  .admin-app-window__body .admin-intervention-panel > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-app-window__body .admin-catalog-panel > header > div:last-child,
+  .admin-app-window__body .admin-intervention-panel > header > div:last-child {
+    justify-content: flex-start;
+  }
+
+  .admin-app-window__body .admin-checklist-plan-form,
+  .admin-app-window__body .admin-checklist-item-form,
+  .admin-app-window__body .admin-checklist-routing > div,
+  .admin-app-window__body .admin-catalog-form,
+  .admin-app-window__body .admin-document-form,
+  .admin-app-window__body .config-fields,
+  .admin-app-window__body .admin-intervention-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-checklist-plan-form .is-wide,
+  .admin-app-window__body .admin-checklist-item-form .is-wide,
+  .admin-app-window__body .admin-checklist-routing .is-wide,
+  .admin-app-window__body .admin-document-form .is-wide {
+    grid-column: auto;
+  }
+
+  .admin-app-window__body .admin-checklist-actions,
+  .admin-app-window__body .config-actions {
+    position: static;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-app-window__body .admin-checklist-actions > div,
+  .admin-app-window__body .config-actions > div {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .admin-app-window__body .config-actions > span {
+    margin-right: 0;
+  }
+
+  .admin-app-window__body .config-field {
+    grid-template-columns: minmax(0, 1fr) minmax(110px, 0.35fr);
+    min-height: 86px;
+  }
+
+  .admin-app-window__body .config-field:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .admin-app-window__body .config-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-technical-role-table {
+    border: 0;
+  }
+
+  .admin-app-window__body .admin-technical-role-table > div:first-child {
+    display: none;
+  }
+
+  .admin-app-window__body .admin-technical-role-table > article {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+    margin-bottom: 7px;
+    border: 1px solid #e1e7ef;
+    border-radius: 8px;
+  }
+
+  .admin-app-window__body .admin-technical-role-table > article > span:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .admin-app-window__body .admin-technical-role-table > article > button {
+    justify-self: end;
+  }
+
+  .admin-app-window__body .admin-governance-toolbar,
+  .admin-app-window__body .admin-documents-workspace .admin-governance-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container admin-window (max-width: 520px) {
+  .admin-app-window__state,
+  .admin-window-release,
+  .admin-app-window__body .admin-window-module-heading p {
+    display: none;
+  }
+
+  .admin-app-window__body .admin-command-kpis,
+  .admin-app-window__body .admin-technical-metrics,
+  .admin-app-window__body .admin-intervention-metrics,
+  .admin-app-window__body .admin-analytics-kpis,
+  .admin-app-window__body .config-engine__status-grid,
+  .admin-app-window__body .admin-monitoring-grid,
+  .admin-app-window__body .admin-continuity-summary,
+  .admin-app-window__body .admin-catalog-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-checklist-item > header {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-checklist-item > header > div {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .admin-app-window__body .config-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .admin-app-window__body .config-field > .permission-switch {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 1180px) and (min-width: 901px) {

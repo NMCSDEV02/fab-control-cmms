@@ -59,15 +59,32 @@ interface WorkspaceWindow {
   minimized: boolean
   maximized: boolean
   layoutHidden: boolean
+  tiled: boolean
+  snapTarget: WindowSnapTarget | null
+  restoreBounds: WindowBounds | null
+}
+
+interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 interface DragState {
   module: AdminModule
   offsetX: number
   offsetY: number
+  startClientX: number
+  startClientY: number
+  activated: boolean
+  geometrySynced: boolean
+  restoreWidth: number
+  restoreHeight: number
 }
 
 type WindowLayout = 'smart' | 'focus' | 'columns' | 'rows' | 'grid' | 'cascade'
+type WindowSnapTarget = 'maximize' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 const MODULES: WorkspaceModule[] = [
   { id: 'overview', code: 'VG', label: 'Visão geral', description: 'Centro de comando', Icon: DashboardIcon },
@@ -199,6 +216,71 @@ function createWindow(module: AdminModule, index: number, zIndex: number): Works
     minimized: false,
     maximized: true,
     layoutHidden: false,
+    tiled: true,
+    snapTarget: null,
+    restoreBounds: null,
+  }
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum)
+}
+
+function detectSnapTarget(x: number, y: number, width: number, height: number): WindowSnapTarget | null {
+  const edge = 34
+  const corner = 54
+  if (y <= edge && x <= corner) return 'top-left'
+  if (y <= edge && x >= width - corner) return 'top-right'
+  if (y >= height - edge && x <= corner) return 'bottom-left'
+  if (y >= height - edge && x >= width - corner) return 'bottom-right'
+  if (y <= edge) return 'maximize'
+  if (x <= edge) return 'left'
+  if (x >= width - edge) return 'right'
+  return null
+}
+
+function snapWindow(
+  item: WorkspaceWindow,
+  target: WindowSnapTarget,
+  width: number,
+  height: number,
+  zIndex: number,
+): WorkspaceWindow {
+  const restoreBounds = item.restoreBounds ?? {
+    x: item.x,
+    y: item.y,
+    width: item.width,
+    height: item.height,
+  }
+  if (target === 'maximize') {
+    return {
+      ...item,
+      zIndex,
+      maximized: true,
+      layoutHidden: false,
+      tiled: true,
+      snapTarget: target,
+      restoreBounds,
+    }
+  }
+  const divider = 1
+  const halfWidth = (width - divider) / 2
+  const halfHeight = (height - divider) / 2
+  const left = target === 'left' || target.endsWith('left')
+  const top = target === 'left' || target === 'right' || target.startsWith('top')
+  const isHalf = target === 'left' || target === 'right'
+  return {
+    ...item,
+    x: left ? 0 : halfWidth + divider,
+    y: top ? 0 : halfHeight + divider,
+    width: halfWidth,
+    height: isHalf ? height : halfHeight,
+    zIndex,
+    maximized: false,
+    layoutHidden: false,
+    tiled: true,
+    snapTarget: target,
+    restoreBounds,
   }
 }
 
@@ -213,8 +295,10 @@ export function AdminWorkspace({
   const zIndexRef = useRef(2)
   const lastActiveModuleRef = useRef(activeModule)
   const workspaceRef = useRef<HTMLDivElement | null>(null)
+  const windowLayerRef = useRef<HTMLDivElement | null>(null)
   const windowsRef = useRef<WorkspaceWindow[]>([])
   const dragRef = useRef<DragState | null>(null)
+  const snapTargetRef = useRef<WindowSnapTarget | null>(null)
   const paletteInputRef = useRef<HTMLInputElement | null>(null)
   const [windows, setWindows] = useState<WorkspaceWindow[]>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -223,6 +307,7 @@ export function AdminWorkspace({
   const [profileOpen, setProfileOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [dragging, setDragging] = useState(false)
+  const [snapTarget, setSnapTarget] = useState<WindowSnapTarget | null>(null)
   const [windowLayout, setWindowLayout] = useState<WindowLayout>('smart')
   const [autoArrange, setAutoArrange] = useState(false)
   const [cacheBaseMb, setCacheBaseMb] = useState(10)
@@ -290,33 +375,80 @@ export function AdminWorkspace({
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
       const drag = dragRef.current
-      const workspace = workspaceRef.current
-      if (!drag || !workspace) return
-      const bounds = workspace.getBoundingClientRect()
+      const layer = windowLayerRef.current
+      if (!drag || !layer) return
+      if (!drag.activated) {
+        const distance = Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY)
+        if (distance < 5) return
+        drag.activated = true
+        setDragging(true)
+      }
+      const syncGeometry = !drag.geometrySynced
+      drag.geometrySynced = true
+      const bounds = layer.getBoundingClientRect()
+      const pointerX = event.clientX - bounds.left
+      const pointerY = event.clientY - bounds.top
+      const nextSnapTarget = detectSnapTarget(pointerX, pointerY, bounds.width, bounds.height)
+      if (nextSnapTarget !== snapTargetRef.current) {
+        snapTargetRef.current = nextSnapTarget
+        setSnapTarget(nextSnapTarget)
+      }
       setWindows((current) => current.map((item) => {
-        if (item.module !== drag.module || item.maximized) return item
-        const maximumX = Math.max(0, bounds.width - Math.min(item.width, 260))
+        if (item.module !== drag.module) return item
+        const activeItem = syncGeometry
+          ? {
+              ...item,
+              width: drag.restoreWidth,
+              height: drag.restoreHeight,
+              maximized: false,
+              tiled: false,
+              snapTarget: null,
+              restoreBounds: null,
+            }
+          : item
+        const maximumX = Math.max(0, bounds.width - activeItem.width)
         const maximumY = Math.max(0, bounds.height - 34)
         return {
-          ...item,
-          x: Math.max(0, Math.min(maximumX, event.clientX - bounds.left - drag.offsetX)),
-          y: Math.max(0, Math.min(maximumY, event.clientY - bounds.top - drag.offsetY)),
+          ...activeItem,
+          x: clamp(pointerX - drag.offsetX, 0, maximumX),
+          y: clamp(pointerY - drag.offsetY, 0, maximumY),
         }
       }))
     }
 
     function handlePointerUp() {
+      const drag = dragRef.current
+      const layer = windowLayerRef.current
+      const target = snapTargetRef.current
+      if (drag?.activated && layer && target) {
+        const bounds = layer.getBoundingClientRect()
+        const nextZIndex = ++zIndexRef.current
+        setWindows((current) => current.map((item) => (
+          item.module === drag.module
+            ? snapWindow(item, target, bounds.width, bounds.height, nextZIndex)
+            : item
+        )))
+      }
       dragRef.current = null
+      snapTargetRef.current = null
+      setSnapTarget(null)
+      setDragging(false)
+    }
+
+    function handlePointerCancel() {
+      dragRef.current = null
+      snapTargetRef.current = null
+      setSnapTarget(null)
       setDragging(false)
     }
 
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerCancel)
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerCancel)
     }
   }, [])
 
@@ -329,27 +461,76 @@ export function AdminWorkspace({
   }
 
   function beginDrag(event: ReactPointerEvent<HTMLDivElement>, item: WorkspaceWindow) {
-    if (item.maximized || (event.target as HTMLElement).closest('button')) return
-    const workspace = workspaceRef.current
-    if (!workspace) return
-    const bounds = workspace.getBoundingClientRect()
+    if ((event.target as HTMLElement).closest('button')) return
+    const layer = windowLayerRef.current
+    const windowElement = event.currentTarget.closest<HTMLElement>('.admin-app-window')
+    if (!layer || !windowElement) return
+    const bounds = layer.getBoundingClientRect()
+    const windowBounds = windowElement.getBoundingClientRect()
+    const pointerX = event.clientX - bounds.left
+    const pointerY = event.clientY - bounds.top
+    const restoreBounds = item.restoreBounds ?? item
+    const restoresOnDrag = item.maximized || Boolean(item.snapTarget)
+    const restoredWidth = restoresOnDrag
+      ? Math.min(Math.max(680, restoreBounds.width), Math.max(320, bounds.width - 24))
+      : windowBounds.width
+    const restoredHeight = restoresOnDrag
+      ? Math.min(Math.max(460, restoreBounds.height), Math.max(230, bounds.height - 24))
+      : windowBounds.height
+    const horizontalRatio = restoresOnDrag
+      ? clamp((event.clientX - windowBounds.left) / Math.max(1, windowBounds.width), 0.12, 0.88)
+      : 0
     dragRef.current = {
       module: item.module,
-      offsetX: event.clientX - bounds.left - item.x,
-      offsetY: event.clientY - bounds.top - item.y,
+      offsetX: restoresOnDrag ? restoredWidth * horizontalRatio : pointerX - item.x,
+      offsetY: restoresOnDrag ? Math.min(17, event.clientY - windowBounds.top) : pointerY - item.y,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      activated: false,
+      geometrySynced: false,
+      restoreWidth: restoredWidth,
+      restoreHeight: restoredHeight,
     }
-    setDragging(true)
-    focusWindow(item.module)
     event.preventDefault()
   }
 
   function toggleMaximize(module: AdminModule) {
     const nextZIndex = ++zIndexRef.current
-    setWindows((current) => current.map((item) => (
-      item.module === module
-        ? { ...item, minimized: false, maximized: !item.maximized, layoutHidden: false, zIndex: nextZIndex }
-        : item
-    )))
+    setWindows((current) => current.map((item) => {
+      if (item.module !== module) return item
+      if (item.maximized) {
+        const restored = item.restoreBounds ?? item
+        return {
+          ...item,
+          x: restored.x,
+          y: restored.y,
+          width: restored.width,
+          height: restored.height,
+          minimized: false,
+          maximized: false,
+          layoutHidden: false,
+          tiled: false,
+          snapTarget: null,
+          restoreBounds: null,
+          zIndex: nextZIndex,
+        }
+      }
+      return {
+        ...item,
+        minimized: false,
+        maximized: true,
+        layoutHidden: false,
+        tiled: true,
+        snapTarget: 'maximize',
+        restoreBounds: item.restoreBounds ?? {
+          x: item.x,
+          y: item.y,
+          width: item.width,
+          height: item.height,
+        },
+        zIndex: nextZIndex,
+      }
+    }))
     onModuleChange(module)
   }
 
@@ -364,10 +545,11 @@ export function AdminWorkspace({
   }
 
   const arrangeWindows = useCallback((layout: WindowLayout) => {
-    const workspace = workspaceRef.current
-    if (!workspace) return
-    const bounds = workspace.getBoundingClientRect()
-    const gap = 10
+    const layer = windowLayerRef.current
+    if (!layer) return
+    const bounds = layer.getBoundingClientRect()
+    const freeGap = 10
+    const divider = 1
 
     setWindows((current) => current.map((item) => {
       const available = current.filter((windowItem) => !windowItem.minimized)
@@ -382,12 +564,16 @@ export function AdminWorkspace({
       if (layout === 'focus') {
         return {
           ...item,
-          x: 0,
-          y: 0,
-          width: bounds.width,
-          height: bounds.height,
           maximized: true,
           layoutHidden: false,
+          tiled: true,
+          snapTarget: 'maximize',
+          restoreBounds: item.restoreBounds ?? {
+            x: item.x,
+            y: item.y,
+            width: item.width,
+            height: item.height,
+          },
           zIndex: ++zIndexRef.current,
         }
       }
@@ -397,8 +583,11 @@ export function AdminWorkspace({
           ...item,
           maximized: false,
           layoutHidden: false,
-          x: gap + index * 28,
-          y: gap + index * 28,
+          tiled: false,
+          snapTarget: null,
+          restoreBounds: null,
+          x: freeGap + index * 28,
+          y: freeGap + index * 28,
           width: Math.max(320, Math.min(1040, bounds.width - 90)),
           height: Math.max(230, Math.min(700, bounds.height - 90)),
           zIndex: ++zIndexRef.current,
@@ -420,14 +609,17 @@ export function AdminWorkspace({
       const rows = Math.ceil(count / columns)
       const column = index % columns
       const row = Math.floor(index / columns)
-      const width = Math.max(320, (bounds.width - gap * (columns + 1)) / columns)
-      const height = Math.max(230, (bounds.height - gap * (rows + 1)) / rows)
+      const width = Math.max(320, (bounds.width - divider * (columns - 1)) / columns)
+      const height = Math.max(230, (bounds.height - divider * (rows - 1)) / rows)
       return {
         ...item,
         maximized: layout === 'smart' && count === 1,
         layoutHidden: false,
-        x: gap + column * (width + gap),
-        y: gap + row * (height + gap),
+        tiled: true,
+        snapTarget: null,
+        restoreBounds: null,
+        x: column * (width + divider),
+        y: row * (height + divider),
         width,
         height,
         zIndex: ++zIndexRef.current,
@@ -542,14 +734,15 @@ export function AdminWorkspace({
             </section>
           ) : null}
 
-          <div className="admin-desktop-window-layer">
+          <div className="admin-desktop-window-layer" ref={windowLayerRef}>
+            {snapTarget ? <div className={`admin-window-snap-preview is-${snapTarget}`} aria-hidden="true" /> : null}
             {windows.map((item) => {
               const module = getModule(item.module)
               const heading = MODULE_HEADINGS[item.module]
               return (
                 <section
                   key={item.module}
-                  className={`admin-app-window${item.maximized ? ' is-maximized' : ''}${item.minimized ? ' is-minimized' : ''}${item.layoutHidden ? ' is-layout-hidden' : ''}`}
+                  className={`admin-app-window${item.maximized ? ' is-maximized' : ''}${item.tiled ? ' is-tiled' : ''}${item.minimized ? ' is-minimized' : ''}${item.layoutHidden ? ' is-layout-hidden' : ''}`}
                   style={{
                     left: item.x,
                     top: item.y,
