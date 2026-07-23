@@ -20,10 +20,10 @@
   "target": {
     "environment": "homologation",
     "backendSourceSha256": "80939DF5624CC78BF292DC98FECAC9BF79CF36BCC8CBC1236CBEED1040ED6047",
-    "immutableAppsScriptVersion": 14,
+    "immutableAppsScriptVersion": 15,
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "d9718c0"
+    "sourceGitCommit": "ca963b9"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -63,7 +63,7 @@
       "importedPlansWorkflow": "forced-draft-inactive-until-manager-validation",
       "manualMasterData": "implemented-assisted-dropdowns-audited",
       "assistedRegistrationHierarchy": "plant-sector-line-asset-component",
-      "commandWorkspace": "vfinal-responsive-windowed-one-pixel-divider-compact-chrome-windows-snap",
+      "commandWorkspace": "production-ready-responsive-windows-snap-compact-chrome-layout-picker-quick-access-help-center",
       "managementWorkbookScope": "preventive-orders-hours-attendance-oee-labor-parts-costs",
       "checklistAuthoring": "implemented-dynamic-technical-routing",
       "governedInterventions": "draft-manager-validation-operator-release",
@@ -98,7 +98,7 @@
     "adminImportContract": "approved",
     "adminImportE2E": "approved",
     "adminCommandWorkspaceContract": "approved",
-    "adminCommandWorkspaceVisual": "approved-responsive-containers-hidden-scrollbars-one-pixel-divider-compact-chrome-snap-import-users",
+    "adminCommandWorkspaceVisual": "approved-responsive-containers-hidden-scrollbars-one-pixel-divider-compact-chrome-snap-import-users-production-welcome-help-quick-access",
     "adminManualCatalogE2E": "approved",
     "adminInterventionWorkflowE2E": "approved",
     "adminGovernanceE2E": "approved",
@@ -113,8 +113,8 @@
     "environment": "isolated",
     "release": "1.4.0",
     "backendSourceSha256": "80939DF5624CC78BF292DC98FECAC9BF79CF36BCC8CBC1236CBEED1040ED6047",
-    "immutableAppsScriptVersion": 14,
-    "sourceGitCommit": "d9718c0",
+    "immutableAppsScriptVersion": 15,
+    "sourceGitCommit": "ca963b9",
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
