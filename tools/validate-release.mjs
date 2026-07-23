@@ -190,6 +190,8 @@ const publicChecks = [
   'companyProfileRequiresAuthentication',
   'configurationEngineEndpointDeclared',
   'configurationEngineRequiresAuthentication',
+  'commercialAccessEndpointDeclared',
+  'commercialAccessRequiresAuthentication',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
   'governanceEndpointsDeclared',

@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "16320AABDC2F30F86EF4FA0132ACA4AE2EA8090EA899B3FB0E9D8849787F591D",
-    "immutableAppsScriptVersion": 18,
+    "backendSourceSha256": "CEB8364CD5B7B4580E2648DCE386AED217CFB2FD7215ACD31BAC8FF0F1B7CE23",
+    "immutableAppsScriptVersion": 19,
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "540df11"
+    "sourceGitCommit": "948ae5a"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -67,7 +67,7 @@
       "importedPlansWorkflow": "forced-draft-inactive-until-manager-validation",
       "manualMasterData": "implemented-assisted-dropdowns-audited",
       "assistedRegistrationHierarchy": "plant-sector-line-asset-component",
-      "commandWorkspace": "production-ready-responsive-windows-snap-compact-chrome-layout-picker-quick-access-help-center-company-branding",
+      "commandWorkspace": "production-ready-responsive-windows-snap-compact-chrome-layout-picker-quick-access-help-center-company-branding-plan-aware",
       "managementWorkbookScope": "preventive-orders-hours-attendance-oee-labor-parts-costs",
       "checklistAuthoring": "implemented-dynamic-technical-routing",
       "governedInterventions": "draft-manager-validation-operator-release",
@@ -102,6 +102,7 @@
     "motorCommercialAccessContract": "approved",
     "motorCommercialAccessE2E": "approved",
     "motorCommercialAccessRemote": "approved-legacy-complete",
+    "adminCommercialAccessVisual": "approved-chrome-plan-summary-and-module-locks",
     "adminImportContract": "approved",
     "adminImportE2E": "approved",
     "adminCommandWorkspaceContract": "approved",
@@ -120,9 +121,9 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "16320AABDC2F30F86EF4FA0132ACA4AE2EA8090EA899B3FB0E9D8849787F591D",
-    "immutableAppsScriptVersion": 18,
-    "sourceGitCommit": "540df11",
+    "backendSourceSha256": "CEB8364CD5B7B4580E2648DCE386AED217CFB2FD7215ACD31BAC8FF0F1B7CE23",
+    "immutableAppsScriptVersion": 19,
+    "sourceGitCommit": "948ae5a",
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
@@ -135,6 +136,8 @@
       "companyProfileRequiresAuthentication": "approved",
       "configurationEngineEndpointDeclared": "approved",
       "configurationEngineRequiresAuthentication": "approved",
+      "commercialAccessEndpointDeclared": "approved",
+      "commercialAccessRequiresAuthentication": "approved",
       "commercialPolicyRuntime": "approved",
       "adminImportEndpointDeclared": "approved",
       "adminImportRequiresAuthentication": "approved",
