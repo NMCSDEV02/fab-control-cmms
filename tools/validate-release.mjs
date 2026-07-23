@@ -190,6 +190,8 @@ const publicChecks = [
   'configurationEngineRequiresAuthentication',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
+  'governanceEndpointsDeclared',
+  'governanceEndpointsRequireAuthentication',
   'unknownLoginRejected',
   'recoveryNonEnumeration',
   'usersRequiresAuthentication',
