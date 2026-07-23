@@ -183,6 +183,79 @@ export interface AdminCommercialAccess {
   usuario_id: string
 }
 
+export type PlatformMotorPlanCode = 'INICIAL' | 'BASICO' | 'COMPLETO'
+
+export interface PlatformMotorPlan {
+  codigo: PlatformMotorPlanCode
+  nome: string
+  recursos: AdminCommercialFeatureCode[]
+}
+
+export interface PlatformMotorCatalogValidationError {
+  plano: PlatformMotorPlanCode | 'DESCONHECIDO'
+  codigo: string
+  mensagem: string
+}
+
+export interface PlatformMotorCatalogValidation {
+  valido: boolean
+  erros: PlatformMotorCatalogValidationError[]
+  planos: PlatformMotorPlan[]
+  hash_sha256: string
+}
+
+export interface PlatformMotorCatalogDraft {
+  integridade?: 'VALIDA'
+  id: string
+  base_versao_id: string
+  planos: PlatformMotorPlan[]
+  hash_sha256: string
+  validacao: PlatformMotorCatalogValidation
+  criado_por?: string
+  criado_em?: string
+  atualizado_em: string
+}
+
+export interface PlatformMotorCatalogVersion {
+  id: string
+  numero: number
+  origem: 'PUBLICACAO' | 'ROLLBACK'
+  hash_sha256: string
+  publicado_por: string
+  publicado_em: string
+  ativa?: boolean
+}
+
+export interface PlatformMotorCatalogActiveVersion {
+  id: string
+  numero: number
+  origem: 'PADRAO_EM_CODIGO' | 'PUBLICACAO' | 'ROLLBACK'
+  integridade: 'VALIDA' | 'INVALIDA' | 'PADRAO_SEGURO'
+  hash_sha256: string
+  publicado_em: string
+  publicado_por: string
+  planos?: PlatformMotorPlan[]
+}
+
+export interface PlatformMotorCatalogControl {
+  schema_version: string
+  edicao_disponivel: boolean
+  ativa: PlatformMotorCatalogActiveVersion
+  rascunho: PlatformMotorCatalogDraft | {
+    integridade: 'INVALIDA'
+    motivo: string
+  } | null
+  historico: {
+    integridade: 'VALIDA' | 'INVALIDA' | 'PADRAO_SEGURO'
+    total: number
+    versoes: PlatformMotorCatalogVersion[]
+  }
+  limites: {
+    versoes_retidas: number
+    bytes_por_propriedade: number
+  }
+}
+
 export interface PlatformMotorCatalog {
   schema_version: string
   gerado_em: string
@@ -204,11 +277,7 @@ export interface PlatformMotorCatalog {
     codigo: AdminCommercialFeatureCode
     nome: string
   }>
-  planos: Array<{
-    codigo: 'INICIAL' | 'BASICO' | 'COMPLETO'
-    nome: string
-    recursos: AdminCommercialFeatureCode[]
-  }>
+  planos: PlatformMotorPlan[]
   politicas: {
     padrao: 'NEGAR_ACAO_NAO_CLASSIFICADA'
     regras: Array<{
@@ -224,6 +293,16 @@ export interface PlatformMotorCatalog {
     sessao_sem_cache: boolean
     revalidacao_por_requisicao: boolean
   }
+  controle: PlatformMotorCatalogControl | null
+}
+
+export interface PlatformMotorCatalogPublishResult {
+  published: boolean
+  ativa: PlatformMotorCatalogActiveVersion & {
+    planos: PlatformMotorPlan[]
+  }
+  aviso?: string
+  rollback_from_version_id?: string
 }
 
 export type ConfigurationValue = string | number | boolean

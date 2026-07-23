@@ -175,6 +175,11 @@ const PERM = {
   ],
   SISTEMA: [
     "admin.acesso.estado",
-    "platform.motor.catalogo"
+    "platform.motor.catalogo",
+    "platform.motor.catalogo.rascunho.salvar",
+    "platform.motor.catalogo.validar",
+    "platform.motor.catalogo.publicar",
+    "platform.motor.catalogo.versoes",
+    "platform.motor.catalogo.rollback"
   ]
 };

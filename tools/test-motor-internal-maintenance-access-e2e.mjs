@@ -12,11 +12,18 @@ const internalSource = fs.readFileSync(
   path.join(root, 'backend/apps-script/31_Motor_Acesso_Interno.js'),
   'utf8',
 )
+const catalogSource = fs.readFileSync(
+  path.join(root, 'backend/apps-script/32_Motor_Catalogo_Comercial.js'),
+  'utf8',
+)
 
 const properties = {}
 const sessions = []
 const audits = []
 let environment = 'HOMOLOGACAO'
+let uuidSequence = 0
+let lockAvailable = true
+let failPropertyWrite = ''
 
 function clean(value) {
   return value == null ? '' : String(value).trim()
@@ -55,6 +62,21 @@ const context = vm.createContext({
     ) && a.length === b.length
   },
   authRandomToken_: (prefix) => `${prefix}-TOKEN-${sessions.length + 1}`,
+  sha256_: (value) => crypto.createHash('sha256').update(String(value), 'utf8').digest('hex'),
+  uuid_: (prefix) => {
+    uuidSequence += 1
+    return `${prefix}-${String(uuidSequence).padStart(6, '0')}`
+  },
+  req_: (payload, fields) => {
+    for (const field of fields) {
+      if (payload?.[field] === undefined || payload?.[field] === null || String(payload[field]).trim() === '') {
+        const error = new Error(`Campo obrigatório: ${field}`)
+        error.code = 'FIELD_REQUIRED'
+        error.status = 400
+        throw error
+      }
+    }
+  },
   ensureAuthSchema_: () => true,
   releaseVersionInfo_: () => ({ release_version: '1.4.0' }),
   audit_: (...args) => audits.push(args),
@@ -82,6 +104,7 @@ const context = vm.createContext({
           return Object.prototype.hasOwnProperty.call(properties, key) ? properties[key] : null
         },
         setProperty(key, value) {
+          if (key === failPropertyWrite) throw new Error(`Falha simulada em ${key}`)
           properties[key] = String(value)
           return this
         },
@@ -95,7 +118,7 @@ const context = vm.createContext({
   LockService: {
     getScriptLock() {
       return {
-        tryLock: () => true,
+        tryLock: () => lockAvailable,
         releaseLock: () => {},
       }
     },
@@ -113,6 +136,7 @@ const context = vm.createContext({
 
 vm.runInContext(commercialSource, context)
 vm.runInContext(internalSource, context)
+vm.runInContext(catalogSource, context)
 
 function resetCaches() {
   vm.runInContext(`
@@ -120,6 +144,7 @@ function resetCaches() {
     MOTOR_MAINTENANCE_CACHE = null;
     MOTOR_INTERNAL_IDENTITY_CACHE = null;
     MOTOR_INTERNAL_MAINTENANCE_CACHE = null;
+    MOTOR_CATALOG_RUNTIME_CACHE = null;
   `, context)
 }
 
@@ -254,6 +279,167 @@ assert(catalog.planos.length === 3, 'catálogo interno não retornou os três pl
 assert(catalog.politicas.padrao === 'NEGAR_ACAO_NAO_CLASSIFICADA', 'catálogo não informou a política de falha fechada')
 assert(catalog.politicas.regras.length > 40, 'catálogo interno retornou poucas regras classificadas')
 assert(catalog.protecoes.revalidacao_por_requisicao === true, 'catálogo omitiu a revalidação por requisição')
+assert(catalog.controle.edicao_disponivel === false, 'edição não deveria abrir sem segredo próprio')
+
+properties.FAB_CONTROL_PLAN_CATALOG_SIGNING_SECRET = 'segredo-catalogo-comercial-separado'
+resetCaches()
+const defaultPlans = context.motorPlatformCatalogState_({}, authorized).planos
+const proposedPlans = defaultPlans.map((plan) => ({
+  ...plan,
+  recursos: plan.codigo === 'BASICO'
+    ? plan.recursos.filter((resource) => resource !== 'INDICADORES')
+    : [...plan.recursos],
+}))
+const validation = context.motorCommercialCatalogValidate_({ planos: proposedPlans }, authorized)
+assert(validation.valido === true, 'catálogo comercial válido foi rejeitado')
+
+const invalidPlans = proposedPlans.map((plan) => ({
+  ...plan,
+  recursos: plan.codigo === 'INICIAL'
+    ? plan.recursos.filter((resource) => resource !== 'ORDENS_SERVICO')
+    : [...plan.recursos],
+}))
+const invalidValidation = context.motorCommercialCatalogValidate_({ planos: invalidPlans }, authorized)
+assert(
+  invalidValidation.valido === false &&
+    invalidValidation.erros.some((item) => item.codigo === 'MOTOR_PLAN_BASELINE_REQUIRED'),
+  'recurso estrutural obrigatório pôde ser removido',
+)
+
+const unknownFeaturePlans = proposedPlans.map((plan) => ({
+  ...plan,
+  recursos: plan.codigo === 'INICIAL'
+    ? [...plan.recursos, 'RECURSO_INEXISTENTE']
+    : [...plan.recursos],
+}))
+const invalidDraft = context.motorCommercialCatalogDraftSave_({
+  planos: unknownFeaturePlans,
+  base_versao_id: '',
+  user_agent: 'E2E',
+}, authorized)
+assert(invalidDraft.rascunho.validacao.valido === false, 'recurso desconhecido não invalidou o rascunho')
+assert(
+  context.motorCatalogReadDraft_().validacao.erros.some(
+    (item) => item.codigo === 'MOTOR_PLAN_FEATURE_INVALID',
+  ),
+  'erro assinado do rascunho desapareceu após a normalização',
+)
+expectCode(
+  () => context.motorCommercialCatalogPublish_({
+    rascunho_id: invalidDraft.rascunho.id,
+    user_agent: 'E2E',
+  }, authorized),
+  'MOTOR_CATALOG_DRAFT_INVALID',
+  'rascunho com erro persistido pôde ser publicado',
+)
+
+const draftOne = context.motorCommercialCatalogDraftSave_({
+  planos: proposedPlans,
+  base_versao_id: '',
+  user_agent: 'E2E',
+}, authorized)
+assert(draftOne.rascunho.validacao.valido === true, 'rascunho comercial válido não foi salvo')
+assert(
+  context.motorCommercialCatalogRuntime_().numero === 0,
+  'rascunho alterou o catálogo ativo antes da publicação',
+)
+
+const publishedOne = context.motorCommercialCatalogPublish_({
+  rascunho_id: draftOne.rascunho.id,
+  user_agent: 'E2E',
+}, authorized)
+assert(publishedOne.ativa.numero === 1, 'primeira publicação comercial não criou a versão 1')
+assert(
+  context.motorCommercialCatalogRuntime_().catalogo.BASICO.recursos.includes('INDICADORES') === false,
+  'primeira publicação não ativou a composição proposta',
+)
+
+expectCode(
+  () => context.motorCommercialCatalogDraftSave_({
+    planos: defaultPlans,
+    base_versao_id: '',
+  }, authorized),
+  'MOTOR_CATALOG_BASE_VERSION_CHANGED',
+  'rascunho baseado em versão obsoleta foi aceito',
+)
+
+const draftTwo = context.motorCommercialCatalogDraftSave_({
+  planos: defaultPlans,
+  base_versao_id: publishedOne.ativa.id,
+  user_agent: 'E2E',
+}, authorized)
+const publishedTwo = context.motorCommercialCatalogPublish_({
+  rascunho_id: draftTwo.rascunho.id,
+  user_agent: 'E2E',
+}, authorized)
+assert(publishedTwo.ativa.numero === 2, 'segunda publicação comercial não criou a versão 2')
+assert(
+  context.motorCommercialCatalogRuntime_().catalogo.BASICO.recursos.includes('INDICADORES') === true,
+  'segunda publicação não restaurou o recurso de indicadores',
+)
+
+const rolledBack = context.motorCommercialCatalogRollback_({
+  versao_id: publishedOne.ativa.id,
+  base_versao_id: publishedTwo.ativa.id,
+  motivo: 'Retorno controlado para a composição anterior',
+  user_agent: 'E2E',
+}, authorized)
+assert(rolledBack.ativa.numero === 3, 'rollback comercial não criou uma nova versão imutável')
+assert(rolledBack.rollback_from_version_id === publishedOne.ativa.id, 'rollback omitiu a versão de origem')
+assert(
+  context.motorCommercialCatalogRuntime_().catalogo.BASICO.recursos.includes('INDICADORES') === false,
+  'rollback comercial não restaurou a composição histórica',
+)
+const versions = context.motorCommercialCatalogVersions_({ limite: 20 }, authorized)
+assert(versions.total === 3, 'histórico comercial não preservou as três versões')
+assert(versions.versoes[0].ativa === true, 'histórico não marcou a versão ativa')
+
+expectCode(
+  () => context.motorCommercialCatalogValidate_({ planos: defaultPlans }, { perfil: 'ADMIN' }),
+  'MOTOR_INTERNAL_IDENTITY_REQUIRED',
+  'administrador comum validou o catálogo comercial interno',
+)
+
+lockAvailable = false
+expectCode(
+  () => context.motorCommercialCatalogDraftSave_({
+    planos: defaultPlans,
+    base_versao_id: rolledBack.ativa.id,
+  }, authorized),
+  'MOTOR_CATALOG_DRAFT_BUSY',
+  'concorrência de rascunho não foi bloqueada',
+)
+lockAvailable = true
+
+const failureDraft = context.motorCommercialCatalogDraftSave_({
+  planos: defaultPlans,
+  base_versao_id: rolledBack.ativa.id,
+  user_agent: 'E2E',
+}, authorized)
+failPropertyWrite = 'FAB_CONTROL_PLAN_CATALOG_VERSION_INDEX_V1'
+let transactionFailure = null
+try {
+  context.motorCommercialCatalogPublish_({
+    rascunho_id: failureDraft.rascunho.id,
+    user_agent: 'E2E',
+  }, authorized)
+} catch (error) {
+  transactionFailure = error
+}
+failPropertyWrite = ''
+resetCaches()
+assert(Boolean(transactionFailure), 'falha de armazenamento simulada não interrompeu a publicação')
+assert(context.motorCommercialCatalogRuntime_().numero === 3, 'falha parcial alterou a versão ativa')
+assert(context.motorCommercialCatalogVersions_({ limite: 20 }, authorized).total === 3, 'falha parcial alterou o índice')
+assert(context.motorCatalogReadDraft_()?.id === failureDraft.rascunho.id, 'falha parcial removeu o rascunho')
+
+properties.FAB_CONTROL_PLAN_CATALOG_ACTIVE_V1 = JSON.stringify({
+  payload: '{}',
+  signature: 'adulterada',
+})
+resetCaches()
+assert(context.motorCommercialCatalogRuntime_().integridade === 'INVALIDA', 'catálogo adulterado não foi bloqueado')
+assert(context.motorSubscriptionState_().status === 'BLOQUEADA', 'assinatura continuou ativa com catálogo adulterado')
 
 const adminAccess = context.motorCommercialAccessState_({}, { perfil: 'ADMIN', usuario_id: 'USR-ADMIN' })
 assert(adminAccess.acesso_integral === false, 'administrador comum recebeu acesso integral')
@@ -298,4 +484,4 @@ assert(context.motorInternalMaintenanceState_().aberta === false, 'janela de out
 assert(audits.length === 0, 'limpeza final deveria remover auditorias do cenário anterior')
 
 console.log('E2E DO ACESSO INTERNO AO MOTOR APROVADO')
-console.log('Identidade, uso único, bloqueio, sessão, revogação, tenant e ambiente conferidos')
+console.log('Identidade, sessão, catálogo versionado, restauração atômica, tenant e ambiente conferidos')

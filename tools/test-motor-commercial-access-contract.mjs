@@ -13,6 +13,7 @@ function assert(condition, message) {
 
 const motor = read('backend/apps-script/30_Motor_Acesso_Comercial.js')
 const internalAccess = read('backend/apps-script/31_Motor_Acesso_Interno.js')
+const catalogEngine = read('backend/apps-script/32_Motor_Catalogo_Comercial.js')
 const auth = read('backend/apps-script/03_Http_Auth.js')
 const authCache = read('backend/apps-script/09_Warmup_AuthFast.js')
 const appConfig = read('backend/apps-script/00_Config.js')
@@ -50,16 +51,22 @@ assert(motor.includes('motorBlockedSubscription_'), 'falha fechada da assinatura
 assert(motor.includes('SUBSCRIPTION_FEATURE_REQUIRED'), 'bloqueio por recurso não contratado ausente')
 assert(motor.includes('MOTOR_MAINTENANCE_REQUIRED'), 'bloqueio do motor integral ausente')
 assert(motor.includes('upper_(auth && auth.perfil) === ROLE.SISTEMA'), 'motor integral não exige identidade interna')
+const expectedInternalRoutes = [
+  'platform.motor.catalogo',
+  'platform.motor.catalogo.rascunho.salvar',
+  'platform.motor.catalogo.validar',
+  'platform.motor.catalogo.publicar',
+  'platform.motor.catalogo.versoes',
+  'platform.motor.catalogo.rollback',
+]
 assert(
-  auth.match(/case "platform\.motor\.[^"]+"/g)?.length === 1 &&
-    auth.includes('case "platform.motor.catalogo"'),
-  'catálogo interno deve possuir uma única rota protegida',
+  auth.match(/case "platform\.motor\.[^"]+"/g)?.length === expectedInternalRoutes.length,
+  'quantidade de rotas internas do catálogo divergente',
 )
-assert(
-  appConfig.includes('SISTEMA: [') &&
-    appConfig.includes('"platform.motor.catalogo"'),
-  'perfil interno não recebeu permissão mínima para consultar o catálogo',
-)
+for (const action of expectedInternalRoutes) {
+  assert(auth.includes(`case "${action}"`), `rota interna ausente: ${action}`)
+  assert(appConfig.includes(`"${action}"`), `permissão interna ausente: ${action}`)
+}
 assert(motor.includes('tenantId !== configuredTenantId'), 'assinatura não está vinculada ao cliente configurado')
 assert(motor.includes('SUBSCRIPTION_ACTION_UNCLASSIFIED'), 'novas ações não falham de forma fechada')
 
@@ -115,7 +122,37 @@ assert(
     motor.includes('padrao:"NEGAR_ACAO_NAO_CLASSIFICADA"') &&
     platformWorkspace.includes('getPlatformMotorCatalog') &&
     platformWorkspace.includes('Recursos por assinatura'),
-  'catálogo comercial interno somente leitura está incompleto',
+  'catálogo comercial interno está incompleto',
+)
+assert(
+  catalogEngine.includes('MOTOR_CATALOG_MAX_PROPERTY_BYTES = 8500') &&
+    catalogEngine.includes('MOTOR_CATALOG_MAX_HISTORY = 20') &&
+    catalogEngine.includes('motorCatalogValidateSnapshot_') &&
+    catalogEngine.includes('motorCatalogPublishUnderLock_') &&
+    catalogEngine.includes('MOTOR_CATALOG_BASE_VERSION_CHANGED') &&
+    catalogEngine.includes('motorCommercialCatalogRollback_'),
+  'editor versionado do catálogo comercial está incompleto',
+)
+assert(
+  catalogEngine.includes('motorCatalogRestoreProperty_') &&
+    catalogEngine.includes('MOTOR_CATALOG_PUBLICATION_AUTHORIZED') &&
+    catalogEngine.includes('MOTOR_COMPLETE_FEATURE_REQUIRED'),
+  'publicação comercial não possui restauração, auditoria e invariantes',
+)
+assert(
+  platformWorkspace.includes('savePlatformMotorCatalogDraft') &&
+    platformWorkspace.includes('validatePlatformMotorCatalog') &&
+    platformWorkspace.includes('publishPlatformMotorCatalog') &&
+    platformWorkspace.includes('rollbackPlatformMotorCatalog') &&
+    platformWorkspace.includes('Confirmar publicação') &&
+    platformWorkspace.includes('Motivo da restauração'),
+  'workspace interno não implementa o ciclo versionado do catálogo comercial',
+)
+assert(
+  platformWorkspace.includes('REQUIRED_FEATURES') &&
+    platformWorkspace.includes("planCode === 'COMPLETO'") &&
+    platformWorkspace.includes('type="checkbox"'),
+  'editor comercial não protege a base obrigatória e a hierarquia de planos',
 )
 
 const publicActions = new Set([
@@ -151,6 +188,12 @@ assert(
   !auth.slice(bootstrapStart, bootstrapEnd).includes('"platform.motor.catalogo"'),
   'bootstrap público não deve anunciar o catálogo interno',
 )
+for (const action of expectedInternalRoutes) {
+  assert(
+    !auth.slice(bootstrapStart, bootstrapEnd).includes(`"${action}"`),
+    `bootstrap público anunciou a operação interna: ${action}`,
+  )
+}
 
 console.log('CONTRATO DO ACESSO COMERCIAL AO MOTOR APROVADO')
 console.log(`${routeActions.length - publicActions.size} ações autenticadas, planos, assinatura e manutenção conferidos`)

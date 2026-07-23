@@ -55,6 +55,20 @@ const MOTOR_PLAN_CATALOG = {
   }
 };
 
+function motorEffectivePlanCatalogState_(){
+  if(typeof motorCommercialCatalogRuntime_ === "function"){
+    return motorCommercialCatalogRuntime_();
+  }
+  return {
+    catalogo:MOTOR_PLAN_CATALOG,
+    planos:Object.keys(MOTOR_PLAN_CATALOG).map(function(code){ return MOTOR_PLAN_CATALOG[code]; }),
+    versao_id:"",
+    numero:0,
+    origem:"PADRAO_EM_CODIGO",
+    integridade:"PADRAO_SEGURO"
+  };
+}
+
 // As regras mais específicas devem permanecer antes dos prefixos genéricos.
 const MOTOR_ACTION_FEATURE_RULES = [
   {prefixo:"admin.configuracao.", recurso:MOTOR_FEATURE.MOTOR_LIMITADO},
@@ -187,10 +201,11 @@ function motorConfiguredTenantId_(){
   return clean_(PropertiesService.getScriptProperties().getProperty(MOTOR_TENANT_PROPERTY));
 }
 
-function motorLegacySubscription_(){
+function motorLegacySubscription_(catalog){
+  var complete = catalog.COMPLETO;
   return {
-    plano:MOTOR_PLAN_CATALOG.COMPLETO,
-    recursos:MOTOR_PLAN_CATALOG.COMPLETO.recursos.slice(),
+    plano:complete,
+    recursos:complete.recursos.slice(),
     status:"ATIVA",
     origem:"COMPATIBILIDADE_1_4_0",
     integridade:"PADRAO_SEGURO_DE_MIGRACAO",
@@ -211,9 +226,15 @@ function motorBlockedSubscription_(reason){
 
 function motorSubscriptionState_(){
   if(MOTOR_SUBSCRIPTION_CACHE) return MOTOR_SUBSCRIPTION_CACHE;
+  var catalogState = motorEffectivePlanCatalogState_();
+  if(catalogState.integridade === "INVALIDA"){
+    MOTOR_SUBSCRIPTION_CACHE = motorBlockedSubscription_("CATALOGO_COMERCIAL_INVALIDO");
+    return MOTOR_SUBSCRIPTION_CACHE;
+  }
+  var catalog = catalogState.catalogo;
   var signed = motorReadSignedProperty_(MOTOR_SUBSCRIPTION_PROPERTY, MOTOR_SUBSCRIPTION_SECRET_PROPERTY);
   if(signed.estado === "AUSENTE"){
-    MOTOR_SUBSCRIPTION_CACHE = motorLegacySubscription_();
+    MOTOR_SUBSCRIPTION_CACHE = motorLegacySubscription_(catalog);
     return MOTOR_SUBSCRIPTION_CACHE;
   }
   if(signed.estado !== "VALIDO"){
@@ -221,7 +242,7 @@ function motorSubscriptionState_(){
     return MOTOR_SUBSCRIPTION_CACHE;
   }
   var data = signed.dados || {};
-  var plan = MOTOR_PLAN_CATALOG[upper_(data.plano)];
+  var plan = catalog[upper_(data.plano)];
   if(!plan){
     MOTOR_SUBSCRIPTION_CACHE = motorBlockedSubscription_("PLANO_DESCONHECIDO");
     return MOTOR_SUBSCRIPTION_CACHE;
@@ -361,6 +382,10 @@ function motorPlatformCatalogState_(p, auth){
   motorRequireMaintenanceAccess_(auth);
 
   var subscription = motorSubscriptionState_();
+  var catalogState = motorEffectivePlanCatalogState_();
+  if(catalogState.integridade === "INVALIDA"){
+    err_("MOTOR_CATALOG_INTEGRITY_FAILED", "O catálogo comercial ativo falhou na verificação de integridade.", 409);
+  }
   var maintenance = typeof motorInternalMaintenancePublicState_ === "function"
     ? motorInternalMaintenancePublicState_(auth)
     : motorMaintenanceState_();
@@ -385,8 +410,8 @@ function motorPlatformCatalogState_(p, auth){
     recursos:MOTOR_FEATURE_CATALOG.map(function(feature){
       return {codigo:feature.codigo, nome:feature.nome};
     }),
-    planos:Object.keys(MOTOR_PLAN_CATALOG).map(function(code){
-      var plan = MOTOR_PLAN_CATALOG[code];
+    planos:Object.keys(catalogState.catalogo).map(function(code){
+      var plan = catalogState.catalogo[code];
       return {
         codigo:plan.codigo,
         nome:plan.nome,
@@ -406,7 +431,10 @@ function motorPlatformCatalogState_(p, auth){
       codigo_uso_unico:true,
       sessao_sem_cache:true,
       revalidacao_por_requisicao:true
-    }
+    },
+    controle:typeof motorCommercialCatalogControlState_ === "function"
+      ? motorCommercialCatalogControlState_(auth)
+      : null
   };
 }
 

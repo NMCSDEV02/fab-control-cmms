@@ -77,6 +77,11 @@ function route_(action, p, req){
     case "admin.empresa.salvar": return adminEmpresaSalvar_(p, p.__auth);
     case "admin.acesso.estado": return motorCommercialAccessState_(p, p.__auth);
     case "platform.motor.catalogo": return motorPlatformCatalogState_(p, p.__auth);
+    case "platform.motor.catalogo.rascunho.salvar": return motorCommercialCatalogDraftSave_(p, p.__auth);
+    case "platform.motor.catalogo.validar": return motorCommercialCatalogValidate_(p, p.__auth);
+    case "platform.motor.catalogo.publicar": return motorCommercialCatalogPublish_(p, p.__auth);
+    case "platform.motor.catalogo.versoes": return motorCommercialCatalogVersions_(p, p.__auth);
+    case "platform.motor.catalogo.rollback": return motorCommercialCatalogRollback_(p, p.__auth);
     case "admin.configuracao.estado": return configurationState_(p, p.__auth);
     case "admin.configuracao.rascunho.salvar": return configurationSaveDraft_(p, p.__auth);
     case "admin.configuracao.validar": return configurationValidate_(p, p.__auth);

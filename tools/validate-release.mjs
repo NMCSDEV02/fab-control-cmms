@@ -99,7 +99,7 @@ const sourceFiles = fs
   .filter((name) => name.endsWith('.js') || name === 'appsscript.json')
   .sort()
 
-assert(sourceFiles.length === 33, `quantidade de fontes backend = ${sourceFiles.length}; esperado 33`)
+assert(sourceFiles.length === 34, `quantidade de fontes backend = ${sourceFiles.length}; esperado 34`)
 assert(
   !fs.readdirSync(backendPath).some((name) => name.endsWith('.gs')),
   'arquivo .gs ativo encontrado',
@@ -196,6 +196,8 @@ const publicChecks = [
   'maintenanceAccessEndpointHiddenFromBootstrap',
   'internalCatalogRequiresAuthentication',
   'internalCatalogHiddenFromBootstrap',
+  'internalCatalogEditorRequiresAuthentication',
+  'internalCatalogEditorHiddenFromBootstrap',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
   'governanceEndpointsDeclared',
@@ -259,6 +261,7 @@ requireChecks(candidate, [
   'motorCommercialAccessE2E',
   'motorInternalMaintenanceAccessE2E',
   'motorInternalCatalogContract',
+  'motorInternalCatalogVersioningE2E',
   'adminImportContract',
   'adminImportE2E',
   'productionBootstrapContract',

@@ -3,6 +3,11 @@ import type {
   AdminCompanySaveResult,
   AdminCommercialAccess,
   PlatformMotorCatalog,
+  PlatformMotorCatalogDraft,
+  PlatformMotorCatalogPublishResult,
+  PlatformMotorCatalogValidation,
+  PlatformMotorCatalogVersion,
+  PlatformMotorPlan,
   AdminPasswordResetResult,
   AdminPermissionMatrix,
   AdminPermissionSaveResult,
@@ -244,6 +249,64 @@ export function getPlatformMotorCatalog(
   signal?: AbortSignal,
 ): Promise<PlatformMotorCatalog> {
   return readAdminData<PlatformMotorCatalog>('platform.motor.catalogo', {}, signal)
+}
+
+export function validatePlatformMotorCatalog(
+  plans: PlatformMotorPlan[],
+): Promise<PlatformMotorCatalogValidation> {
+  return writeAdminData<PlatformMotorCatalogValidation>(
+    'platform.motor.catalogo.validar',
+    { planos: plans },
+  )
+}
+
+export async function savePlatformMotorCatalogDraft(
+  plans: PlatformMotorPlan[],
+  baseVersionId: string,
+): Promise<PlatformMotorCatalogDraft> {
+  const data = await writeAdminData<{
+    saved: boolean
+    rascunho: PlatformMotorCatalogDraft
+  }>('platform.motor.catalogo.rascunho.salvar', {
+    planos: plans,
+    base_versao_id: baseVersionId,
+  })
+  return data.rascunho
+}
+
+export function publishPlatformMotorCatalog(
+  draftId: string,
+): Promise<PlatformMotorCatalogPublishResult> {
+  return writeAdminData<PlatformMotorCatalogPublishResult>(
+    'platform.motor.catalogo.publicar',
+    { rascunho_id: draftId },
+  )
+}
+
+export async function listPlatformMotorCatalogVersions(
+  limit = 20,
+  signal?: AbortSignal,
+): Promise<PlatformMotorCatalogVersion[]> {
+  const data = await readAdminData<{
+    total: number
+    versoes: PlatformMotorCatalogVersion[]
+  }>('platform.motor.catalogo.versoes', { limite: limit }, signal)
+  return Array.isArray(data.versoes) ? data.versoes : []
+}
+
+export function rollbackPlatformMotorCatalog(
+  versionId: string,
+  baseVersionId: string,
+  reason: string,
+): Promise<PlatformMotorCatalogPublishResult> {
+  return writeAdminData<PlatformMotorCatalogPublishResult>(
+    'platform.motor.catalogo.rollback',
+    {
+      versao_id: versionId,
+      base_versao_id: baseVersionId,
+      motivo: reason,
+    },
+  )
 }
 
 export function saveAdminCompanyProfile(

@@ -9740,6 +9740,373 @@ p {
   background: #ddf1e8;
 }
 
+.platform-motor-catalog-actions,
+.platform-motor-editor-actions,
+.platform-motor-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.platform-motor-catalog-actions button,
+.platform-motor-editor-actions button,
+.platform-motor-history button,
+.platform-motor-dialog button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #0f727a;
+  border-radius: 8px;
+  background: #0f727a;
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.platform-motor-catalog-actions button:disabled,
+.platform-motor-editor-actions button:disabled,
+.platform-motor-history button:disabled,
+.platform-motor-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.platform-motor-editor-actions button.is-secondary,
+.platform-motor-dialog button.is-secondary {
+  border-color: #c6d4d7;
+  background: #fff;
+  color: #28464e;
+}
+
+.platform-motor-secure-notice {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid #bcd6d9;
+  border-left: 4px solid #147981;
+  border-radius: 9px;
+  background: #f0f8f8;
+}
+
+.platform-motor-secure-notice.is-critical {
+  border-color: #edc4c4;
+  border-left-color: #a73535;
+  background: #fff5f5;
+}
+
+.platform-motor-secure-notice strong {
+  font-size: 12px;
+}
+
+.platform-motor-secure-notice span {
+  color: #587078;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.platform-motor-plan-grid article > header input {
+  width: min(100%, 220px);
+  min-height: 32px;
+  margin-top: 4px;
+  padding: 0 9px;
+  border: 1px solid #bfcfd2;
+  border-radius: 7px;
+  background: #fff;
+  color: #163943;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.platform-motor-plan-grid li label {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 33px;
+  cursor: pointer;
+}
+
+.platform-motor-plan-grid li label.is-locked {
+  cursor: not-allowed;
+}
+
+.platform-motor-plan-grid li label input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #0f777f;
+}
+
+.platform-motor-plan-grid li label small {
+  color: #6e8187;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.platform-motor-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid #cedbdd;
+  border-radius: 10px;
+  background: #f5f8f9;
+}
+
+.platform-motor-editor-footer > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.platform-motor-editor-footer strong {
+  font-size: 12px;
+}
+
+.platform-motor-editor-footer span {
+  color: #60767d;
+  font-size: 10px;
+}
+
+.platform-motor-validation {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #efc7a2;
+  border-radius: 10px;
+  background: #fff9f1;
+}
+
+.platform-motor-validation > strong {
+  color: #7b461e;
+  font-size: 12px;
+}
+
+.platform-motor-validation ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.platform-motor-validation li {
+  display: flex;
+  gap: 8px;
+  color: #684d38;
+  font-size: 10px;
+}
+
+.platform-motor-validation li b {
+  flex: none;
+  color: #8b4c1c;
+}
+
+.platform-motor-history {
+  overflow: hidden;
+  border: 1px solid #d3dfe1;
+  border-radius: 11px;
+  background: #f9fbfb;
+}
+
+.platform-motor-history > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #dce5e7;
+  background: #f2f6f7;
+}
+
+.platform-motor-history h3 {
+  margin: 4px 0 0;
+  font-size: 15px;
+}
+
+.platform-motor-history > header small,
+.platform-motor-history > p {
+  color: #667b82;
+  font-size: 10px;
+}
+
+.platform-motor-history > p {
+  margin: 0;
+  padding: 20px 16px;
+}
+
+.platform-motor-history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.platform-motor-history li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.4fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #e1e9ea;
+}
+
+.platform-motor-history li:last-child {
+  border-bottom: 0;
+}
+
+.platform-motor-history li > div {
+  display: grid;
+  gap: 3px;
+}
+
+.platform-motor-history li strong {
+  font-size: 11px;
+}
+
+.platform-motor-history li span,
+.platform-motor-history li small {
+  color: #687d83;
+  font-size: 9px;
+}
+
+.platform-motor-history li > b {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #e4f3eb;
+  color: #116a4d;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.platform-motor-history button {
+  min-height: 30px;
+  border-color: #b9cbd0;
+  background: #fff;
+  color: #1b4b55;
+}
+
+.platform-motor-dialog-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 35, 42, 0.62);
+  backdrop-filter: blur(5px);
+}
+
+.platform-motor-dialog {
+  display: grid;
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100dvh - 40px));
+  overflow: auto;
+  border: 1px solid #c6d5d8;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(4, 25, 31, 0.3);
+  scrollbar-width: none;
+}
+
+.platform-motor-dialog::-webkit-scrollbar {
+  display: none;
+}
+
+.platform-motor-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #d8e2e4;
+}
+
+.platform-motor-dialog h2 {
+  margin: 5px 0 0;
+  font-size: 20px;
+}
+
+.platform-motor-dialog > header > button {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-color: transparent;
+  background: #f0f4f5;
+  color: #4b6269;
+  font-size: 18px;
+}
+
+.platform-motor-dialog > p {
+  margin: 0;
+  padding: 18px 20px 4px;
+  color: #536c73;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.platform-motor-dialog-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  margin: 16px 20px;
+  padding: 14px;
+  border: 1px solid #d5e0e2;
+  border-radius: 9px;
+  background: #f6f9fa;
+}
+
+.platform-motor-dialog-summary span {
+  color: #637980;
+  font-size: 11px;
+}
+
+.platform-motor-dialog-summary strong {
+  color: #17404a;
+  font-size: 11px;
+}
+
+.platform-motor-dialog-field {
+  display: grid;
+  gap: 7px;
+  padding: 16px 20px;
+}
+
+.platform-motor-dialog-field > span {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.platform-motor-dialog-field textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid #bdcfd2;
+  border-radius: 8px;
+  color: #173b44;
+  font: inherit;
+  font-size: 12px;
+}
+
+.platform-motor-dialog-field small {
+  color: #6a7e84;
+  font-size: 9px;
+}
+
+.platform-motor-dialog footer {
+  padding: 14px 20px;
+  border-top: 1px solid #d8e2e4;
+  background: #f8fafb;
+}
+
 .platform-motor-governance-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.4fr);
@@ -9848,6 +10215,26 @@ p {
   .platform-motor-governance-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .platform-motor-editor-footer,
+  .platform-motor-history > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .platform-motor-catalog-actions,
+  .platform-motor-editor-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .platform-motor-history li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .platform-motor-history li > small {
+    display: none;
+  }
 }
 
 @media (max-width: 520px) {
@@ -9862,5 +10249,31 @@ p {
 
   .platform-motor-governance-summary small {
     grid-column: auto;
+  }
+
+  .platform-motor-editor-actions button {
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  .platform-motor-history li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+  }
+
+  .platform-motor-history li > b,
+  .platform-motor-history li > button {
+    width: fit-content;
+  }
+
+  .platform-motor-dialog-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .platform-motor-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    border-radius: 14px 14px 8px 8px;
   }
 }
