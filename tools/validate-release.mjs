@@ -186,6 +186,8 @@ const publicChecks = [
   'bootstrap',
   'userAdminEndpointDeclared',
   'permissionsEndpointDeclared',
+  'companyProfileEndpointsDeclared',
+  'companyProfileRequiresAuthentication',
   'configurationEngineEndpointDeclared',
   'configurationEngineRequiresAuthentication',
   'adminImportEndpointDeclared',
