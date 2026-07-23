@@ -309,7 +309,10 @@ function motorAuthorizeAction_(action, auth){
 
 function motorEnvironment_(){
   var row = find_("config", "chave", "app.environment");
-  return upper_(row && row.valor || "INDEFINIDO");
+  var configured = upper_(row && row.valor);
+  if(configured) return configured;
+  var propertyValue = PropertiesService.getScriptProperties().getProperty(PROP_APP_ENVIRONMENT);
+  return upper_(propertyValue || "INDEFINIDO");
 }
 
 function motorMaintenanceState_(){

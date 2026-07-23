@@ -23,6 +23,7 @@ const context = vm.createContext({
   Number,
   Math,
   ROLE: { ADMIN: 'ADMIN', SISTEMA: 'SISTEMA' },
+  PROP_APP_ENVIRONMENT: 'FAB_CONTROL_APP_ENVIRONMENT',
   clean_: clean,
   upper_: (value) => clean(value).toUpperCase(),
   authSecureEquals_: (left, right) => clean(left) === clean(right),
@@ -95,6 +96,13 @@ function assert(condition, message) {
 }
 
 clearProperties()
+environment = ''
+properties.FAB_CONTROL_APP_ENVIRONMENT = 'HOMOLOGACAO'
+assert(context.motorEnvironment_() === 'HOMOLOGACAO', 'motor deve usar o ambiente protegido quando a planilha não declarar o valor')
+environment = 'PRODUCAO'
+assert(context.motorEnvironment_() === 'PRODUCAO', 'ambiente declarado na planilha deve ter precedência sobre a propriedade')
+environment = 'HOMOLOGACAO'
+delete properties.FAB_CONTROL_APP_ENVIRONMENT
 assert(context.motorAuthorizeAction_('admin.documentos.listar', { perfil: 'ADMIN' }) === true, 'migração deve preservar o plano completo atual')
 properties.FAB_CONTROL_SPREADSHEET_ID = 'TENANT-01'
 

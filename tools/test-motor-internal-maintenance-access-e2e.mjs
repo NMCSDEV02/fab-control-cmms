@@ -44,6 +44,7 @@ const context = vm.createContext({
   Math,
   ROLE: { ADMIN: 'ADMIN', GESTOR: 'GESTOR', OPERADOR: 'OPERADOR', SISTEMA: 'SISTEMA' },
   ST: { ATIVO: 'ATIVO', INATIVO: 'INATIVO' },
+  PROP_APP_ENVIRONMENT: 'FAB_CONTROL_APP_ENVIRONMENT',
   clean_: clean,
   upper_: (value) => clean(value).toUpperCase(),
   num_: (value, fallback = 0) => {
