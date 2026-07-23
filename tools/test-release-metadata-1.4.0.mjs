@@ -44,15 +44,27 @@ assert(production.release === '1.3.1', 'produção não permaneceu em 1.3.1')
 assert(production.health === 'approved-unchanged', 'produção não foi reconfirmada')
 assert(production.deploymentId !== target.deploymentId, 'deployment canário não está isolado')
 assert(production.spreadsheetId !== target.spreadsheetId, 'planilha canária não está isolada')
-assert(target.immutableAppsScriptVersion === 22, 'versão imutável canária incorreta')
+assert(target.immutableAppsScriptVersion === 23, 'versão imutável canária incorreta')
 assert(target.deploymentId !== 'HEAD', 'deployment canário não pode usar HEAD')
-assert(target.sourceGitCommit === 'fdc8ac3', 'commit-fonte canário incorreto')
+assert(target.sourceGitCommit === '14b6788', 'commit-fonte canário incorreto')
 
 assert(manifest.candidateEvidence?.motorCommercialAccessContract === 'approved', 'contrato comercial do motor ausente')
 assert(manifest.candidateEvidence?.motorCommercialAccessE2E === 'approved', 'E2E comercial do motor ausente')
 assert(manifest.candidateEvidence?.motorInternalMaintenanceAccessE2E === 'approved', 'E2E interno do motor ausente')
 assert(manifest.candidateEvidence?.motorInternalCatalogContract === 'approved', 'catálogo interno do motor ausente')
 assert(manifest.candidateEvidence?.motorInternalCatalogVersioningE2E === 'approved', 'versionamento interno do catálogo ausente')
+assert(
+  manifest.candidateEvidence?.motorInternalAccessGenerator?.startsWith('approved-'),
+  'gerador assinado do motor ausente',
+)
+assert(
+  manifest.candidateEvidence?.motorInternalCatalogAuthenticatedE2E?.startsWith('approved-'),
+  'E2E autenticado do catálogo interno ausente',
+)
+assert(
+  manifest.candidateEvidence?.motorInternalMaintenanceRevocation?.startsWith('approved-'),
+  'revogação da manutenção interna ausente',
+)
 
 const checks = manifest.canaryEvidence?.checks
 for (const check of [
@@ -72,6 +84,13 @@ for (const check of [
   'internalCatalogHiddenFromBootstrap',
   'internalCatalogEditorRequiresAuthentication',
   'internalCatalogEditorHiddenFromBootstrap',
+  'internalCatalogAuthenticatedRead',
+  'internalCatalogAuthenticatedDraftSave',
+  'internalCatalogAuthenticatedValidation',
+  'internalCatalogAuthenticatedPublish',
+  'internalCatalogAuthenticatedRollback',
+  'maintenanceWindowClosedAfterValidation',
+  'maintenanceSessionRejectedAfterWindowClose',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
   'manualRegistrationEndpointDeclared',

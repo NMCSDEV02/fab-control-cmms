@@ -212,6 +212,17 @@ const publicChecks = [
 requireChecks(environment.checks, publicChecks)
 requireChecks(environment.checks, ['operatorFrontendBuild', 'managerFrontendBuild'])
 
+const internalAuthenticatedChecks = [
+  'internalCatalogAuthenticatedRead',
+  'internalCatalogAuthenticatedDraftSave',
+  'internalCatalogAuthenticatedValidation',
+  'internalCatalogAuthenticatedPublish',
+  'internalCatalogAuthenticatedRollback',
+  'maintenanceWindowClosedAfterValidation',
+  'maintenanceSessionRejectedAfterWindowClose',
+]
+requireChecks(environment.checks, internalAuthenticatedChecks)
+
 const canary = manifest.canaryEvidence || {}
 assert(canary.environment === 'isolated', 'manifesto não confirma isolamento do canário')
 assert(canary.release === expectedRelease, 'release da evidência canária divergente')
@@ -221,6 +232,7 @@ assert(canary.sourceGitCommit === target.sourceGitCommit, 'commit da evidência 
 assert(canary.deploymentId === target.deploymentId, 'deployment da evidência divergente')
 assert(canary.spreadsheetId === target.spreadsheetId, 'planilha da evidência divergente')
 requireChecks(canary.checks, publicChecks)
+requireChecks(canary.checks, internalAuthenticatedChecks)
 assert(canary.checks?.declaredSheets === 48, 'quantidade de abas declaradas divergente')
 assert(canary.checks?.productionDeploymentUnchanged === 'approved', 'produção não foi reconfirmada')
 
@@ -268,6 +280,18 @@ requireChecks(candidate, [
   'operatorFrontendBuild',
   'managerFrontendBuild',
 ])
+assert(
+  candidate.motorInternalAccessGenerator?.startsWith('approved-'),
+  'gerador assinado do motor sem evidência aprovada',
+)
+assert(
+  candidate.motorInternalCatalogAuthenticatedE2E?.startsWith('approved-'),
+  'catálogo interno sem evidência autenticada aprovada',
+)
+assert(
+  candidate.motorInternalMaintenanceRevocation?.startsWith('approved-'),
+  'revogação da manutenção interna sem evidência aprovada',
+)
 assert(
   candidate.remoteCanary === (manifest.promotionEligible ? 'approved' : 'public-contract-approved'),
   'evidência remota do canário divergente',
