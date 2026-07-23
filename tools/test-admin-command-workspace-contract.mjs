@@ -72,6 +72,11 @@ assert(styles.includes('minmax(160px, 0.52fr)') && styles.includes('font-size: 0
 assert(configurationPanel.includes('configOptionLabel(option)'), 'opções do Motor não possuem rótulos legíveis')
 assert(styles.includes('.config-actions {\n  position: static;'), 'barra de ações do Motor ainda cobre os campos de configuração')
 assert(configurationPanel.includes('PROTECTED_KEY_LABELS[key]') && !configurationPanel.includes('<code key={key}>{key}</code>'), 'Motor expõe chaves internas na interface')
+assert(workspace.includes('getAdminCommercialAccess') && workspace.includes('isModuleAvailable'), 'workspace não aplica o plano comercial aos módulos')
+assert(workspace.includes("feature: 'MOTOR_LIMITADO'") && workspace.includes("feature: 'CONTINUIDADE'"), 'mapeamento comercial dos módulos está incompleto')
+assert(workspace.includes('Plano superior') && workspace.includes('admin-status-plan'), 'plano atual e módulos indisponíveis não são apresentados de forma clara')
+assert(styles.includes('.admin-desktop-rail > button.is-locked') && styles.includes('.admin-commercial-notice'), 'módulos fora do plano não possuem acabamento visual')
+assert(styles.includes('.admin-status-plan') && styles.includes('.admin-command-palette > div > button.is-locked'), 'estado comercial não foi estilizado no workspace')
 assert(styles.includes('.admin-desktop-window-layer') && styles.includes('pointer-events: none'), 'camada vazia das janelas bloqueia os botoes iniciais')
 assert(styles.includes('.admin-app-window') && styles.includes('pointer-events: auto'), 'janelas perderam interacao ao liberar o canvas inicial')
 

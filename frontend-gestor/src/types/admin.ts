@@ -141,6 +141,40 @@ export interface AdminCompanySaveResult {
   empresa: AdminCompanyProfile
 }
 
+export type AdminCommercialFeatureCode =
+  | 'CADASTROS'
+  | 'ORDENS_SERVICO'
+  | 'CHECKLISTS'
+  | 'GESTAO_TECNICA'
+  | 'INDICADORES'
+  | 'DOCUMENTOS'
+  | 'IMPORTACOES'
+  | 'AUDITORIA'
+  | 'CONTINUIDADE'
+  | 'MOTOR_LIMITADO'
+
+export interface AdminCommercialAccess {
+  schema_version: string
+  plano: {
+    codigo: 'INICIAL' | 'BASICO' | 'COMPLETO' | 'BLOQUEADO'
+    nome: string
+  }
+  status: 'ATIVA' | 'BLOQUEADA'
+  valido_ate: string
+  recursos: Array<{
+    codigo: AdminCommercialFeatureCode
+    nome: string
+  }>
+  manutencao: {
+    aberta: boolean
+    estado: 'ABERTA' | 'FECHADA' | 'BLOQUEADA'
+    motivo: string
+    expira_em: string
+  }
+  acesso_integral: false
+  usuario_id: string
+}
+
 export type ConfigurationValue = string | number | boolean
 
 export interface ConfigurationDefinition {
@@ -191,6 +225,7 @@ export interface ConfigurationDraft {
 export interface ConfigurationEngineState {
   catalogo: ConfigurationDefinition[]
   protegidas: string[]
+  acesso_comercial: AdminCommercialAccess | null
   ativa: ConfigurationActiveVersion
   rascunho: ConfigurationDraft | null
 }

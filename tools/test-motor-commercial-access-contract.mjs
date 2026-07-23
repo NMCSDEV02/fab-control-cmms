@@ -14,6 +14,8 @@ function assert(condition, message) {
 const motor = read('backend/apps-script/30_Motor_Acesso_Comercial.js')
 const auth = read('backend/apps-script/03_Http_Auth.js')
 const configuration = read('backend/apps-script/26_Motor_Configuracao.js')
+const adminApi = read('frontend-gestor/src/services/api/admin.ts')
+const workspace = read('frontend-gestor/src/components/AdminWorkspace.tsx')
 
 for (const plan of ['INICIAL', 'BASICO', 'COMPLETO']) {
   assert(motor.includes(`${plan}: {`), `plano comercial ausente: ${plan}`)
@@ -48,6 +50,9 @@ assert(motor.includes('SUBSCRIPTION_ACTION_UNCLASSIFIED'), 'novas ações não f
 const authorizationCalls = auth.match(/motorAuthorizeAction_\(action,/g) || []
 assert(authorizationCalls.length === 2, 'autorização comercial deve validar sessão em cache e sessão persistida')
 assert(configuration.includes('acesso_comercial:typeof motorCommercialAccessContext_'), 'estado do motor não informa o escopo comercial seguro')
+assert(auth.includes('case "admin.acesso.estado"'), 'endpoint seguro de consulta do plano ausente')
+assert(adminApi.includes("'admin.acesso.estado'"), 'frontend não consulta o plano no servidor')
+assert(workspace.includes('commercialAccess.status') && workspace.includes('grantedFeatures.has'), 'workspace não limita módulos pelos recursos contratados')
 
 const publicActions = new Set([
   'sistema.health',

@@ -1,6 +1,7 @@
 import type {
   AdminCompanyProfile,
   AdminCompanySaveResult,
+  AdminCommercialAccess,
   AdminPasswordResetResult,
   AdminPermissionMatrix,
   AdminPermissionSaveResult,
@@ -230,6 +231,12 @@ export function getAdminCompanyProfile(
   signal?: AbortSignal,
 ): Promise<AdminCompanyProfile> {
   return readAdminData<AdminCompanyProfile>('admin.empresa.obter', {}, signal)
+}
+
+export function getAdminCommercialAccess(
+  signal?: AbortSignal,
+): Promise<AdminCommercialAccess> {
+  return readAdminData<AdminCommercialAccess>('admin.acesso.estado', {}, signal)
 }
 
 export function saveAdminCompanyProfile(

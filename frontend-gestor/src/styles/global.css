@@ -7220,6 +7220,11 @@ p {
   background: var(--admin-soft);
 }
 
+.admin-profile-menu > button[aria-disabled='true'] {
+  color: #98a5aa;
+  background: #f7f9fa;
+}
+
 .admin-desktop-user {
   display: grid;
   min-width: 86px;
@@ -7304,6 +7309,32 @@ p {
   width: 17px;
 }
 
+.admin-desktop-rail > button.is-locked {
+  color: #a4afb4;
+  background: #f7f9fa;
+}
+
+.admin-desktop-rail > button.is-locked:hover {
+  border-color: #e0e6e9;
+  color: #87969d;
+  background: #f2f5f6;
+}
+
+.admin-desktop-rail > button > b {
+  position: absolute;
+  right: 4px;
+  top: 3px;
+  display: grid;
+  place-items: center;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  color: #7d8d94;
+  background: #e5eaec;
+  font-size: 0.48rem;
+  font-weight: 900;
+}
+
 .admin-desktop-rail > button > i {
   position: absolute;
   right: 5px;
@@ -7345,6 +7376,52 @@ p {
     linear-gradient(90deg, rgb(43 75 87 / 3.5%) 1px, transparent 1px),
     linear-gradient(rgb(43 75 87 / 3.5%) 1px, transparent 1px);
   background-size: 26px 26px;
+}
+
+.admin-commercial-notice {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 9400;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(420px, calc(100% - 32px));
+  max-width: 620px;
+  padding: 8px 9px 8px 11px;
+  border: 1px solid #d9c184;
+  border-radius: 8px;
+  color: #59451a;
+  background: #fff9e9;
+  box-shadow: 0 10px 28px rgb(44 52 42 / 14%);
+  font-size: 0.62rem;
+  font-weight: 700;
+  transform: translateX(-50%);
+}
+
+.admin-commercial-notice > svg {
+  width: 16px;
+  flex: 0 0 auto;
+  color: #9a6b11;
+}
+
+.admin-commercial-notice > span {
+  flex: 1;
+}
+
+.admin-commercial-notice > button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  font-size: 0.85rem;
+}
+
+.admin-commercial-notice > button:hover {
+  background: rgb(154 107 17 / 10%);
 }
 
 .admin-desktop-welcome {
@@ -7906,6 +7983,25 @@ p {
   background: var(--admin-brand-soft);
 }
 
+.admin-status-plan {
+  flex: 0 0 auto;
+  min-height: 19px;
+  padding: 3px 7px;
+  border: 1px solid #cfe1e3;
+  border-radius: 99px;
+  color: var(--admin-brand-strong);
+  background: var(--admin-brand-soft);
+  font-size: 0.5rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.admin-status-plan.is-alert {
+  border-color: #e8cf99;
+  color: #7f5710;
+  background: #fff8e8;
+}
+
 .admin-desktop-statusbar > span {
   display: inline-flex;
   align-items: center;
@@ -7948,6 +8044,7 @@ p {
   }
 
   .admin-status-company,
+  .admin-status-plan,
   .admin-status-quick-access > span {
     display: none;
   }
@@ -8055,6 +8152,33 @@ p {
 .admin-command-palette > div > button kbd {
   color: #71838b;
   font: 600 0.54rem Inter, sans-serif;
+}
+
+.admin-command-palette > div > button.is-locked {
+  color: #7d8c93;
+  background: #f7f9fa;
+}
+
+.admin-command-palette > div > button.is-locked:hover,
+.admin-command-palette > div > button.is-locked:focus-visible {
+  background: #f0f3f4;
+}
+
+.admin-command-palette > div > button.is-locked > span:first-child {
+  border-color: #d5dde0;
+  color: #8b999f;
+  background: #edf1f2;
+}
+
+.admin-command-palette > div > button > em {
+  padding: 3px 6px;
+  border: 1px solid #e2cf9f;
+  border-radius: 99px;
+  color: #7c5a18;
+  background: #fff9ea;
+  font-size: 0.48rem;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .admin-command-palette > div > p {

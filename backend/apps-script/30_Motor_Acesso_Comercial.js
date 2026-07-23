@@ -142,6 +142,7 @@ const MOTOR_CORE_ACTIONS = [
   "cmms.higienizar_base",
   "perf.cache_status",
   "perf.cache_clear",
+  "admin.acesso.estado",
   "admin.resumo",
   "admin.resumo_cache"
 ];
@@ -325,6 +326,13 @@ function motorCommercialAccessContext_(auth){
     acesso_integral:false,
     usuario_id:auth && auth.usuario_id || ""
   };
+}
+
+function motorCommercialAccessState_(p, auth){
+  if(upper_(auth && auth.perfil) !== ROLE.ADMIN){
+    err_("FORBIDDEN_ADMIN_REQUIRED", "A consulta do plano exige perfil ADMIN.", 403);
+  }
+  return motorCommercialAccessContext_(auth);
 }
 
 function motorRequireMaintenanceAccess_(auth){

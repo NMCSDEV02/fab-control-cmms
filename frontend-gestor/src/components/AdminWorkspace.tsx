@@ -8,9 +8,9 @@ import {
 } from 'react'
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
-import { getAdminCompanyProfile, saveAdminCompanyProfile } from '../services/api/admin'
+import { getAdminCommercialAccess, getAdminCompanyProfile, saveAdminCompanyProfile } from '../services/api/admin'
 import { getUnreadNotificationCount, isGestorAuthenticationError } from '../services/api/gestor'
-import type { AdminCompanyProfile } from '../types/admin'
+import type { AdminCommercialAccess, AdminCommercialFeatureCode, AdminCompanyProfile } from '../types/admin'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
 import { AdminCompanyDialog } from './AdminCompanyDialog'
 import {
@@ -51,6 +51,7 @@ interface WorkspaceModule {
   label: string
   description: string
   Icon: typeof DashboardIcon
+  feature?: AdminCommercialFeatureCode
 }
 
 interface WorkspaceWindow {
@@ -92,21 +93,21 @@ type WindowSnapTarget = 'maximize' | 'left' | 'right' | 'top-left' | 'top-right'
 
 const MODULES: WorkspaceModule[] = [
   { id: 'overview', code: 'VG', label: 'Visão geral', description: 'Centro de comando', Icon: DashboardIcon },
-  { id: 'structure', code: 'EF', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: FactoryIcon },
-  { id: 'assets', code: 'AT', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: AssetIcon },
-  { id: 'checklists', code: 'CK', label: 'Checklists', description: 'Construtor e roteamento', Icon: ChecklistIcon },
-  { id: 'maintenance', code: 'PM', label: 'Programação', description: 'Planos e recorrências', Icon: CalendarIcon },
-  { id: 'inventory', code: 'MP', label: 'Materiais e peças', description: 'Estoque técnico', Icon: PackageIcon },
-  { id: 'workforce', code: 'EQ', label: 'Equipes técnicas', description: 'Áreas, cargos e assinatura', Icon: UsersIcon },
-  { id: 'operations', code: 'OS', label: 'Intervenções e OS', description: 'Planejar, validar e liberar', Icon: WrenchIcon },
-  { id: 'analytics', code: 'BI', label: 'Indicadores', description: 'OEE, horas, custos e SLA', Icon: ChartIcon },
-  { id: 'documents', code: 'DT', label: 'Documentos', description: 'Arquivos e revisões', Icon: DocumentIcon },
-  { id: 'imports', code: 'IM', label: 'Importar planilhas', description: 'Modelos e implantação', Icon: UploadIcon },
-  { id: 'configuration', code: 'MC', label: 'Motor', description: 'Configuração versionada', Icon: SettingsIcon },
-  { id: 'users', code: 'US', label: 'Usuários', description: 'Identidades e acessos', Icon: UserDirectoryIcon },
-  { id: 'permissions', code: 'PE', label: 'Permissões', description: 'Matriz de capacidades', Icon: KeyIcon },
-  { id: 'governance', code: 'AU', label: 'Auditoria', description: 'Integridade e trilha', Icon: AuditIcon },
-  { id: 'backup', code: 'BK', label: 'Continuidade', description: 'Backup e restauração', Icon: DatabaseIcon },
+  { id: 'structure', code: 'EF', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: FactoryIcon, feature: 'CADASTROS' },
+  { id: 'assets', code: 'AT', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: AssetIcon, feature: 'CADASTROS' },
+  { id: 'checklists', code: 'CK', label: 'Checklists', description: 'Construtor e roteamento', Icon: ChecklistIcon, feature: 'CHECKLISTS' },
+  { id: 'maintenance', code: 'PM', label: 'Programação', description: 'Planos e recorrências', Icon: CalendarIcon, feature: 'GESTAO_TECNICA' },
+  { id: 'inventory', code: 'MP', label: 'Materiais e peças', description: 'Estoque técnico', Icon: PackageIcon, feature: 'CADASTROS' },
+  { id: 'workforce', code: 'EQ', label: 'Equipes técnicas', description: 'Áreas, cargos e assinatura', Icon: UsersIcon, feature: 'GESTAO_TECNICA' },
+  { id: 'operations', code: 'OS', label: 'Intervenções e OS', description: 'Planejar, validar e liberar', Icon: WrenchIcon, feature: 'GESTAO_TECNICA' },
+  { id: 'analytics', code: 'BI', label: 'Indicadores', description: 'OEE, horas, custos e SLA', Icon: ChartIcon, feature: 'INDICADORES' },
+  { id: 'documents', code: 'DT', label: 'Documentos', description: 'Arquivos e revisões', Icon: DocumentIcon, feature: 'DOCUMENTOS' },
+  { id: 'imports', code: 'IM', label: 'Importar planilhas', description: 'Modelos e implantação', Icon: UploadIcon, feature: 'IMPORTACOES' },
+  { id: 'configuration', code: 'MC', label: 'Motor', description: 'Configurações operacionais', Icon: SettingsIcon, feature: 'MOTOR_LIMITADO' },
+  { id: 'users', code: 'US', label: 'Usuários', description: 'Identidades e acessos', Icon: UserDirectoryIcon, feature: 'CADASTROS' },
+  { id: 'permissions', code: 'PE', label: 'Permissões', description: 'Matriz de capacidades', Icon: KeyIcon, feature: 'CADASTROS' },
+  { id: 'governance', code: 'AU', label: 'Auditoria', description: 'Integridade e trilha', Icon: AuditIcon, feature: 'AUDITORIA' },
+  { id: 'backup', code: 'BK', label: 'Continuidade', description: 'Backup e restauração', Icon: DatabaseIcon, feature: 'CONTINUIDADE' },
 ]
 
 const QUICK_ACCESS_MODULES: AdminModule[] = ['overview', 'checklists', 'operations', 'configuration']
@@ -342,6 +343,9 @@ export function AdminWorkspace({
   const [companyOpen, setCompanyOpen] = useState(false)
   const [companyProfile, setCompanyProfile] = useState<AdminCompanyProfile>(readCachedCompanyProfile)
   const [companyLoadError, setCompanyLoadError] = useState('')
+  const [commercialAccess, setCommercialAccess] = useState<AdminCommercialAccess | null>(null)
+  const [commercialAccessError, setCommercialAccessError] = useState('')
+  const [commercialAccessNotice, setCommercialAccessNotice] = useState('')
   const [notificationCount, setNotificationCount] = useState<number | null>(null)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -366,6 +370,35 @@ export function AdminWorkspace({
     return () => controller.abort()
   }, [onSessionExpired])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    void getAdminCommercialAccess(controller.signal)
+      .then((access) => {
+        setCommercialAccess(access)
+        setCommercialAccessError('')
+      })
+      .catch((cause) => {
+        if (cause instanceof DOMException && cause.name === 'AbortError') return
+        if (isGestorAuthenticationError(cause)) {
+          onSessionExpired()
+          return
+        }
+        setCommercialAccessError(cause instanceof Error ? cause.message : 'Não foi possível consultar o plano atual.')
+      })
+    return () => controller.abort()
+  }, [onSessionExpired])
+
+  const grantedFeatures = useMemo(
+    () => new Set(commercialAccess?.recursos.map((resource) => resource.codigo) ?? []),
+    [commercialAccess],
+  )
+
+  const isModuleAvailable = useCallback((moduleId: AdminModule) => {
+    const module = getModule(moduleId)
+    if (!commercialAccess || !module.feature) return true
+    return commercialAccess.status === 'ATIVA' && grantedFeatures.has(module.feature)
+  }, [commercialAccess, grantedFeatures])
+
   const filteredModules = useMemo(() => {
     const term = paletteQuery.trim().toLocaleLowerCase('pt-BR')
     if (!term) return MODULES
@@ -375,6 +408,12 @@ export function AdminWorkspace({
   }, [paletteQuery])
 
   const openModule = useCallback((module: AdminModule, notify = true) => {
+    if (!isModuleAvailable(module)) {
+      const selected = getModule(module)
+      setCommercialAccessNotice(`${selected.label} não está incluído no plano ${commercialAccess?.plano.nome ?? 'atual'}.`)
+      setPaletteOpen(false)
+      return
+    }
     const nextZIndex = ++zIndexRef.current
     setWindows((current) => {
       const existing = current.find((item) => item.module === module)
@@ -392,8 +431,15 @@ export function AdminWorkspace({
     setLayoutQuickOpen(false)
     setProfileOpen(false)
     setCompanyOpen(false)
+    setCommercialAccessNotice('')
     if (notify) onModuleChange(module)
-  }, [onModuleChange])
+  }, [commercialAccess?.plano.nome, isModuleAvailable, onModuleChange])
+
+  useEffect(() => {
+    if (!commercialAccess) return
+    setWindows((current) => current.filter((item) => isModuleAvailable(item.module)))
+    if (!isModuleAvailable(activeModule)) onModuleChange('overview')
+  }, [activeModule, commercialAccess, isModuleAvailable, onModuleChange])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -789,9 +835,9 @@ export function AdminWorkspace({
           {profileOpen ? (
             <aside className="admin-profile-menu" aria-label="Menu do perfil">
               <header><span>{getInitials(session.user.nome)}</span><div><strong>{session.user.nome}</strong><small>{companyProfile.nome}</small></div></header>
-              <button type="button" onClick={() => openModule('configuration')}>Personalizar sistema</button>
-              <button type="button" onClick={() => openModule('configuration')}>Parâmetros técnicos</button>
-              <button type="button" onClick={() => openModule('users')}>Meu perfil</button>
+              <button type="button" aria-disabled={!isModuleAvailable('configuration')} onClick={() => openModule('configuration')}>Personalizar sistema</button>
+              <button type="button" aria-disabled={!isModuleAvailable('configuration')} onClick={() => openModule('configuration')}>Parâmetros técnicos</button>
+              <button type="button" aria-disabled={!isModuleAvailable('users')} onClick={() => openModule('users')}>Meu perfil</button>
               <button type="button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? 'Saindo…' : 'Sair'}</button>
             </aside>
           ) : null}
@@ -803,23 +849,33 @@ export function AdminWorkspace({
           {MODULES.map(({ id, label, Icon }) => {
             const windowItem = windows.find((item) => item.module === id)
             const focused = windowItem && windowItem.zIndex === Math.max(0, ...windows.map((item) => item.zIndex))
+            const available = isModuleAvailable(id)
             return (
               <button
                 key={id}
                 type="button"
-                className={focused && !windowItem?.minimized ? 'is-active' : ''}
-                data-tip={label}
-                aria-label={label}
+                className={`${focused && !windowItem?.minimized ? 'is-active' : ''}${available ? '' : ' is-locked'}`}
+                data-tip={available ? label : `${label} · não incluído no plano`}
+                aria-label={available ? label : `${label}: não incluído no plano`}
+                aria-disabled={!available}
                 onClick={() => openModule(id)}
               >
                 <Icon />
                 {windowItem?.minimized ? <i aria-hidden="true" /> : null}
+                {!available ? <b aria-hidden="true">×</b> : null}
               </button>
             )
           })}
         </nav>
 
         <div className="admin-desktop-workspace" ref={workspaceRef}>
+          {commercialAccessNotice ? (
+            <div className="admin-commercial-notice" role="status">
+              <ShieldIcon />
+              <span>{commercialAccessNotice}</span>
+              <button type="button" aria-label="Fechar aviso do plano" onClick={() => setCommercialAccessNotice('')}>×</button>
+            </div>
+          ) : null}
           {!visibleWindowCount ? (
             <section className="admin-desktop-welcome">
               <div className="admin-welcome-card">
@@ -834,7 +890,10 @@ export function AdminWorkspace({
                   <small className="admin-welcome-help"><b>?</b> Em caso de dúvida, acesse a Central de Ajuda no cabeçalho.</small>
                 </div>
                 <aside className="admin-welcome-capabilities" aria-label="Recursos do ambiente">
-                  <header><span>Ambiente operacional</span><i aria-hidden="true" /></header>
+                  <header>
+                    <span>{commercialAccess ? `Plano ${commercialAccess.plano.nome}` : commercialAccessError ? 'Plano indisponível' : 'Verificando plano'}</span>
+                    <i aria-hidden="true" />
+                  </header>
                   <article><ShieldIcon /><span><strong>Governança e acesso</strong><small>Perfis, permissões e rastreabilidade.</small></span></article>
                   <article><SettingsIcon /><span><strong>Estrutura e regras</strong><small>Cadastros, fluxos e configuração.</small></span></article>
                   <article><ChartIcon /><span><strong>Operação e indicadores</strong><small>Intervenções, custos, OEE e SLA.</small></span></article>
@@ -920,7 +979,7 @@ export function AdminWorkspace({
             </div>
             <div className="admin-status-quick-access" aria-label="Acesso rápido">
               <span>Rápido</span>
-              {QUICK_ACCESS_MODULES.map((moduleId) => {
+              {QUICK_ACCESS_MODULES.filter(isModuleAvailable).map((moduleId) => {
                 const module = getModule(moduleId)
                 const open = windows.some((item) => item.module === moduleId && !item.minimized)
                 return (
@@ -937,6 +996,12 @@ export function AdminWorkspace({
                 )
               })}
             </div>
+            <span
+              className={`admin-status-plan${commercialAccess?.status === 'BLOQUEADA' || commercialAccessError ? ' is-alert' : ''}`}
+              title={commercialAccessError || (commercialAccess ? `${commercialAccess.recursos.length} recurso(s) habilitado(s)` : 'Consultando assinatura')}
+            >
+              {commercialAccess ? `Plano ${commercialAccess.plano.nome}` : commercialAccessError ? 'Plano indisponível' : 'Verificando plano'}
+            </span>
             <button
               className="admin-status-company"
               type="button"
@@ -969,10 +1034,16 @@ export function AdminWorkspace({
             <label><SearchIcon /><input ref={paletteInputRef} value={paletteQuery} onChange={(event) => setPaletteQuery(event.target.value)} placeholder="Digite o módulo ou ação…" /></label>
             <div>
               {filteredModules.map((module) => (
-                <button key={module.id} type="button" onClick={() => openModule(module.id)}>
+                <button
+                  key={module.id}
+                  className={isModuleAvailable(module.id) ? '' : 'is-locked'}
+                  type="button"
+                  aria-disabled={!isModuleAvailable(module.id)}
+                  onClick={() => openModule(module.id)}
+                >
                   <span>{module.code}</span>
                   <span><strong>{module.label}</strong><small>{module.description}</small></span>
-                  <kbd>Enter</kbd>
+                  {isModuleAvailable(module.id) ? <kbd>Enter</kbd> : <em>Plano superior</em>}
                 </button>
               ))}
               {!filteredModules.length ? <p>Nenhum módulo encontrado.</p> : null}
