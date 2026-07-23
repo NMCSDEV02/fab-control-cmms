@@ -1,7 +1,25 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
-import { AssetIcon, CheckIcon, HomeIcon, SettingsIcon, ShieldIcon, UsersIcon, WrenchIcon } from './Icons'
+import {
+  AlertIcon,
+  AssetIcon,
+  CheckIcon,
+  HomeIcon,
+  SearchIcon,
+  SettingsIcon,
+  ShieldIcon,
+  UsersIcon,
+  WrenchIcon,
+} from './Icons'
 
 interface AdminWorkspaceProps {
   session: GestorSession
@@ -12,111 +30,163 @@ interface AdminWorkspaceProps {
   onLogout: () => void
 }
 
-const MODULES: Array<{
+interface WorkspaceModule {
   id: AdminModule
+  code: string
   label: string
   description: string
   Icon: typeof HomeIcon
-}> = [
-  { id: 'overview', label: 'Dashboard técnico', description: 'Visão consolidada', Icon: HomeIcon },
-  { id: 'structure', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: AssetIcon },
-  { id: 'assets', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: WrenchIcon },
-  { id: 'checklists', label: 'Construtor de checklist', description: 'Modelos e roteamento', Icon: CheckIcon },
-  { id: 'maintenance', label: 'Planos programados', description: 'Gatilhos e recorrências', Icon: SettingsIcon },
-  { id: 'inventory', label: 'Materiais e peças', description: 'Estoque técnico', Icon: AssetIcon },
-  { id: 'workforce', label: 'Áreas e cargos', description: 'Filtros e assinaturas', Icon: UsersIcon },
-  { id: 'operations', label: 'Intervenções e OS', description: 'Criar, validar e liberar', Icon: WrenchIcon },
-  { id: 'analytics', label: 'Indicadores e relatórios', description: 'KPI e exportação', Icon: HomeIcon },
-  { id: 'documents', label: 'Documentos técnicos', description: 'Arquivos e revisões', Icon: AssetIcon },
-  { id: 'governance', label: 'Auditoria e monitoramento', description: 'Integridade e trilha', Icon: ShieldIcon },
-  { id: 'backup', label: 'Backup e continuidade', description: 'Cópias integrais', Icon: ShieldIcon },
-  { id: 'imports', label: 'Implantação e importação', description: 'Modelos de planilhas', Icon: SettingsIcon },
-  { id: 'configuration', label: 'Motor de configuração', description: 'Runtime versionado', Icon: SettingsIcon },
-  { id: 'users', label: 'Usuários e perfis', description: 'Identidades e acessos', Icon: UsersIcon },
-  { id: 'permissions', label: 'Segurança e continuidade', description: 'Matriz de capacidades', Icon: ShieldIcon },
+}
+
+interface WorkspaceWindow {
+  module: AdminModule
+  x: number
+  y: number
+  width: number
+  height: number
+  zIndex: number
+  minimized: boolean
+  maximized: boolean
+}
+
+interface DragState {
+  module: AdminModule
+  offsetX: number
+  offsetY: number
+}
+
+type WindowLayout = 'smart' | 'cascade' | 'columns'
+
+const MODULES: WorkspaceModule[] = [
+  { id: 'overview', code: 'VG', label: 'Visão geral', description: 'Centro de comando', Icon: HomeIcon },
+  { id: 'structure', code: 'EF', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: AssetIcon },
+  { id: 'assets', code: 'AT', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: WrenchIcon },
+  { id: 'checklists', code: 'CK', label: 'Checklists', description: 'Construtor e roteamento', Icon: CheckIcon },
+  { id: 'maintenance', code: 'PM', label: 'Programação', description: 'Planos e recorrências', Icon: SettingsIcon },
+  { id: 'inventory', code: 'MP', label: 'Materiais e peças', description: 'Estoque técnico', Icon: AssetIcon },
+  { id: 'workforce', code: 'EQ', label: 'Equipes técnicas', description: 'Áreas, cargos e assinatura', Icon: UsersIcon },
+  { id: 'operations', code: 'OS', label: 'Intervenções e OS', description: 'Planejar, validar e liberar', Icon: WrenchIcon },
+  { id: 'analytics', code: 'BI', label: 'Indicadores', description: 'OEE, horas, custos e SLA', Icon: HomeIcon },
+  { id: 'documents', code: 'DT', label: 'Documentos', description: 'Arquivos e revisões', Icon: AssetIcon },
+  { id: 'imports', code: 'IM', label: 'Importar planilhas', description: 'Modelos e implantação', Icon: SettingsIcon },
+  { id: 'configuration', code: 'MC', label: 'Motor', description: 'Configuração versionada', Icon: SettingsIcon },
+  { id: 'users', code: 'US', label: 'Usuários', description: 'Identidades e acessos', Icon: UsersIcon },
+  { id: 'permissions', code: 'PE', label: 'Permissões', description: 'Matriz de capacidades', Icon: ShieldIcon },
+  { id: 'governance', code: 'AU', label: 'Auditoria', description: 'Integridade e trilha', Icon: ShieldIcon },
+  { id: 'backup', code: 'BK', label: 'Continuidade', description: 'Backup e restauração', Icon: ShieldIcon },
 ]
 
 const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; subtitle: string }> = {
   overview: {
     eyebrow: 'CENTRO DE COMANDO',
     title: 'Visão geral administrativa',
-    subtitle: 'Controle a configuração, identidades e políticas que governam toda a operação.',
+    subtitle: 'Abra módulos em paralelo e acompanhe a operação sem perder o contexto.',
   },
   structure: {
     eyebrow: 'ESTRUTURA ORGANIZACIONAL',
     title: 'Plantas, setores e linhas',
-    subtitle: 'Cadastre a hierarquia fabril com seleção assistida e vínculos validados pelo servidor.',
+    subtitle: 'Cadastros assistidos com vínculos encadeados e validação no servidor.',
   },
   assets: {
     eyebrow: 'CADASTRO TÉCNICO',
     title: 'Equipamentos e componentes',
-    subtitle: 'Organize TAGs, criticidade, saúde e componentes por equipamento sem repetir informações.',
+    subtitle: 'TAGs, criticidade, localização e componentes com seleções guiadas.',
   },
   checklists: {
     eyebrow: 'AUTORIA E GOVERNANÇA',
     title: 'Construtor de checklist',
-    subtitle: 'Monte rotinas dinâmicas e envie ao filtro técnico antes da liberação ao Operador.',
+    subtitle: 'Crie rotinas técnicas, assinaturas e destinos antes da liberação ao Gestor.',
   },
   maintenance: {
     eyebrow: 'PROGRAMAÇÃO',
     title: 'Planos de manutenção',
-    subtitle: 'Defina gatilhos, recorrência, bloqueio e parada. Novos planos permanecem em rascunho.',
+    subtitle: 'Programe preventivas, periodicidade, ativo, responsável e próxima execução.',
   },
   inventory: {
     eyebrow: 'ALMOXARIFADO TÉCNICO',
     title: 'Materiais e peças',
-    subtitle: 'Cadastre itens de consumo e acompanhe saldo e estoque mínimo para as execuções.',
+    subtitle: 'Controle itens, unidades, saldo mínimo, custo e aplicação por ativo.',
   },
   workforce: {
     eyebrow: 'ESTRUTURA TÉCNICA',
-    title: 'Áreas e cargos especialistas',
-    subtitle: 'Defina os destinos do fluxo, os cargos de cada área e quem pode assinar uma liberação.',
+    title: 'Áreas, cargos e responsáveis',
+    subtitle: 'Defina equipes, especialidades, filtros técnicos e poder de assinatura.',
   },
   operations: {
     eyebrow: 'PLANEJAMENTO OPERACIONAL',
     title: 'Intervenções e ordens de serviço',
-    subtitle: 'Crie rascunhos e encaminhe ao filtro técnico; o Operador só recebe a ação depois da liberação.',
+    subtitle: 'Planeje, encaminhe ao filtro técnico e libere a execução ao Operador.',
   },
   analytics: {
     eyebrow: 'INTELIGÊNCIA OPERACIONAL',
-    title: 'Indicadores e relatórios técnicos',
-    subtitle: 'Analise MTTR, MTBF, lead time, SLA, disponibilidade e OEE por equipamento e período.',
+    title: 'Indicadores e relatórios',
+    subtitle: 'OEE, MTTR, MTBF, horas, atendimentos, custos, lead time e SLA.',
   },
   documents: {
     eyebrow: 'GESTÃO DOCUMENTAL',
-    title: 'Documentos técnicos e revisões',
-    subtitle: 'Organize manuais, diagramas, laudos e certificados com vínculos assistidos e arquivos privados.',
+    title: 'Documentos técnicos',
+    subtitle: 'Manuais, diagramas, laudos e certificados com revisão e validade.',
   },
   governance: {
     eyebrow: 'AUDITORIA E OBSERVABILIDADE',
     title: 'Integridade e trilha administrativa',
-    subtitle: 'Acompanhe a saúde da base e inspecione alterações sem expor credenciais ou segredos.',
+    subtitle: 'Monitore a base e investigue alterações com dados sensíveis protegidos.',
   },
   backup: {
     eyebrow: 'CONTINUIDADE OPERACIONAL',
-    title: 'Backup e recuperação protegida',
-    subtitle: 'Crie cópias integrais auditadas; restaurações permanecem bloqueadas até a dupla confirmação segura.',
+    title: 'Backup e recuperação',
+    subtitle: 'Crie pontos integrais e restaure dados operacionais com dupla confirmação.',
   },
   imports: {
-    eyebrow: 'IMPLANTAÇÃO E GOVERNANÇA DE DADOS',
-    title: 'Central de Importação',
-    subtitle: 'Baixe modelos, valide vínculos e confirme cadastros, planos e checklists com rollback auditável.',
+    eyebrow: 'GOVERNANÇA DE DADOS',
+    title: 'Central de importação',
+    subtitle: 'Suba modelos, valide vínculos e confirme lotes com rollback auditável.',
   },
   configuration: {
-    eyebrow: 'GOVERNANÇA DO RUNTIME',
-    title: 'Motor de Configuração',
-    subtitle: 'Prepare, valide, publique e restaure configurações sem editar o núcleo da aplicação.',
+    eyebrow: 'NÚCLEO PROTEGIDO',
+    title: 'Motor de configuração',
+    subtitle: 'Prepare, valide, publique e restaure versões sem editar o runtime ativo.',
   },
   users: {
     eyebrow: 'IDENTIDADES',
     title: 'Diretório de usuários',
-    subtitle: 'Administre acessos, áreas técnicas, sessões e recuperação de credenciais.',
+    subtitle: 'Administre acessos, área, cargo, sessões e recuperação de credenciais.',
   },
   permissions: {
     eyebrow: 'CONTROLE DE ACESSO',
     title: 'Matriz de capacidades',
-    subtitle: 'Defina o que cada perfil pode executar sem comprometer as regras protegidas.',
+    subtitle: 'Defina permissões por perfil sem comprometer as barreiras protegidas.',
   },
+}
+
+function getModule(module: AdminModule): WorkspaceModule {
+  return MODULES.find((item) => item.id === module) ?? MODULES[0]
+}
+
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase()
+}
+
+function createWindow(module: AdminModule, index: number, zIndex: number): WorkspaceWindow {
+  const availableWidth = Math.max(760, window.innerWidth - 50)
+  const availableHeight = Math.max(520, window.innerHeight - 73)
+  const offset = Math.min(index, 5) * 26
+  return {
+    module,
+    x: 18 + offset,
+    y: 18 + offset,
+    width: Math.min(1180, availableWidth - 42),
+    height: Math.min(760, availableHeight - 42),
+    zIndex,
+    minimized: false,
+    maximized: true,
+  }
 }
 
 export function AdminWorkspace({
@@ -127,10 +197,196 @@ export function AdminWorkspace({
   onSessionExpired,
   onLogout,
 }: AdminWorkspaceProps) {
-  const heading = MODULE_HEADINGS[activeModule]
+  const zIndexRef = useRef(2)
+  const workspaceRef = useRef<HTMLDivElement | null>(null)
+  const windowsRef = useRef<WorkspaceWindow[]>([])
+  const dragRef = useRef<DragState | null>(null)
+  const paletteInputRef = useRef<HTMLInputElement | null>(null)
+  const [windows, setWindows] = useState<WorkspaceWindow[]>(() => [createWindow('overview', 0, 1)])
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [windowManagerOpen, setWindowManagerOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [paletteQuery, setPaletteQuery] = useState('')
+  const [dragging, setDragging] = useState(false)
+  windowsRef.current = windows
+
+  const filteredModules = useMemo(() => {
+    const term = paletteQuery.trim().toLocaleLowerCase('pt-BR')
+    if (!term) return MODULES
+    return MODULES.filter((module) => (
+      `${module.code} ${module.label} ${module.description}`.toLocaleLowerCase('pt-BR').includes(term)
+    ))
+  }, [paletteQuery])
+
+  const openModule = useCallback((module: AdminModule, notify = true) => {
+    const nextZIndex = ++zIndexRef.current
+    setWindows((current) => {
+      const existing = current.find((item) => item.module === module)
+      if (existing) {
+        return current.map((item) => (
+          item.module === module
+            ? { ...item, minimized: false, zIndex: nextZIndex }
+            : item
+        ))
+      }
+      return [...current, createWindow(module, current.length, nextZIndex)]
+    })
+    setPaletteOpen(false)
+    setWindowManagerOpen(false)
+    if (notify) onModuleChange(module)
+  }, [onModuleChange])
+
+  useEffect(() => {
+    if (!windowsRef.current.some((item) => item.module === activeModule)) {
+      openModule(activeModule, false)
+    }
+  }, [activeModule, openModule])
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase('pt-BR') === 'k') {
+        event.preventDefault()
+        setPaletteOpen(true)
+      }
+      if (event.key === 'Escape') {
+        setPaletteOpen(false)
+        setWindowManagerOpen(false)
+        setHelpOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  useEffect(() => {
+    if (!paletteOpen) return
+    const timeout = window.setTimeout(() => paletteInputRef.current?.focus(), 20)
+    return () => window.clearTimeout(timeout)
+  }, [paletteOpen])
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const drag = dragRef.current
+      const workspace = workspaceRef.current
+      if (!drag || !workspace) return
+      const bounds = workspace.getBoundingClientRect()
+      setWindows((current) => current.map((item) => {
+        if (item.module !== drag.module || item.maximized) return item
+        const maximumX = Math.max(0, bounds.width - Math.min(item.width, 260))
+        const maximumY = Math.max(0, bounds.height - 34)
+        return {
+          ...item,
+          x: Math.max(0, Math.min(maximumX, event.clientX - bounds.left - drag.offsetX)),
+          y: Math.max(0, Math.min(maximumY, event.clientY - bounds.top - drag.offsetY)),
+        }
+      }))
+    }
+
+    function handlePointerUp() {
+      dragRef.current = null
+      setDragging(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [])
+
+  function focusWindow(module: AdminModule) {
+    const nextZIndex = ++zIndexRef.current
+    setWindows((current) => current.map((item) => (
+      item.module === module ? { ...item, minimized: false, zIndex: nextZIndex } : item
+    )))
+    onModuleChange(module)
+  }
+
+  function beginDrag(event: ReactPointerEvent<HTMLDivElement>, item: WorkspaceWindow) {
+    if (item.maximized || (event.target as HTMLElement).closest('button')) return
+    const workspace = workspaceRef.current
+    if (!workspace) return
+    const bounds = workspace.getBoundingClientRect()
+    dragRef.current = {
+      module: item.module,
+      offsetX: event.clientX - bounds.left - item.x,
+      offsetY: event.clientY - bounds.top - item.y,
+    }
+    setDragging(true)
+    focusWindow(item.module)
+    event.preventDefault()
+  }
+
+  function toggleMaximize(module: AdminModule) {
+    const nextZIndex = ++zIndexRef.current
+    setWindows((current) => current.map((item) => (
+      item.module === module
+        ? { ...item, minimized: false, maximized: !item.maximized, zIndex: nextZIndex }
+        : item
+    )))
+    onModuleChange(module)
+  }
+
+  function minimizeWindow(module: AdminModule) {
+    setWindows((current) => current.map((item) => (
+      item.module === module ? { ...item, minimized: true } : item
+    )))
+  }
+
+  function closeWindow(module: AdminModule) {
+    setWindows((current) => current.filter((item) => item.module !== module))
+  }
+
+  function arrangeWindows(layout: WindowLayout) {
+    const workspace = workspaceRef.current
+    if (!workspace) return
+    const visible = windows.filter((item) => !item.minimized)
+    if (!visible.length) return
+    const bounds = workspace.getBoundingClientRect()
+    const gap = 10
+
+    setWindows((current) => current.map((item) => {
+      const index = visible.findIndex((visibleItem) => visibleItem.module === item.module)
+      if (index < 0) return item
+
+      if (layout === 'cascade') {
+        return {
+          ...item,
+          maximized: false,
+          x: gap + index * 28,
+          y: gap + index * 28,
+          width: Math.max(680, Math.min(1040, bounds.width - 90)),
+          height: Math.max(420, Math.min(700, bounds.height - 90)),
+          zIndex: ++zIndexRef.current,
+        }
+      }
+
+      const columns = layout === 'columns' ? visible.length : Math.ceil(Math.sqrt(visible.length))
+      const rows = Math.ceil(visible.length / columns)
+      const column = index % columns
+      const row = Math.floor(index / columns)
+      const width = Math.max(430, (bounds.width - gap * (columns + 1)) / columns)
+      const height = Math.max(300, (bounds.height - gap * (rows + 1)) / rows)
+      return {
+        ...item,
+        maximized: false,
+        x: gap + column * (width + gap),
+        y: gap + row * (height + gap),
+        width,
+        height,
+        zIndex: ++zIndexRef.current,
+      }
+    }))
+    setWindowManagerOpen(false)
+  }
+
+  const visibleWindowCount = windows.filter((item) => !item.minimized).length
 
   return (
-    <div className="admin-command-shell">
+    <div className={`admin-desktop-shell${dragging ? ' is-dragging' : ''}`}>
       <section className="admin-command-mobile-block">
         <ShieldIcon />
         <h1>Command Workspace</h1>
@@ -138,67 +394,192 @@ export function AdminWorkspace({
         <button type="button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? 'Saindo…' : 'Sair'}</button>
       </section>
 
-      <aside className="admin-command-sidebar">
-        <div className="admin-command-brand">
+      <header className="admin-desktop-topbar">
+        <div className="admin-desktop-brand">
           <span aria-hidden="true">FC</span>
-          <div><strong>Fab Control</strong><small>Command Workspace</small></div>
+          <strong>Fab Control <em>Command Workspace</em></strong>
         </div>
 
-        <div className="admin-command-environment">
-          <i aria-hidden="true" />
-          <span><strong>Sistema conectado</strong><small>Release controlada v{APP_RELEASE_VERSION}</small></span>
-        </div>
+        <button className="admin-desktop-command" type="button" onClick={() => setPaletteOpen(true)}>
+          <SearchIcon />
+          <span>Pesquisar módulos, cadastros e comandos…</span>
+          <kbd>Ctrl K</kbd>
+        </button>
 
-        <nav aria-label="Módulos administrativos">
-          <span className="admin-command-nav-label">ADMINISTRAÇÃO</span>
-          {MODULES.map(({ id, label, description, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className={activeModule === id ? 'is-active' : ''}
-              aria-current={activeModule === id ? 'page' : undefined}
-              onClick={() => onModuleChange(id)}
-            >
-              <Icon />
-              <span><strong>{label}</strong><small>{description}</small></span>
-            </button>
-          ))}
+        <div className="admin-desktop-top-actions">
+          <button type="button" title="Avisos operacionais" aria-label="Avisos operacionais"><AlertIcon /></button>
+          <button type="button" title="Ajuda do Workspace" aria-label="Ajuda do Workspace" onClick={() => setHelpOpen(true)}>?</button>
+          <button type="button" title="Gerenciador de janelas" aria-label="Gerenciador de janelas" onClick={() => setWindowManagerOpen((current) => !current)}>▦</button>
+          <span className="admin-desktop-online"><i aria-hidden="true" /> Online</span>
+          <span className="admin-desktop-avatar" aria-hidden="true">{getInitials(session.user.nome)}</span>
+          <span className="admin-desktop-user"><strong>{session.user.nome}</strong><small>Administrador</small></span>
+          <button className="admin-desktop-logout" type="button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? 'Saindo…' : 'Sair'}</button>
+        </div>
+      </header>
+
+      <div className="admin-desktop-content">
+        <nav className="admin-desktop-rail" aria-label="Aplicativos administrativos">
+          {MODULES.map(({ id, label, Icon }) => {
+            const windowItem = windows.find((item) => item.module === id)
+            const focused = windowItem && windowItem.zIndex === Math.max(0, ...windows.map((item) => item.zIndex))
+            return (
+              <button
+                key={id}
+                type="button"
+                className={focused && !windowItem?.minimized ? 'is-active' : ''}
+                data-tip={label}
+                aria-label={label}
+                onClick={() => openModule(id)}
+              >
+                <Icon />
+                {windowItem?.minimized ? <i aria-hidden="true" /> : null}
+              </button>
+            )
+          })}
         </nav>
 
-        <div className="admin-command-sidebar__footer">
-          <ShieldIcon />
-          <span><strong>Núcleo protegido</strong><small>Alterações críticas exigem validação e versão imutável.</small></span>
+        <div className="admin-desktop-workspace" ref={workspaceRef}>
+          {!visibleWindowCount ? (
+            <section className="admin-desktop-welcome">
+              <div>
+                <span className="eyebrow">WORKSPACE LIVRE</span>
+                <h1>Abra os módulos que precisa usar</h1>
+                <p>Trabalhe com cadastros, programação, checklists, OS e indicadores em janelas simultâneas.</p>
+                <div>
+                  <button type="button" onClick={() => openModule('structure')}><b>EF</b><span>Estrutura fabril</span></button>
+                  <button type="button" onClick={() => openModule('maintenance')}><b>PM</b><span>Programar manutenção</span></button>
+                  <button type="button" onClick={() => openModule('imports')}><b>IM</b><span>Importar planilha</span></button>
+                </div>
+                <small>Use <kbd>Ctrl K</kbd> para localizar qualquer módulo.</small>
+              </div>
+            </section>
+          ) : null}
+
+          <div className="admin-desktop-window-layer">
+            {windows.map((item) => {
+              const module = getModule(item.module)
+              const heading = MODULE_HEADINGS[item.module]
+              return (
+                <section
+                  key={item.module}
+                  className={`admin-app-window${item.maximized ? ' is-maximized' : ''}${item.minimized ? ' is-minimized' : ''}`}
+                  style={{
+                    left: item.x,
+                    top: item.y,
+                    width: item.width,
+                    height: item.height,
+                    zIndex: item.zIndex,
+                  }}
+                  aria-label={module.label}
+                  onPointerDown={() => focusWindow(item.module)}
+                >
+                  <div
+                    className="admin-app-window__bar"
+                    onPointerDown={(event) => beginDrag(event, item)}
+                    onDoubleClick={() => toggleMaximize(item.module)}
+                  >
+                    <span className="admin-app-window__code">{module.code}</span>
+                    <strong>{module.label}</strong>
+                    <span className="admin-app-window__state">Conectado</span>
+                    <div className="admin-app-window__controls">
+                      <button type="button" aria-label={`Minimizar ${module.label}`} title="Minimizar" onClick={() => minimizeWindow(item.module)}>—</button>
+                      <button type="button" aria-label={`${item.maximized ? 'Restaurar' : 'Maximizar'} ${module.label}`} title={item.maximized ? 'Restaurar' : 'Maximizar'} onClick={() => toggleMaximize(item.module)}>{item.maximized ? '❐' : '□'}</button>
+                      <button className="is-close" type="button" aria-label={`Fechar ${module.label}`} title="Fechar" onClick={() => closeWindow(item.module)}>×</button>
+                    </div>
+                  </div>
+                  <div className="admin-app-window__body">
+                    <header className="admin-window-module-heading">
+                      <div><span>{heading.eyebrow}</span><h1>{heading.title}</h1><p>{heading.subtitle}</p></div>
+                      <span className="admin-window-release">v{APP_RELEASE_VERSION}</span>
+                    </header>
+                    <AdminPage
+                      session={session}
+                      onSessionExpired={onSessionExpired}
+                      activeModule={item.module}
+                      embedded
+                      onModuleChange={(nextModule) => openModule(nextModule)}
+                    />
+                  </div>
+                </section>
+              )
+            })}
+          </div>
+
+          <footer className="admin-desktop-statusbar">
+            <button type="button" onClick={() => setWindowManagerOpen((current) => !current)}>
+              {windows.length} janela(s) · {visibleWindowCount} visível(is)
+            </button>
+            <span><i aria-hidden="true" /> Núcleo protegido</span>
+            <span className="admin-desktop-statusbar__right">Canário v{APP_RELEASE_VERSION} · dados sincronizados</span>
+          </footer>
         </div>
-      </aside>
+      </div>
 
-      <section className="admin-command-stage">
-        <header className="admin-command-topbar">
-          <div className="admin-command-breadcrumb">
-            <span>Workspace</span><i>/</i><strong>{MODULES.find((item) => item.id === activeModule)?.label}</strong>
-          </div>
-          <div className="admin-command-user">
-            <span className="connection-chip"><i aria-hidden="true" />Online</span>
-            <span className="admin-command-avatar">{session.user.nome.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</span>
-            <span><strong>{session.user.nome}</strong><small>Administrador</small></span>
-            <button type="button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? 'Saindo…' : 'Sair'}</button>
-          </div>
-        </header>
+      {paletteOpen ? (
+        <div className="admin-desktop-overlay" role="presentation" onMouseDown={(event) => {
+          if (event.currentTarget === event.target) setPaletteOpen(false)
+        }}>
+          <section className="admin-command-palette" role="dialog" aria-modal="true" aria-label="Pesquisar comandos">
+            <label><SearchIcon /><input ref={paletteInputRef} value={paletteQuery} onChange={(event) => setPaletteQuery(event.target.value)} placeholder="Digite o módulo ou ação…" /></label>
+            <div>
+              {filteredModules.map((module) => (
+                <button key={module.id} type="button" onClick={() => openModule(module.id)}>
+                  <span>{module.code}</span>
+                  <span><strong>{module.label}</strong><small>{module.description}</small></span>
+                  <kbd>Enter</kbd>
+                </button>
+              ))}
+              {!filteredModules.length ? <p>Nenhum módulo encontrado.</p> : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
-        <main className="admin-command-main">
-          <header className="admin-command-heading">
-            <span>{heading.eyebrow}</span>
-            <h1>{heading.title}</h1>
-            <p>{heading.subtitle}</p>
-          </header>
-          <AdminPage
-            session={session}
-            onSessionExpired={onSessionExpired}
-            activeModule={activeModule}
-            embedded
-            onModuleChange={onModuleChange}
-          />
-        </main>
-      </section>
+      {windowManagerOpen ? (
+        <aside className="admin-window-manager" aria-label="Gerenciador de janelas">
+          <header><strong>Gerenciador de janelas</strong><button type="button" aria-label="Fechar" onClick={() => setWindowManagerOpen(false)}>×</button></header>
+          <section>
+            <span>ORGANIZAR</span>
+            <div className="admin-window-manager__layouts">
+              <button type="button" onClick={() => arrangeWindows('smart')}>Mosaico</button>
+              <button type="button" onClick={() => arrangeWindows('columns')}>Colunas</button>
+              <button type="button" onClick={() => arrangeWindows('cascade')}>Cascata</button>
+            </div>
+          </section>
+          <section>
+            <span>JANELAS ABERTAS</span>
+            <div className="admin-window-manager__list">
+              {windows.map((item) => {
+                const module = getModule(item.module)
+                return (
+                  <article key={item.module}>
+                    <b>{module.code}</b>
+                    <button type="button" onClick={() => focusWindow(item.module)}><strong>{module.label}</strong><small>{item.minimized ? 'Minimizada' : item.maximized ? 'Maximizada' : 'Em janela'}</small></button>
+                    <button type="button" aria-label={`Fechar ${module.label}`} onClick={() => closeWindow(item.module)}>×</button>
+                  </article>
+                )
+              })}
+              {!windows.length ? <p>Nenhuma janela aberta.</p> : null}
+            </div>
+          </section>
+        </aside>
+      ) : null}
+
+      {helpOpen ? (
+        <div className="admin-desktop-overlay" role="presentation" onMouseDown={(event) => {
+          if (event.currentTarget === event.target) setHelpOpen(false)
+        }}>
+          <section className="admin-workspace-help" role="dialog" aria-modal="true" aria-label="Ajuda do Workspace">
+            <header><strong>Como usar o Command Workspace</strong><button type="button" aria-label="Fechar" onClick={() => setHelpOpen(false)}>×</button></header>
+            <div>
+              <article><kbd>Ctrl K</kbd><span><strong>Pesquisa rápida</strong><small>Abra qualquer cadastro, programação ou comando.</small></span></article>
+              <article><kbd>Arrastar</kbd><span><strong>Janela livre</strong><small>Mova módulos e compare informações lado a lado.</small></span></article>
+              <article><kbd>2× clique</kbd><span><strong>Maximizar</strong><small>Expanda ou restaure uma janela pelo título.</small></span></article>
+              <article><kbd>▦</kbd><span><strong>Organizar</strong><small>Use mosaico, colunas ou cascata para as janelas abertas.</small></span></article>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   )
 }

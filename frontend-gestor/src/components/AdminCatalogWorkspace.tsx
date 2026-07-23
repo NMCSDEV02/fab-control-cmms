@@ -12,7 +12,7 @@ interface AdminCatalogWorkspaceProps {
   onOpenImports: () => void
 }
 
-type FieldType = 'text' | 'number' | 'select' | 'reference'
+type FieldType = 'text' | 'number' | 'date' | 'select' | 'reference'
 
 interface FieldDefinition {
   key: string
@@ -46,6 +46,80 @@ const CRITICALITY_OPTIONS = [
   { value: 'MEDIA', label: 'Média' },
   { value: 'ALTA', label: 'Alta' },
   { value: 'CRITICA', label: 'Crítica' },
+]
+
+const EQUIPMENT_TYPE_OPTIONS = [
+  { value: 'MAQUINA', label: 'Máquina de produção' },
+  { value: 'MOTOR', label: 'Motor elétrico' },
+  { value: 'BOMBA', label: 'Bomba' },
+  { value: 'COMPRESSOR', label: 'Compressor' },
+  { value: 'REDUTOR', label: 'Redutor' },
+  { value: 'TRANSPORTADOR', label: 'Transportador / esteira' },
+  { value: 'CALDEIRA', label: 'Caldeira / utilidade' },
+  { value: 'PAINEL_ELETRICO', label: 'Painel elétrico' },
+  { value: 'INSTRUMENTO', label: 'Sensor / instrumento' },
+  { value: 'OUTRO', label: 'Outro equipamento' },
+]
+
+const COMPONENT_TYPE_OPTIONS = [
+  { value: 'MECANICO', label: 'Mecânico' },
+  { value: 'ELETRICO', label: 'Elétrico' },
+  { value: 'PNEUMATICO', label: 'Pneumático' },
+  { value: 'HIDRAULICO', label: 'Hidráulico' },
+  { value: 'INSTRUMENTACAO', label: 'Instrumentação' },
+  { value: 'SEGURANCA', label: 'Dispositivo de segurança' },
+  { value: 'ESTRUTURAL', label: 'Estrutural' },
+  { value: 'OUTRO', label: 'Outro componente' },
+]
+
+const MATERIAL_UNIT_OPTIONS = [
+  { value: 'un', label: 'Unidade (un)' },
+  { value: 'pc', label: 'Peça (pc)' },
+  { value: 'cj', label: 'Conjunto (cj)' },
+  { value: 'cx', label: 'Caixa (cx)' },
+  { value: 'kg', label: 'Quilograma (kg)' },
+  { value: 'g', label: 'Grama (g)' },
+  { value: 'l', label: 'Litro (l)' },
+  { value: 'ml', label: 'Mililitro (ml)' },
+  { value: 'm', label: 'Metro (m)' },
+  { value: 'm2', label: 'Metro quadrado (m²)' },
+  { value: 'm3', label: 'Metro cúbico (m³)' },
+  { value: 'rl', label: 'Rolo (rl)' },
+]
+
+const TRIGGER_UNIT_OPTIONS = [
+  { value: 'dias', label: 'Dias' },
+  { value: 'h', label: 'Horas de horímetro' },
+  { value: 'bar', label: 'Pressão (bar)' },
+  { value: 'psi', label: 'Pressão (psi)' },
+  { value: '°C', label: 'Temperatura (°C)' },
+  { value: 'mm/s', label: 'Vibração (mm/s)' },
+  { value: 'A', label: 'Corrente (A)' },
+  { value: 'V', label: 'Tensão (V)' },
+  { value: '%', label: 'Percentual (%)' },
+]
+
+const RECURRENCE_OPTIONS = [
+  { value: '1', label: 'Diária · 1 dia' },
+  { value: '7', label: 'Semanal · 7 dias' },
+  { value: '15', label: 'Quinzenal · 15 dias' },
+  { value: '30', label: 'Mensal · 30 dias' },
+  { value: '60', label: 'Bimestral · 60 dias' },
+  { value: '90', label: 'Trimestral · 90 dias' },
+  { value: '180', label: 'Semestral · 180 dias' },
+  { value: '365', label: 'Anual · 365 dias' },
+]
+
+const ESTIMATED_TIME_OPTIONS = [
+  { value: '15', label: '15 minutos' },
+  { value: '30', label: '30 minutos' },
+  { value: '45', label: '45 minutos' },
+  { value: '60', label: '1 hora' },
+  { value: '90', label: '1h30' },
+  { value: '120', label: '2 horas' },
+  { value: '180', label: '3 horas' },
+  { value: '240', label: '4 horas' },
+  { value: '480', label: '1 turno · 8 horas' },
 ]
 
 const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
@@ -85,10 +159,12 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
     entity: 'ativos', singular: 'ativo', label: 'Equipamentos e ativos', description: 'Cadastro técnico dos equipamentos monitorados.',
     columns: [{ key: 'tag', label: 'TAG' }, { key: 'nome', label: 'Equipamento' }, { key: 'linha_id', label: 'Linha' }, { key: 'criticidade', label: 'Criticidade' }, { key: 'status', label: 'Status' }, { key: 'saude_pct', label: 'Saúde' }],
     fields: [
-      { key: 'linha_id', label: 'Linha', type: 'reference', reference: 'linhas', referenceLabel: 'nome', required: true },
+      { key: 'planta_contexto', label: 'Planta', type: 'reference', reference: 'plantas', referenceLabel: 'nome', required: true, help: 'Filtra os setores e evita procurar em toda a fábrica.' },
+      { key: 'setor_contexto', label: 'Setor', type: 'reference', reference: 'setores', referenceLabel: 'nome', dependsOn: { field: 'planta_contexto', targetField: 'planta_id' }, required: true },
+      { key: 'linha_id', label: 'Linha', type: 'reference', reference: 'linhas', referenceLabel: 'nome', dependsOn: { field: 'setor_contexto', targetField: 'setor_id' }, required: true },
       { key: 'tag', label: 'TAG / código', required: true },
       { key: 'nome', label: 'Nome do equipamento', required: true },
-      { key: 'tipo', label: 'Tipo de equipamento' },
+      { key: 'tipo', label: 'Tipo de equipamento', type: 'select', options: EQUIPMENT_TYPE_OPTIONS, required: true },
       { key: 'criticidade', label: 'Criticidade', type: 'select', options: CRITICALITY_OPTIONS, required: true },
       { key: 'status', label: 'Status operacional', type: 'select', options: [{ value: 'OPERANDO', label: 'Operando' }, { value: 'PARADO', label: 'Parado' }, { value: 'INATIVO', label: 'Inativo' }], required: true },
       { key: 'saude_pct', label: 'Saúde (%)', type: 'number' },
@@ -98,28 +174,31 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
       { key: 'numero_serie', label: 'Número de série' },
       { key: 'localizacao_tecnica', label: 'Localização técnica' },
     ],
-    defaults: { id: '', linha_id: '', tag: '', nome: '', tipo: '', criticidade: 'MEDIA', status: 'OPERANDO', saude_pct: 100, horimetro_atual: 0 },
+    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_id: '', tag: '', nome: '', tipo: 'MAQUINA', criticidade: 'MEDIA', status: 'OPERANDO', saude_pct: 100, horimetro_atual: 0 },
   },
   componentes: {
     entity: 'componentes', singular: 'componente', label: 'Componentes', description: 'Partes e subconjuntos vinculados aos equipamentos.',
     columns: [{ key: 'tag', label: 'TAG' }, { key: 'nome', label: 'Componente' }, { key: 'ativo_id', label: 'Ativo' }, { key: 'criticidade', label: 'Criticidade' }, { key: 'status', label: 'Status' }, { key: 'horas_acumuladas', label: 'Horas' }],
     fields: [
-      { key: 'ativo_id', label: 'Ativo', type: 'reference', reference: 'ativos', referenceLabel: 'nome', required: true },
+      { key: 'planta_contexto', label: 'Planta', type: 'reference', reference: 'plantas', referenceLabel: 'nome', required: true },
+      { key: 'setor_contexto', label: 'Setor', type: 'reference', reference: 'setores', referenceLabel: 'nome', dependsOn: { field: 'planta_contexto', targetField: 'planta_id' }, required: true },
+      { key: 'linha_contexto', label: 'Linha', type: 'reference', reference: 'linhas', referenceLabel: 'nome', dependsOn: { field: 'setor_contexto', targetField: 'setor_id' }, required: true },
+      { key: 'ativo_id', label: 'Ativo', type: 'reference', reference: 'ativos', referenceLabel: 'nome', dependsOn: { field: 'linha_contexto', targetField: 'linha_id' }, required: true },
       { key: 'tag', label: 'TAG / código', required: true },
       { key: 'nome', label: 'Nome do componente', required: true },
-      { key: 'tipo', label: 'Tipo de componente' },
+      { key: 'tipo', label: 'Tipo de componente', type: 'select', options: COMPONENT_TYPE_OPTIONS, required: true },
       { key: 'criticidade', label: 'Criticidade', type: 'select', options: CRITICALITY_OPTIONS, required: true },
       { key: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, required: true },
       { key: 'vida_util_horas', label: 'Vida útil (horas)', type: 'number' },
       { key: 'vida_util_dias', label: 'Vida útil (dias)', type: 'number' },
       { key: 'horas_acumuladas', label: 'Horas acumuladas', type: 'number' },
-      { key: 'instalado_em', label: 'Data de instalação' },
+      { key: 'instalado_em', label: 'Data de instalação', type: 'date' },
       { key: 'fabricante', label: 'Fabricante' },
       { key: 'modelo', label: 'Modelo' },
       { key: 'numero_serie', label: 'Número de série' },
       { key: 'localizacao_tecnica', label: 'Localização técnica' },
     ],
-    defaults: { id: '', ativo_id: '', tag: '', nome: '', tipo: '', criticidade: 'MEDIA', status: 'ATIVO', vida_util_horas: 0, vida_util_dias: 0, horas_acumuladas: 0 },
+    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_contexto: '', ativo_id: '', tag: '', nome: '', tipo: 'MECANICO', criticidade: 'MEDIA', status: 'ATIVO', vida_util_horas: 0, vida_util_dias: 0, horas_acumuladas: 0 },
   },
   materiais: {
     entity: 'materiais', singular: 'material', label: 'Materiais e peças', description: 'Itens utilizados nas execuções de manutenção.',
@@ -127,7 +206,7 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
     fields: [
       { key: 'sku', label: 'SKU / código', required: true },
       { key: 'nome', label: 'Nome do material', required: true },
-      { key: 'unidade', label: 'Unidade', required: true },
+      { key: 'unidade', label: 'Unidade', type: 'select', options: MATERIAL_UNIT_OPTIONS, required: true },
       { key: 'estoque_atual', label: 'Estoque atual', type: 'number' },
       { key: 'estoque_minimo', label: 'Estoque mínimo', type: 'number' },
       { key: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, required: true },
@@ -138,22 +217,25 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
     entity: 'planos', singular: 'plano', label: 'Planos programados', description: 'Programações que seguem para validação técnica antes de chegar ao Operador.',
     columns: [{ key: 'nome', label: 'Plano' }, { key: 'ativo_id', label: 'Ativo' }, { key: 'tipo', label: 'Tipo' }, { key: 'gatilho_tipo', label: 'Gatilho' }, { key: 'gatilho_valor', label: 'Intervalo' }, { key: 'workflow_status', label: 'Fluxo' }],
     fields: [
-      { key: 'ativo_id', label: 'Ativo', type: 'reference', reference: 'ativos', referenceLabel: 'nome', required: true },
+      { key: 'planta_contexto', label: 'Planta', type: 'reference', reference: 'plantas', referenceLabel: 'nome', required: true },
+      { key: 'setor_contexto', label: 'Setor', type: 'reference', reference: 'setores', referenceLabel: 'nome', dependsOn: { field: 'planta_contexto', targetField: 'planta_id' }, required: true },
+      { key: 'linha_contexto', label: 'Linha', type: 'reference', reference: 'linhas', referenceLabel: 'nome', dependsOn: { field: 'setor_contexto', targetField: 'setor_id' }, required: true },
+      { key: 'ativo_id', label: 'Ativo', type: 'reference', reference: 'ativos', referenceLabel: 'nome', dependsOn: { field: 'linha_contexto', targetField: 'linha_id' }, required: true },
       { key: 'componente_id', label: 'Componente (opcional)', type: 'reference', reference: 'componentes', referenceLabel: 'nome', dependsOn: { field: 'ativo_id', targetField: 'ativo_id' } },
       { key: 'nome', label: 'Nome do plano', required: true },
       { key: 'tipo', label: 'Tipo', type: 'select', options: [{ value: 'PREVENTIVA', label: 'Preventiva' }, { value: 'PREDITIVA', label: 'Preditiva' }, { value: 'INSPECAO', label: 'Inspeção' }], required: true },
       { key: 'criticidade', label: 'Criticidade', type: 'select', options: CRITICALITY_OPTIONS, required: true },
       { key: 'gatilho_tipo', label: 'Tipo de gatilho', type: 'select', options: [{ value: 'HORAS', label: 'Horímetro' }, { value: 'DIAS', label: 'Periodicidade em dias' }, { value: 'PARAMETRO', label: 'Parâmetro técnico' }], required: true },
       { key: 'gatilho_valor', label: 'Valor do gatilho', type: 'number', required: true },
-      { key: 'unidade', label: 'Unidade', help: 'Ex.: h, dias, bar, °C.' },
-      { key: 'recorrencia_dias', label: 'Recorrência (dias)', type: 'number' },
-      { key: 'tempo_estimado_min', label: 'Tempo estimado (min)', type: 'number' },
+      { key: 'unidade', label: 'Unidade', type: 'select', options: TRIGGER_UNIT_OPTIONS, help: 'Preenchida automaticamente ao trocar o gatilho; pode ser ajustada.' },
+      { key: 'recorrencia_dias', label: 'Periodicidade', type: 'select', options: RECURRENCE_OPTIONS },
+      { key: 'tempo_estimado_min', label: 'Tempo estimado', type: 'select', options: ESTIMATED_TIME_OPTIONS },
       { key: 'requer_bloqueio', label: 'Requer bloqueio', type: 'select', options: [{ value: 'SIM', label: 'Sim' }, { value: 'NAO', label: 'Não' }] },
       { key: 'requer_evidencia', label: 'Requer evidência', type: 'select', options: [{ value: 'SIM', label: 'Sim' }, { value: 'NAO', label: 'Não' }] },
-      { key: 'max_sessoes', label: 'Máximo de sessões', type: 'number' },
+      { key: 'max_sessoes', label: 'Máximo de sessões', type: 'select', options: [{ value: '1', label: '1 sessão' }, { value: '2', label: '2 sessões' }, { value: '3', label: '3 sessões' }, { value: '4', label: '4 sessões' }, { value: '5', label: '5 sessões' }] },
       { key: 'modo_parada_manutencao', label: 'Modo de parada', type: 'select', options: [{ value: 'DECISAO_EXECUTOR', label: 'Decisão do executor' }, { value: 'OBRIGATORIA', label: 'Parada obrigatória' }, { value: 'SEM_PARADA', label: 'Executar sem parada' }] },
     ],
-    defaults: { id: '', ativo_id: '', componente_id: '', nome: '', tipo: 'PREVENTIVA', criticidade: 'MEDIA', gatilho_tipo: 'DIAS', gatilho_valor: 30, unidade: 'dias', recorrencia_dias: 30, tempo_estimado_min: 60, requer_bloqueio: 'SIM', requer_evidencia: 'NAO', max_sessoes: 1, modo_parada_manutencao: 'DECISAO_EXECUTOR', status: 'INATIVO', workflow_status: 'RASCUNHO' },
+    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_contexto: '', ativo_id: '', componente_id: '', nome: '', tipo: 'PREVENTIVA', criticidade: 'MEDIA', gatilho_tipo: 'DIAS', gatilho_valor: 30, unidade: 'dias', recorrencia_dias: 30, tempo_estimado_min: 60, requer_bloqueio: 'SIM', requer_evidencia: 'NAO', max_sessoes: 1, modo_parada_manutencao: 'DECISAO_EXECUTOR', status: 'INATIVO', workflow_status: 'RASCUNHO' },
   },
   plano_itens: {
     entity: 'plano_itens', singular: 'item', label: 'Itens de checklist', description: 'Itens técnicos dos planos.',
@@ -171,9 +253,9 @@ const SCOPE_ENTITIES: Record<AdminCatalogScope, AdminEntity[]> = {
 
 const SCOPE_REFERENCES: Record<AdminCatalogScope, AdminEntity[]> = {
   structure: ['plantas', 'setores', 'linhas'],
-  assets: ['linhas', 'ativos', 'componentes'],
+  assets: ['plantas', 'setores', 'linhas', 'ativos', 'componentes'],
   inventory: ['materiais'],
-  maintenance: ['ativos', 'componentes', 'planos'],
+  maintenance: ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos'],
 }
 
 function valueText(value: unknown): string {
@@ -255,12 +337,77 @@ export function AdminCatalogWorkspace({
     return relation[key] ? referenceLabel(relation[key] as AdminEntity, value) : formatCell(key, value)
   }
 
+  function addLocationContext(next: AdminEntityRecord): AdminEntityRecord {
+    let lineId = selectedEntity === 'ativos' ? next.linha_id : ''
+    if (selectedEntity === 'componentes' || selectedEntity === 'planos') {
+      const asset = (records.ativos ?? []).find((item) => String(item.id) === String(next.ativo_id))
+      lineId = asset?.linha_id ?? ''
+    }
+    if (!lineId) return next
+    const line = (records.linhas ?? []).find((item) => String(item.id) === String(lineId))
+    const sector = (records.setores ?? []).find((item) => String(item.id) === String(line?.setor_id))
+    return {
+      ...next,
+      planta_contexto: sector?.planta_id ?? '',
+      setor_contexto: line?.setor_id ?? '',
+      ...(selectedEntity === 'ativos' ? {} : { linha_contexto: lineId }),
+    }
+  }
+
   function openEditor(record?: AdminEntityRecord) {
-    const next = record ? { ...record } : { ...definition.defaults }
+    const base = record ? { ...record } : { ...definition.defaults }
+    const next = addLocationContext(base)
     setEditing(record ?? null)
     setDraft(next)
     setError('')
     setNotice('')
+  }
+
+  function updateDraftField(field: FieldDefinition, rawValue: string) {
+    setDraft((current) => {
+      const next: AdminEntityRecord = {
+        ...current,
+        [field.key]: field.type === 'number'
+          ? (rawValue === '' ? '' : Number(rawValue))
+          : rawValue,
+      }
+
+      if (field.key === 'planta_contexto') {
+        next.setor_contexto = ''
+        next.linha_contexto = ''
+        if (selectedEntity === 'ativos') next.linha_id = ''
+        next.ativo_id = ''
+        next.componente_id = ''
+      }
+      if (field.key === 'setor_contexto') {
+        next.linha_contexto = ''
+        if (selectedEntity === 'ativos') next.linha_id = ''
+        next.ativo_id = ''
+        next.componente_id = ''
+      }
+      if (field.key === 'linha_contexto') {
+        next.ativo_id = ''
+        next.componente_id = ''
+      }
+      if (field.key === 'ativo_id') next.componente_id = ''
+      if (field.key === 'gatilho_tipo') {
+        if (rawValue === 'HORAS') {
+          next.unidade = 'h'
+          next.recorrencia_dias = 0
+        } else if (rawValue === 'DIAS') {
+          next.unidade = 'dias'
+          next.gatilho_valor = Number(next.gatilho_valor) || 30
+          next.recorrencia_dias = Number(next.recorrencia_dias) || 30
+        } else if (rawValue === 'PARAMETRO') {
+          next.unidade = ['dias', 'h'].includes(String(next.unidade)) ? 'bar' : next.unidade
+          next.recorrencia_dias = 0
+        }
+      }
+      if (field.key === 'recorrencia_dias' && String(next.gatilho_tipo) === 'DIAS') {
+        next.gatilho_valor = Number(rawValue)
+      }
+      return next
+    })
   }
 
   function referenceOptions(field: FieldDefinition): AdminEntityRecord[] {
@@ -269,7 +416,10 @@ export function AdminCatalogWorkspace({
       const expected = draft[field.dependsOn.field]
       options = options.filter((item) => String(item[field.dependsOn?.targetField ?? '']) === String(expected))
     }
-    return options
+    return [...options].sort((left, right) => (
+      valueText(left[field.referenceLabel ?? 'nome'])
+        .localeCompare(valueText(right[field.referenceLabel ?? 'nome']), 'pt-BR')
+    ))
   }
 
   async function save() {
@@ -356,9 +506,50 @@ export function AdminCatalogWorkspace({
             <div className="admin-catalog-form">
               {definition.fields.map((field) => {
                 const fieldValue = draft[field.key] ?? ''
-                if (field.type === 'select') return <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span><select value={String(fieldValue)} onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}>{field.options?.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select>{field.help ? <small>{field.help}</small> : null}</label>
-                if (field.type === 'reference') return <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span><select value={String(fieldValue)} onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}><option value="">{field.required ? 'Selecione…' : 'Sem vínculo'}</option>{referenceOptions(field).map((option) => <option value={option.id} key={option.id}>{valueText(option.tag || option.sku || option.id)} · {valueText(option[field.referenceLabel ?? 'nome'])}</option>)}</select>{field.help ? <small>{field.help}</small> : null}</label>
-                return <label key={field.key}><span>{field.label}{field.required ? ' *' : ''}</span><input type={field.type === 'number' ? 'number' : 'text'} value={String(fieldValue)} onChange={(event) => setDraft((current) => ({ ...current, [field.key]: field.type === 'number' ? (event.target.value === '' ? '' : Number(event.target.value)) : event.target.value }))} />{field.help ? <small>{field.help}</small> : null}</label>
+                if (field.type === 'select') {
+                  const hasCurrentOption = field.options?.some((option) => option.value === String(fieldValue))
+                  return (
+                    <label key={field.key}>
+                      <span>{field.label}{field.required ? ' *' : ''}</span>
+                      <select value={String(fieldValue)} onChange={(event) => updateDraftField(field, event.target.value)}>
+                        {fieldValue !== '' && !hasCurrentOption ? <option value={String(fieldValue)}>{String(fieldValue)} · valor atual</option> : null}
+                        {field.options?.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+                      </select>
+                      {field.help ? <small>{field.help}</small> : null}
+                    </label>
+                  )
+                }
+                if (field.type === 'reference') {
+                  const dependencyMissing = field.dependsOn && !draft[field.dependsOn.field]
+                  return (
+                    <label key={field.key}>
+                      <span>{field.label}{field.required ? ' *' : ''}</span>
+                      <select
+                        value={String(fieldValue)}
+                        disabled={Boolean(dependencyMissing)}
+                        onChange={(event) => updateDraftField(field, event.target.value)}
+                      >
+                        <option value="">{dependencyMissing ? 'Selecione o campo anterior…' : field.required ? 'Selecione…' : 'Sem vínculo'}</option>
+                        {referenceOptions(field).map((option) => <option value={option.id} key={option.id}>{valueText(option.tag || option.sku || option.id)} · {valueText(option[field.referenceLabel ?? 'nome'])}</option>)}
+                      </select>
+                      {field.help ? <small>{field.help}</small> : null}
+                    </label>
+                  )
+                }
+                const inputValue = field.type === 'date' && fieldValue
+                  ? String(fieldValue).slice(0, 10)
+                  : String(fieldValue)
+                return (
+                  <label key={field.key}>
+                    <span>{field.label}{field.required ? ' *' : ''}</span>
+                    <input
+                      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                      value={inputValue}
+                      onChange={(event) => updateDraftField(field, event.target.value)}
+                    />
+                    {field.help ? <small>{field.help}</small> : null}
+                  </label>
+                )
               })}
             </div>
             <footer><span>{selectedEntity === 'planos' ? 'O backend força RASCUNHO e INATIVO.' : 'A alteração será registrada na auditoria.'}</span><div><button type="button" disabled={saving} onClick={() => setEditing(undefined)}>Cancelar</button><button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar cadastro'}</button></div></footer>

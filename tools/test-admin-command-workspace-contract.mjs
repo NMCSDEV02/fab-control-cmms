@@ -33,6 +33,17 @@ for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inv
   assert(page.includes(`tab === '${moduleId}'`), `módulo sem conteúdo: ${moduleId}`)
 }
 
+for (const desktopContract of ['admin-desktop-shell', 'admin-desktop-command', 'admin-desktop-rail', 'admin-app-window', 'admin-window-manager', 'admin-command-palette']) {
+  assert(workspace.includes(desktopContract), `shell desktop sem ${desktopContract}`)
+}
+for (const windowAction of ['beginDrag', 'toggleMaximize', 'minimizeWindow', 'closeWindow', 'arrangeWindows']) {
+  assert(workspace.includes(`${windowAction}(`), `gerenciador de janelas sem ${windowAction}`)
+}
+assert(workspace.includes("event.key.toLocaleLowerCase('pt-BR') === 'k'"), 'paleta não oferece atalho Ctrl K')
+assert(workspace.includes('maximized: true'), 'janelas novas não abrem maximizadas por padrão')
+assert(styles.includes('.admin-desktop-workspace'), 'canvas do Workspace não foi estilizado')
+assert(styles.includes('resize: both'), 'janelas administrativas não podem ser redimensionadas')
+
 assert(router.includes('case "admin.salvar": return adminSalvarSeguro_(p, p.__auth)'), 'cadastro manual não usa barreira segura')
 assert(admin.includes('adminAssertEntityReferences_'), 'vínculos não são validados no backend')
 assert(admin.includes('adminProtectManualPlan_'), 'plano manual pode ignorar o workflow')
@@ -48,6 +59,13 @@ for (const relation of ['planta_id', 'setor_id', 'linha_id', 'ativo_id', 'compon
 assert(catalog.includes("type: 'reference'"), 'cadastros relacionados não usam dropdown')
 assert(catalog.includes("dependsOn: { field: 'ativo_id'"), 'componente não é filtrado pelo ativo')
 assert(catalog.includes("value: 'DECISAO_EXECUTOR'"), 'modo de parada não usa valor canônico')
+for (const assistedContext of ['planta_contexto', 'setor_contexto', 'linha_contexto']) {
+  assert(catalog.includes(`key: '${assistedContext}'`), `filtro encadeado ausente: ${assistedContext}`)
+}
+assert(catalog.includes('MATERIAL_UNIT_OPTIONS'), 'unidade de material permanece manual')
+assert(catalog.includes('RECURRENCE_OPTIONS'), 'periodicidade de plano permanece manual')
+assert(catalog.includes('ESTIMATED_TIME_OPTIONS'), 'tempo estimado de plano permanece manual')
+assert(catalog.includes('Selecione o campo anterior…'), 'dropdown dependente não orienta a sequência de cadastro')
 
 for (const action of ['admin.listar_modelos_checklist', 'admin.detalhe_modelo_checklist', 'admin.salvar_modelo_checklist', 'admin.enviar_modelo_checklist_validacao']) {
   assert(checklistApi.includes(`'${action}'`), `cliente de checklist não usa ${action}`)
