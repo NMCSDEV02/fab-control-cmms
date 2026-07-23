@@ -1827,8 +1827,10 @@ p {
 
 .permission-switch {
   position: relative;
-  width: 44px;
-  height: 25px;
+  width: 34px;
+  height: 19px;
+  flex: 0 0 34px;
+  cursor: pointer;
 }
 
 .permission-switch input {
@@ -1841,30 +1843,32 @@ p {
 .permission-switch > i {
   position: absolute;
   inset: 0;
+  border: 1px solid #b9c5cf;
   border-radius: 999px;
   background: #c9d2dc;
-  transition: background 160ms ease;
+  transition: background 160ms ease, border-color 160ms ease;
 }
 
 .permission-switch > i::after {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 19px;
-  height: 19px;
+  top: 1px;
+  left: 1px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 22%);
   content: '';
   transition: transform 160ms ease;
 }
 
 .permission-switch input:checked + i {
+  border-color: #19784f;
   background: var(--green);
 }
 
 .permission-switch input:checked + i::after {
-  transform: translateX(19px);
+  transform: translateX(15px);
 }
 
 .permission-switch input:focus-visible + i {
@@ -4768,6 +4772,21 @@ p {
   background: #2862df;
 }
 
+.admin-catalog-panel button.admin-catalog-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.admin-catalog-panel button.admin-catalog-refresh svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
 .admin-plan-rule,
 .admin-checklist-lock {
   display: flex;
@@ -6713,7 +6732,7 @@ p {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 225px;
+  min-width: 190px;
   white-space: nowrap;
 }
 
@@ -6723,7 +6742,7 @@ p {
   width: 27px;
   height: 27px;
   border: 1.5px solid var(--admin-brand);
-  border-radius: 7px;
+  border-radius: 4px;
   color: var(--admin-brand);
   font-size: 0.56rem;
   font-weight: 950;
@@ -6733,6 +6752,7 @@ p {
 .admin-desktop-brand strong {
   color: #203139;
   font-size: 0.79rem;
+  text-transform: lowercase;
 }
 
 .admin-desktop-brand em {
@@ -6750,7 +6770,7 @@ p {
   height: 32px;
   padding: 0 9px;
   border: 1px solid var(--admin-line);
-  border-radius: 8px;
+  border-radius: 4px;
   color: #64767e;
   background: var(--admin-soft);
   text-align: left;
@@ -6803,7 +6823,7 @@ p {
   height: 30px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 4px;
   color: #687a82;
   background: transparent;
   font-size: 0.9rem;
@@ -6817,6 +6837,27 @@ p {
 
 .admin-desktop-top-actions > button svg {
   width: 16px;
+}
+
+.admin-desktop-top-actions > button.admin-notification-button {
+  position: relative;
+}
+
+.admin-desktop-top-actions > button.admin-notification-button > span {
+  position: absolute;
+  top: -2px;
+  right: -1px;
+  display: grid;
+  place-items: center;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border: 1px solid #fff;
+  border-radius: 99px;
+  color: #fff;
+  background: #a33d3d;
+  font-size: 0.43rem;
+  line-height: 1;
 }
 
 .admin-desktop-online {
@@ -6840,16 +6881,91 @@ p {
   background: #28a568;
 }
 
-.admin-desktop-avatar {
+.admin-desktop-top-actions > button.admin-desktop-avatar {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border: 0;
+  border-radius: 6px;
   color: #fff;
   background: var(--admin-brand);
   font-size: 0.58rem;
   font-weight: 900;
+}
+
+.admin-desktop-top-actions > button.admin-desktop-avatar:hover {
+  color: #fff;
+  background: var(--admin-brand-strong);
+}
+
+.admin-profile-menu {
+  position: absolute;
+  top: 45px;
+  right: 8px;
+  z-index: 9800;
+  width: 230px;
+  overflow: hidden;
+  border: 1px solid var(--admin-line);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 14px 38px rgb(29 46 54 / 18%);
+}
+
+.admin-profile-menu > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 7px;
+  padding: 7px 7px 9px;
+  border-bottom: 1px solid var(--admin-line);
+}
+
+.admin-profile-menu > header > span {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border-radius: 5px;
+  color: #fff;
+  background: var(--admin-brand);
+  font-size: 0.55rem;
+  font-weight: 900;
+}
+
+.admin-profile-menu > header div,
+.admin-profile-menu > header strong,
+.admin-profile-menu > header small {
+  display: block;
+  min-width: 0;
+}
+
+.admin-profile-menu > header strong {
+  overflow: hidden;
+  font-size: 0.61rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-profile-menu > header small {
+  margin-top: 2px;
+  color: #71838b;
+  font-size: 0.49rem;
+}
+
+.admin-profile-menu > button {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: 0;
+  color: #23353d;
+  background: #fff;
+  font-size: 0.57rem;
+  text-align: left;
+}
+
+.admin-profile-menu > button:hover {
+  background: var(--admin-soft);
 }
 
 .admin-desktop-user {
@@ -6917,10 +7033,10 @@ p {
   display: grid;
   place-items: center;
   width: 39px;
-  min-height: 36px;
+  min-height: 39px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 5px;
   color: #6a7b83;
   background: transparent;
 }
@@ -6991,14 +7107,14 @@ p {
   width: min(690px, 90%);
   padding: 28px;
   border: 1px solid var(--admin-line);
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgb(255 255 255 / 90%);
   box-shadow: 0 8px 30px rgb(34 54 63 / 8%);
   backdrop-filter: blur(8px);
 }
 
 .admin-desktop-welcome h1 {
-  margin: 7px 0 8px;
+  margin: 0 0 8px;
   font-size: 1.55rem;
 }
 
@@ -7008,46 +7124,36 @@ p {
   line-height: 1.5;
 }
 
-.admin-desktop-welcome > div > div {
+.admin-desktop-welcome .admin-welcome-tips {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
-  margin: 18px 0;
+  margin-top: 18px;
 }
 
-.admin-desktop-welcome > div > div button {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 8px;
-  min-height: 50px;
-  padding: 8px;
+.admin-desktop-welcome .admin-welcome-tips article {
+  min-height: 92px;
+  padding: 11px;
   border: 1px solid var(--admin-line);
-  border-radius: 9px;
-  background: var(--admin-soft);
-  text-align: left;
-}
-
-.admin-desktop-welcome > div > div button:hover {
-  border-color: #a8c8cc;
-  background: var(--admin-brand-soft);
-}
-
-.admin-desktop-welcome > div > div b {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 25px;
-  border: 1px solid #a9c3c7;
   border-radius: 6px;
-  color: var(--admin-brand);
-  background: #fff;
-  font-size: 0.57rem;
+  background: var(--admin-soft);
 }
 
-.admin-desktop-welcome > div > div span {
-  font-size: 0.66rem;
-  font-weight: 750;
+.admin-desktop-welcome .admin-welcome-tips b,
+.admin-desktop-welcome .admin-welcome-tips span {
+  display: block;
+}
+
+.admin-desktop-welcome .admin-welcome-tips b {
+  margin-bottom: 5px;
+  color: #26383f;
+  font-size: 0.68rem;
+}
+
+.admin-desktop-welcome .admin-welcome-tips span {
+  color: #33464e;
+  font-size: 0.61rem;
+  line-height: 1.55;
 }
 
 .admin-desktop-welcome small {
@@ -7064,15 +7170,15 @@ p {
 .admin-app-window {
   position: absolute;
   display: flex;
-  min-width: 430px;
-  min-height: 280px;
+  min-width: 320px;
+  min-height: 230px;
   max-width: calc(100% - 6px);
   max-height: calc(100% - 6px);
   flex-direction: column;
   overflow: hidden;
   resize: both;
   border: 1px solid var(--admin-line);
-  border-radius: 10px;
+  border-radius: 5px;
   background: #fff;
   box-shadow: 0 12px 34px rgb(28 48 57 / 13%);
 }
@@ -7089,7 +7195,8 @@ p {
   resize: none;
 }
 
-.admin-app-window.is-minimized {
+.admin-app-window.is-minimized,
+.admin-app-window.is-layout-hidden {
   display: none;
 }
 
@@ -7301,7 +7408,26 @@ p {
 }
 
 .admin-desktop-statusbar__right {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin-left: auto;
+}
+
+.admin-memory-track {
+  width: 75px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #dce4e7;
+}
+
+.admin-memory-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--admin-brand);
+  transition: width 180ms ease;
 }
 
 .admin-desktop-overlay {
@@ -7421,7 +7547,7 @@ p {
   max-height: 75vh;
   overflow: hidden auto;
   border: 1px solid var(--admin-line);
-  border-radius: 11px;
+  border-radius: 6px;
   background: #fff;
   box-shadow: 0 18px 55px rgb(29 46 54 / 20%);
 }
@@ -7481,14 +7607,83 @@ p {
   min-height: 32px;
   padding: 5px 3px;
   border: 1px solid var(--admin-line);
-  border-radius: 7px;
+  border-radius: 4px;
   background: var(--admin-soft);
   font-size: 0.57rem;
 }
 
-.admin-window-manager__layouts button:hover {
+.admin-window-manager__layouts button:hover,
+.admin-window-manager__layouts button.is-active {
   border-color: #b9d3d7;
+  color: var(--admin-brand);
   background: var(--admin-brand-soft);
+}
+
+.admin-window-manager__layouts button.is-active {
+  font-weight: 850;
+}
+
+.admin-window-manager__auto {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 35px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--admin-line);
+  cursor: pointer;
+}
+
+.admin-window-manager__auto span,
+.admin-window-manager__auto strong,
+.admin-window-manager__auto small {
+  display: block;
+}
+
+.admin-window-manager__auto strong {
+  font-size: 0.62rem;
+}
+
+.admin-window-manager__auto small {
+  margin-top: 2px;
+  color: #71838b;
+  font-size: 0.51rem;
+}
+
+.admin-window-manager__auto input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-window-manager__auto > i {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  border-radius: 99px;
+  background: #c8d2d6;
+  transition: background 160ms ease;
+}
+
+.admin-window-manager__auto > i::before {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  content: "";
+  transition: transform 160ms ease;
+}
+
+.admin-window-manager__auto input:checked + i {
+  background: var(--admin-brand);
+}
+
+.admin-window-manager__auto input:checked + i::before {
+  transform: translateX(15px);
 }
 
 .admin-window-manager__list {
@@ -7562,6 +7757,65 @@ p {
   margin: 8px;
   color: #667982;
   font-size: 0.61rem;
+}
+
+.admin-window-manager__performance {
+  padding: 8px;
+  border: 1px solid var(--admin-line);
+  border-radius: 5px;
+  background: var(--admin-soft);
+}
+
+.admin-window-manager__performance > header {
+  display: flex;
+  align-items: center;
+}
+
+.admin-window-manager__performance > header small {
+  color: #667982;
+  font-size: 0.55rem;
+}
+
+.admin-window-manager__performance > header strong {
+  margin-left: auto;
+  font-size: 0.58rem;
+}
+
+.admin-window-manager__performance > div {
+  height: 7px;
+  margin: 7px 0;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #dbe4e7;
+}
+
+.admin-window-manager__performance > div i {
+  display: block;
+  height: 100%;
+  background: var(--admin-brand);
+}
+
+.admin-window-manager__performance > p {
+  margin: 0;
+  color: #667982;
+  font-size: 0.52rem;
+  line-height: 1.45;
+}
+
+.admin-window-manager__performance > button {
+  min-height: 27px;
+  margin-top: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--admin-brand);
+  border-radius: 4px;
+  color: #fff;
+  background: var(--admin-brand);
+  font-size: 0.55rem;
+  font-weight: 800;
+}
+
+.admin-window-manager__performance > button:hover {
+  background: var(--admin-brand-strong);
 }
 
 .admin-workspace-help {

@@ -151,3 +151,124 @@ export function KeyIcon(props: IconProps) {
     </IconBase>
   )
 }
+
+export function DashboardIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </IconBase>
+  )
+}
+
+export function FactoryIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M3 21V9l6 3V8l6 3V4h4v17" />
+      <path d="M3 21h18M7 16h2M13 16h2M18 8h1" />
+    </IconBase>
+  )
+}
+
+export function ChecklistIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8h6M9 12h6M9 16h4M7.5 8h.01M7.5 12h.01M7.5 16h.01" />
+    </IconBase>
+  )
+}
+
+export function CalendarIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M7 3v4M17 3v4M3 10h18M8 14h3v3H8z" />
+    </IconBase>
+  )
+}
+
+export function PackageIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+      <path d="m4.5 7.7 7.5 4.2 7.5-4.2M12 12v9M8 5.2l8 4.5" />
+    </IconBase>
+  )
+}
+
+export function ChartIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+      <path d="m4 8 6-5 6 7 5-5" />
+    </IconBase>
+  )
+}
+
+export function DocumentIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M6 3h8l4 4v14H6z" />
+      <path d="M14 3v5h5M9 12h6M9 16h6" />
+    </IconBase>
+  )
+}
+
+export function UploadIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 16V4M8 8l4-4 4 4" />
+      <path d="M4 14v6h16v-6" />
+    </IconBase>
+  )
+}
+
+export function UserDirectoryIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="9" cy="10" r="2.5" />
+      <path d="M5.5 17a3.5 3.5 0 0 1 7 0M15 9h3M15 13h3" />
+    </IconBase>
+  )
+}
+
+export function AuditIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M6 3h12v18H6z" />
+      <path d="m9 9 1.5 1.5L14 7M9 15h6" />
+    </IconBase>
+  )
+}
+
+export function DatabaseIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <ellipse cx="12" cy="5" rx="8" ry="3" />
+      <path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" />
+    </IconBase>
+  )
+}
+
+export function BellIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+    </IconBase>
+  )
+}
+
+export function WindowsIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </IconBase>
+  )
+}

@@ -10,14 +10,25 @@ import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
 import {
-  AlertIcon,
   AssetIcon,
-  CheckIcon,
-  HomeIcon,
+  AuditIcon,
+  BellIcon,
+  CalendarIcon,
+  ChartIcon,
+  ChecklistIcon,
+  DashboardIcon,
+  DatabaseIcon,
+  DocumentIcon,
+  FactoryIcon,
+  KeyIcon,
+  PackageIcon,
   SearchIcon,
   SettingsIcon,
   ShieldIcon,
+  UploadIcon,
+  UserDirectoryIcon,
   UsersIcon,
+  WindowsIcon,
   WrenchIcon,
 } from './Icons'
 
@@ -35,7 +46,7 @@ interface WorkspaceModule {
   code: string
   label: string
   description: string
-  Icon: typeof HomeIcon
+  Icon: typeof DashboardIcon
 }
 
 interface WorkspaceWindow {
@@ -47,6 +58,7 @@ interface WorkspaceWindow {
   zIndex: number
   minimized: boolean
   maximized: boolean
+  layoutHidden: boolean
 }
 
 interface DragState {
@@ -55,25 +67,25 @@ interface DragState {
   offsetY: number
 }
 
-type WindowLayout = 'smart' | 'cascade' | 'columns'
+type WindowLayout = 'smart' | 'focus' | 'columns' | 'rows' | 'grid' | 'cascade'
 
 const MODULES: WorkspaceModule[] = [
-  { id: 'overview', code: 'VG', label: 'Visão geral', description: 'Centro de comando', Icon: HomeIcon },
-  { id: 'structure', code: 'EF', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: AssetIcon },
-  { id: 'assets', code: 'AT', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: WrenchIcon },
-  { id: 'checklists', code: 'CK', label: 'Checklists', description: 'Construtor e roteamento', Icon: CheckIcon },
-  { id: 'maintenance', code: 'PM', label: 'Programação', description: 'Planos e recorrências', Icon: SettingsIcon },
-  { id: 'inventory', code: 'MP', label: 'Materiais e peças', description: 'Estoque técnico', Icon: AssetIcon },
+  { id: 'overview', code: 'VG', label: 'Visão geral', description: 'Centro de comando', Icon: DashboardIcon },
+  { id: 'structure', code: 'EF', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: FactoryIcon },
+  { id: 'assets', code: 'AT', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: AssetIcon },
+  { id: 'checklists', code: 'CK', label: 'Checklists', description: 'Construtor e roteamento', Icon: ChecklistIcon },
+  { id: 'maintenance', code: 'PM', label: 'Programação', description: 'Planos e recorrências', Icon: CalendarIcon },
+  { id: 'inventory', code: 'MP', label: 'Materiais e peças', description: 'Estoque técnico', Icon: PackageIcon },
   { id: 'workforce', code: 'EQ', label: 'Equipes técnicas', description: 'Áreas, cargos e assinatura', Icon: UsersIcon },
   { id: 'operations', code: 'OS', label: 'Intervenções e OS', description: 'Planejar, validar e liberar', Icon: WrenchIcon },
-  { id: 'analytics', code: 'BI', label: 'Indicadores', description: 'OEE, horas, custos e SLA', Icon: HomeIcon },
-  { id: 'documents', code: 'DT', label: 'Documentos', description: 'Arquivos e revisões', Icon: AssetIcon },
-  { id: 'imports', code: 'IM', label: 'Importar planilhas', description: 'Modelos e implantação', Icon: SettingsIcon },
+  { id: 'analytics', code: 'BI', label: 'Indicadores', description: 'OEE, horas, custos e SLA', Icon: ChartIcon },
+  { id: 'documents', code: 'DT', label: 'Documentos', description: 'Arquivos e revisões', Icon: DocumentIcon },
+  { id: 'imports', code: 'IM', label: 'Importar planilhas', description: 'Modelos e implantação', Icon: UploadIcon },
   { id: 'configuration', code: 'MC', label: 'Motor', description: 'Configuração versionada', Icon: SettingsIcon },
-  { id: 'users', code: 'US', label: 'Usuários', description: 'Identidades e acessos', Icon: UsersIcon },
-  { id: 'permissions', code: 'PE', label: 'Permissões', description: 'Matriz de capacidades', Icon: ShieldIcon },
-  { id: 'governance', code: 'AU', label: 'Auditoria', description: 'Integridade e trilha', Icon: ShieldIcon },
-  { id: 'backup', code: 'BK', label: 'Continuidade', description: 'Backup e restauração', Icon: ShieldIcon },
+  { id: 'users', code: 'US', label: 'Usuários', description: 'Identidades e acessos', Icon: UserDirectoryIcon },
+  { id: 'permissions', code: 'PE', label: 'Permissões', description: 'Matriz de capacidades', Icon: KeyIcon },
+  { id: 'governance', code: 'AU', label: 'Auditoria', description: 'Integridade e trilha', Icon: AuditIcon },
+  { id: 'backup', code: 'BK', label: 'Continuidade', description: 'Backup e restauração', Icon: DatabaseIcon },
 ]
 
 const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; subtitle: string }> = {
@@ -186,6 +198,7 @@ function createWindow(module: AdminModule, index: number, zIndex: number): Works
     zIndex,
     minimized: false,
     maximized: true,
+    layoutHidden: false,
   }
 }
 
@@ -198,16 +211,22 @@ export function AdminWorkspace({
   onLogout,
 }: AdminWorkspaceProps) {
   const zIndexRef = useRef(2)
+  const lastActiveModuleRef = useRef(activeModule)
   const workspaceRef = useRef<HTMLDivElement | null>(null)
   const windowsRef = useRef<WorkspaceWindow[]>([])
   const dragRef = useRef<DragState | null>(null)
   const paletteInputRef = useRef<HTMLInputElement | null>(null)
-  const [windows, setWindows] = useState<WorkspaceWindow[]>(() => [createWindow('overview', 0, 1)])
+  const [windows, setWindows] = useState<WorkspaceWindow[]>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [windowManagerOpen, setWindowManagerOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [dragging, setDragging] = useState(false)
+  const [windowLayout, setWindowLayout] = useState<WindowLayout>('smart')
+  const [autoArrange, setAutoArrange] = useState(false)
+  const [cacheBaseMb, setCacheBaseMb] = useState(10)
+  const [cacheMessage, setCacheMessage] = useState('Uso normal. Nenhuma ação necessária.')
   windowsRef.current = windows
 
   const filteredModules = useMemo(() => {
@@ -225,7 +244,7 @@ export function AdminWorkspace({
       if (existing) {
         return current.map((item) => (
           item.module === module
-            ? { ...item, minimized: false, zIndex: nextZIndex }
+            ? { ...item, minimized: false, layoutHidden: false, zIndex: nextZIndex }
             : item
         ))
       }
@@ -233,10 +252,13 @@ export function AdminWorkspace({
     })
     setPaletteOpen(false)
     setWindowManagerOpen(false)
+    setProfileOpen(false)
     if (notify) onModuleChange(module)
   }, [onModuleChange])
 
   useEffect(() => {
+    if (lastActiveModuleRef.current === activeModule) return
+    lastActiveModuleRef.current = activeModule
     if (!windowsRef.current.some((item) => item.module === activeModule)) {
       openModule(activeModule, false)
     }
@@ -252,6 +274,7 @@ export function AdminWorkspace({
         setPaletteOpen(false)
         setWindowManagerOpen(false)
         setHelpOpen(false)
+        setProfileOpen(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -300,7 +323,7 @@ export function AdminWorkspace({
   function focusWindow(module: AdminModule) {
     const nextZIndex = ++zIndexRef.current
     setWindows((current) => current.map((item) => (
-      item.module === module ? { ...item, minimized: false, zIndex: nextZIndex } : item
+      item.module === module ? { ...item, minimized: false, layoutHidden: false, zIndex: nextZIndex } : item
     )))
     onModuleChange(module)
   }
@@ -324,7 +347,7 @@ export function AdminWorkspace({
     const nextZIndex = ++zIndexRef.current
     setWindows((current) => current.map((item) => (
       item.module === module
-        ? { ...item, minimized: false, maximized: !item.maximized, zIndex: nextZIndex }
+        ? { ...item, minimized: false, maximized: !item.maximized, layoutHidden: false, zIndex: nextZIndex }
         : item
     )))
     onModuleChange(module)
@@ -332,7 +355,7 @@ export function AdminWorkspace({
 
   function minimizeWindow(module: AdminModule) {
     setWindows((current) => current.map((item) => (
-      item.module === module ? { ...item, minimized: true } : item
+      item.module === module ? { ...item, minimized: true, layoutHidden: false } : item
     )))
   }
 
@@ -340,39 +363,69 @@ export function AdminWorkspace({
     setWindows((current) => current.filter((item) => item.module !== module))
   }
 
-  function arrangeWindows(layout: WindowLayout) {
+  const arrangeWindows = useCallback((layout: WindowLayout) => {
     const workspace = workspaceRef.current
     if (!workspace) return
-    const visible = windows.filter((item) => !item.minimized)
-    if (!visible.length) return
     const bounds = workspace.getBoundingClientRect()
     const gap = 10
 
     setWindows((current) => current.map((item) => {
-      const index = visible.findIndex((visibleItem) => visibleItem.module === item.module)
+      const available = current.filter((windowItem) => !windowItem.minimized)
+      const focused = [...available].sort((left, right) => right.zIndex - left.zIndex)[0]
+      const arranged = layout === 'focus' && focused ? [focused] : available
+      const index = arranged.findIndex((visibleItem) => visibleItem.module === item.module)
+      if (layout === 'focus' && !item.minimized && item.module !== focused?.module) {
+        return { ...item, layoutHidden: true }
+      }
       if (index < 0) return item
+
+      if (layout === 'focus') {
+        return {
+          ...item,
+          x: 0,
+          y: 0,
+          width: bounds.width,
+          height: bounds.height,
+          maximized: true,
+          layoutHidden: false,
+          zIndex: ++zIndexRef.current,
+        }
+      }
 
       if (layout === 'cascade') {
         return {
           ...item,
           maximized: false,
+          layoutHidden: false,
           x: gap + index * 28,
           y: gap + index * 28,
-          width: Math.max(680, Math.min(1040, bounds.width - 90)),
-          height: Math.max(420, Math.min(700, bounds.height - 90)),
+          width: Math.max(320, Math.min(1040, bounds.width - 90)),
+          height: Math.max(230, Math.min(700, bounds.height - 90)),
           zIndex: ++zIndexRef.current,
         }
       }
 
-      const columns = layout === 'columns' ? visible.length : Math.ceil(Math.sqrt(visible.length))
-      const rows = Math.ceil(visible.length / columns)
+      const count = arranged.length
+      const columns = layout === 'columns'
+        ? Math.min(2, count)
+        : layout === 'rows'
+          ? Math.ceil(count / Math.min(2, count))
+          : layout === 'grid'
+            ? Math.ceil(Math.sqrt(count))
+            : count === 1
+              ? 1
+              : count === 2
+                ? 2
+                : Math.ceil(Math.sqrt(count))
+      const rows = Math.ceil(count / columns)
       const column = index % columns
       const row = Math.floor(index / columns)
-      const width = Math.max(430, (bounds.width - gap * (columns + 1)) / columns)
-      const height = Math.max(300, (bounds.height - gap * (rows + 1)) / rows)
+      const width = Math.max(320, (bounds.width - gap * (columns + 1)) / columns)
+      const height = Math.max(230, (bounds.height - gap * (rows + 1)) / rows)
       return {
         ...item,
-        maximized: false,
+        maximized: layout === 'smart' && count === 1,
+        layoutHidden: false,
         x: gap + column * (width + gap),
         y: gap + row * (height + gap),
         width,
@@ -380,10 +433,34 @@ export function AdminWorkspace({
         zIndex: ++zIndexRef.current,
       }
     }))
+    setWindowLayout(layout)
     setWindowManagerOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!autoArrange || windows.length < 2) return
+    arrangeWindows(windowLayout)
+  }, [arrangeWindows, autoArrange, windowLayout, windows.length])
+
+  const visibleWindowCount = windows.filter((item) => !item.minimized && !item.layoutHidden).length
+  const memoryMb = cacheBaseMb + windows.length * 7
+  const memoryPercent = Math.min(96, Math.max(7, Math.round(memoryMb / 1.15)))
+  const layoutLabels: Record<WindowLayout, string> = {
+    smart: 'automático',
+    focus: 'foco',
+    columns: '2 colunas',
+    rows: '2 linhas',
+    grid: 'grade',
+    cascade: 'cascata',
   }
 
-  const visibleWindowCount = windows.filter((item) => !item.minimized).length
+  function optimizeCache() {
+    Object.keys(window.localStorage)
+      .filter((key) => key.startsWith('fab_control_workspace_cache_'))
+      .forEach((key) => window.localStorage.removeItem(key))
+    setCacheBaseMb(8)
+    setCacheMessage('Cache temporário limpo. A sessão e os dados do sistema foram preservados.')
+  }
 
   return (
     <div className={`admin-desktop-shell${dragging ? ' is-dragging' : ''}`}>
@@ -396,24 +473,36 @@ export function AdminWorkspace({
 
       <header className="admin-desktop-topbar">
         <div className="admin-desktop-brand">
-          <span aria-hidden="true">FC</span>
-          <strong>Fab Control <em>Command Workspace</em></strong>
+          <span aria-hidden="true">TOZ</span>
+          <strong>tozzi</strong>
         </div>
 
         <button className="admin-desktop-command" type="button" onClick={() => setPaletteOpen(true)}>
-          <SearchIcon />
-          <span>Pesquisar módulos, cadastros e comandos…</span>
-          <kbd>Ctrl K</kbd>
+          <span>Pesquisar módulos e comandos — Ctrl + K</span>
         </button>
 
         <div className="admin-desktop-top-actions">
-          <button type="button" title="Avisos operacionais" aria-label="Avisos operacionais"><AlertIcon /></button>
+          <button type="button" title="Gerenciador de janelas" aria-label="Gerenciador de janelas" onClick={() => setWindowManagerOpen((current) => !current)}><WindowsIcon /></button>
+          <button className="admin-notification-button" type="button" title="Avisos operacionais" aria-label="Avisos operacionais" onClick={() => openModule('operations')}><BellIcon /><span>6</span></button>
           <button type="button" title="Ajuda do Workspace" aria-label="Ajuda do Workspace" onClick={() => setHelpOpen(true)}>?</button>
-          <button type="button" title="Gerenciador de janelas" aria-label="Gerenciador de janelas" onClick={() => setWindowManagerOpen((current) => !current)}>▦</button>
-          <span className="admin-desktop-online"><i aria-hidden="true" /> Online</span>
-          <span className="admin-desktop-avatar" aria-hidden="true">{getInitials(session.user.nome)}</span>
-          <span className="admin-desktop-user"><strong>{session.user.nome}</strong><small>Administrador</small></span>
-          <button className="admin-desktop-logout" type="button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? 'Saindo…' : 'Sair'}</button>
+          <button
+            className="admin-desktop-avatar"
+            type="button"
+            aria-label="Abrir menu do perfil"
+            aria-expanded={profileOpen}
+            onClick={() => setProfileOpen((current) => !current)}
+          >
+            {getInitials(session.user.nome)}
+          </button>
+          {profileOpen ? (
+            <aside className="admin-profile-menu" aria-label="Menu do perfil">
+              <header><span>{getInitials(session.user.nome)}</span><div><strong>{session.user.nome}</strong><small>Empresa Demonstração</small></div></header>
+              <button type="button" onClick={() => openModule('configuration')}>Personalizar sistema</button>
+              <button type="button" onClick={() => openModule('configuration')}>Parâmetros técnicos</button>
+              <button type="button" onClick={() => openModule('users')}>Meu perfil</button>
+              <button type="button" disabled={loggingOut} onClick={onLogout}>{loggingOut ? 'Saindo…' : 'Sair'}</button>
+            </aside>
+          ) : null}
         </div>
       </header>
 
@@ -442,15 +531,13 @@ export function AdminWorkspace({
           {!visibleWindowCount ? (
             <section className="admin-desktop-welcome">
               <div>
-                <span className="eyebrow">WORKSPACE LIVRE</span>
-                <h1>Abra os módulos que precisa usar</h1>
-                <p>Trabalhe com cadastros, programação, checklists, OS e indicadores em janelas simultâneas.</p>
-                <div>
-                  <button type="button" onClick={() => openModule('structure')}><b>EF</b><span>Estrutura fabril</span></button>
-                  <button type="button" onClick={() => openModule('maintenance')}><b>PM</b><span>Programar manutenção</span></button>
-                  <button type="button" onClick={() => openModule('imports')}><b>IM</b><span>Importar planilha</span></button>
+                <h1>Command Workspace — vFinal Enterprise</h1>
+                <p>Seu ambiente de implantação, configuração, governança e análise técnica. A vFinal Enterprise inclui estoque, custos, equipes, documentos, segurança e continuidade.</p>
+                <div className="admin-welcome-tips">
+                  <article><b>Acesso rápido</b><span>Pressione <kbd>Ctrl</kbd> + <kbd>K</kbd> e digite o nome ou código do módulo.</span></article>
+                  <article><b>Janelas livres</b><span>Arraste uma janela para sair do modo organizado. Encoste nas bordas para encaixar.</span></article>
+                  <article><b>Organização</b><span>Use o gerenciador inferior para focar, dividir, agrupar ou otimizar o cache.</span></article>
                 </div>
-                <small>Use <kbd>Ctrl K</kbd> para localizar qualquer módulo.</small>
               </div>
             </section>
           ) : null}
@@ -462,7 +549,7 @@ export function AdminWorkspace({
               return (
                 <section
                   key={item.module}
-                  className={`admin-app-window${item.maximized ? ' is-maximized' : ''}${item.minimized ? ' is-minimized' : ''}`}
+                  className={`admin-app-window${item.maximized ? ' is-maximized' : ''}${item.minimized ? ' is-minimized' : ''}${item.layoutHidden ? ' is-layout-hidden' : ''}`}
                   style={{
                     left: item.x,
                     top: item.y,
@@ -507,10 +594,15 @@ export function AdminWorkspace({
 
           <footer className="admin-desktop-statusbar">
             <button type="button" onClick={() => setWindowManagerOpen((current) => !current)}>
-              {windows.length} janela(s) · {visibleWindowCount} visível(is)
+              {windows.length} {windows.length === 1 ? 'janela' : 'janelas'}
             </button>
-            <span><i aria-hidden="true" /> Núcleo protegido</span>
-            <span className="admin-desktop-statusbar__right">Canário v{APP_RELEASE_VERSION} · dados sincronizados</span>
+            <span>Modo: {layoutLabels[windowLayout]}</span>
+            <span>Empresa: Empresa Demonstração</span>
+            <div className="admin-desktop-statusbar__right">
+              <button type="button" onClick={optimizeCache}>Otimizar cache</button>
+              <span>Workspace: {memoryMb} MB</span>
+              <span className="admin-memory-track" aria-label={`Uso estimado do Workspace: ${memoryMb} MB`}><i style={{ width: `${memoryPercent}%` }} /></span>
+            </div>
           </footer>
         </div>
       </div>
@@ -539,12 +631,16 @@ export function AdminWorkspace({
         <aside className="admin-window-manager" aria-label="Gerenciador de janelas">
           <header><strong>Gerenciador de janelas</strong><button type="button" aria-label="Fechar" onClick={() => setWindowManagerOpen(false)}>×</button></header>
           <section>
-            <span>ORGANIZAR</span>
+            <span>ORGANIZAÇÃO</span>
             <div className="admin-window-manager__layouts">
-              <button type="button" onClick={() => arrangeWindows('smart')}>Mosaico</button>
-              <button type="button" onClick={() => arrangeWindows('columns')}>Colunas</button>
-              <button type="button" onClick={() => arrangeWindows('cascade')}>Cascata</button>
+              <button className={windowLayout === 'smart' ? 'is-active' : ''} type="button" onClick={() => arrangeWindows('smart')}>Auto</button>
+              <button className={windowLayout === 'focus' ? 'is-active' : ''} type="button" onClick={() => arrangeWindows('focus')}>Foco</button>
+              <button className={windowLayout === 'columns' ? 'is-active' : ''} type="button" onClick={() => arrangeWindows('columns')}>2 colunas</button>
+              <button className={windowLayout === 'rows' ? 'is-active' : ''} type="button" onClick={() => arrangeWindows('rows')}>2 linhas</button>
+              <button className={windowLayout === 'grid' ? 'is-active' : ''} type="button" onClick={() => arrangeWindows('grid')}>Grade</button>
+              <button className={windowLayout === 'cascade' ? 'is-active' : ''} type="button" onClick={() => arrangeWindows('cascade')}>Cascata</button>
             </div>
+            <label className="admin-window-manager__auto"><span><strong>Organizar ao abrir</strong><small>Novas janelas entram no layout atual.</small></span><input type="checkbox" checked={autoArrange} onChange={(event) => setAutoArrange(event.target.checked)} /><i aria-hidden="true" /></label>
           </section>
           <section>
             <span>JANELAS ABERTAS</span>
@@ -562,6 +658,15 @@ export function AdminWorkspace({
               {!windows.length ? <p>Nenhuma janela aberta.</p> : null}
             </div>
           </section>
+          <section>
+            <span>DESEMPENHO DO WORKSPACE</span>
+            <div className="admin-window-manager__performance">
+              <header><small>Uso estimado</small><strong>{memoryMb} MB</strong></header>
+              <div><i style={{ width: `${memoryPercent}%` }} /></div>
+              <p>{cacheMessage}</p>
+              <button type="button" onClick={optimizeCache}>Limpar cache temporário</button>
+            </div>
+          </section>
         </aside>
       ) : null}
 
@@ -575,7 +680,7 @@ export function AdminWorkspace({
               <article><kbd>Ctrl K</kbd><span><strong>Pesquisa rápida</strong><small>Abra qualquer cadastro, programação ou comando.</small></span></article>
               <article><kbd>Arrastar</kbd><span><strong>Janela livre</strong><small>Mova módulos e compare informações lado a lado.</small></span></article>
               <article><kbd>2× clique</kbd><span><strong>Maximizar</strong><small>Expanda ou restaure uma janela pelo título.</small></span></article>
-              <article><kbd>▦</kbd><span><strong>Organizar</strong><small>Use mosaico, colunas ou cascata para as janelas abertas.</small></span></article>
+              <article><kbd>▦</kbd><span><strong>Organizar</strong><small>Use foco, colunas, linhas, grade ou cascata para as janelas abertas.</small></span></article>
             </div>
           </section>
         </div>

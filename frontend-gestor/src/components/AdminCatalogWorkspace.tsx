@@ -487,7 +487,7 @@ export function AdminCatalogWorkspace({
       <section className="admin-catalog-panel">
         <header>
           <div><span className="eyebrow">CADASTRO MESTRE</span><h2>{definition.label}</h2><p>{definition.description}</p></div>
-          <div><button type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={() => openEditor()}>Novo {definition.singular}</button></div>
+          <div><button className="admin-catalog-refresh" type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={() => openEditor()}>Novo {definition.singular}</button></div>
         </header>
         {selectedEntity === 'planos' ? <div className="admin-plan-rule"><CheckIcon /><span><strong>Programação protegida</strong><small>Salvar cria um rascunho inativo. A liberação ao Operador só ocorre depois do checklist e da validação do Gestor.</small></span></div> : null}
         <label className="admin-catalog-search"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Buscar em ${definition.label.toLowerCase()}`} /></label>

@@ -41,8 +41,19 @@ for (const windowAction of ['beginDrag', 'toggleMaximize', 'minimizeWindow', 'cl
 }
 assert(workspace.includes("event.key.toLocaleLowerCase('pt-BR') === 'k'"), 'paleta não oferece atalho Ctrl K')
 assert(workspace.includes('maximized: true'), 'janelas novas não abrem maximizadas por padrão')
+assert(workspace.includes('useState<WorkspaceWindow[]>([])'), 'Workspace não inicia livre, com zero janelas')
+for (const layout of ['smart', 'focus', 'columns', 'rows', 'grid', 'cascade']) {
+  assert(workspace.includes(`arrangeWindows('${layout}')`), `layout da vFinal ausente: ${layout}`)
+}
+for (const shellFeature of ['Command Workspace — vFinal Enterprise', 'admin-profile-menu', 'Organizar ao abrir', 'DESEMPENHO DO WORKSPACE', 'Otimizar cache']) {
+  assert(workspace.includes(shellFeature), `refinamento da vFinal ausente: ${shellFeature}`)
+}
+const railIcons = [...workspace.matchAll(/id: '[^']+'.+?Icon: (\w+)Icon/g)].map((match) => match[1])
+assert(railIcons.length === 16, 'catálogo do rail não contém os 16 módulos esperados')
+assert(new Set(railIcons).size === railIcons.length, 'rail repete ícones entre módulos')
 assert(styles.includes('.admin-desktop-workspace'), 'canvas do Workspace não foi estilizado')
 assert(styles.includes('resize: both'), 'janelas administrativas não podem ser redimensionadas')
+assert(styles.includes('.admin-window-manager__performance'), 'gerenciador não exibe desempenho e cache')
 
 assert(router.includes('case "admin.salvar": return adminSalvarSeguro_(p, p.__auth)'), 'cadastro manual não usa barreira segura')
 assert(admin.includes('adminAssertEntityReferences_'), 'vínculos não são validados no backend')
