@@ -44,9 +44,9 @@ assert(production.release === '1.3.1', 'produção não permaneceu em 1.3.1')
 assert(production.health === 'approved-unchanged', 'produção não foi reconfirmada')
 assert(production.deploymentId !== target.deploymentId, 'deployment canário não está isolado')
 assert(production.spreadsheetId !== target.spreadsheetId, 'planilha canária não está isolada')
-assert(target.immutableAppsScriptVersion === 12, 'versão imutável canária incorreta')
+assert(target.immutableAppsScriptVersion === 14, 'versão imutável canária incorreta')
 assert(target.deploymentId !== 'HEAD', 'deployment canário não pode usar HEAD')
-assert(target.sourceGitCommit === '5be179e', 'commit-fonte canário incorreto')
+assert(target.sourceGitCommit === 'd9718c0', 'commit-fonte canário incorreto')
 
 const checks = manifest.canaryEvidence?.checks
 for (const check of [
