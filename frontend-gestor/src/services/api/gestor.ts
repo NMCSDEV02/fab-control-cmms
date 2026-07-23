@@ -414,10 +414,13 @@ export function isGestorAuthenticationError(error: unknown): boolean {
     'AUTH_EXPIRED',
     'SESSION_EXPIRED',
     'SESSION_INVALID',
+    'TOKEN_REQUIRED',
     'TOKEN_EXPIRED',
     'TOKEN_INACTIVE',
     'TOKEN_INVALID',
+    'TOKEN_SCOPE_INVALID',
     'USER_INACTIVE',
     'GESTOR_SESSION_MISSING',
+    'MOTOR_MAINTENANCE_REQUIRED',
   ].includes(error.code)
 }

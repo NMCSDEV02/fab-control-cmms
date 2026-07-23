@@ -34,8 +34,15 @@ function hmac(value, secret) {
   return crypto.createHmac('sha256', secret).update(value, 'utf8').digest('base64url')
 }
 
+function asciiJson(value) {
+  return JSON.stringify(value).replace(
+    /[\u007f-\uffff]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  )
+}
+
 function envelope(data, secret) {
-  const payload = JSON.stringify(data)
+  const payload = asciiJson(data)
   return JSON.stringify({
     payload,
     signature: hmac(payload, secret),

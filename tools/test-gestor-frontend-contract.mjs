@@ -45,5 +45,11 @@ assert(
   'Contrato compatível da API deve permanecer explícito em 1.4.0.',
 )
 
+assert(
+  frontendApi.includes("'MOTOR_MAINTENANCE_REQUIRED'") &&
+    frontendApi.includes("'TOKEN_SCOPE_INVALID'"),
+  'Frontend deve encerrar a sessao quando a janela interna for revogada.',
+)
+
 console.log('TESTE DO CONTRATO FRONTEND GESTOR APROVADO')
 console.log(`${requiredActions.length} ações conferidas no frontend, roteador e matriz de permissões`)
