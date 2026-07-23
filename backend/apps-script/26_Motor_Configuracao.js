@@ -220,6 +220,7 @@ function configurationState_(p, auth){
   return {
     catalogo:CONFIG_ENGINE_CATALOG,
     protegidas:CONFIG_ENGINE_PROTECTED_KEYS,
+    acesso_comercial:typeof motorCommercialAccessContext_ === "function" ? motorCommercialAccessContext_(auth) : null,
     ativa:{
       id:active.versao_id, numero:active.numero, hash_sha256:active.hash_sha256,
       configuracao:active.configuracao, publicado_em:active.publicado_em || "",

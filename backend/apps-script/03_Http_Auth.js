@@ -586,13 +586,15 @@ function authorize_(action, token){
   var cached = getCachedAuthSession_(token);
   if(cached){
     ensurePermission_(cached.perfil, action);
-    return {
+    var cachedAuth = {
       token:token,
       usuario_id:cached.usuario_id,
       nome:cached.nome,
       email:cached.email,
       perfil:cached.perfil
     };
+    if(typeof motorAuthorizeAction_ === "function") motorAuthorizeAction_(action, cachedAuth);
+    return cachedAuth;
   }
 
   var sess = find_("sessoes","token",token);
@@ -614,6 +616,7 @@ function authorize_(action, token){
   ensurePermission_(perfil, action);
 
   var auth = {token:token, usuario_id:user.id, nome:user.nome, email:user.email, perfil:perfil, expira_em:sess.expira_em};
+  if(typeof motorAuthorizeAction_ === "function") motorAuthorizeAction_(action, auth);
   cacheAuthSession_(auth);
 
   // Não atualiza ultimo_uso_em a cada requisição. Isso gerava escrita, invalidava cache e pesava o Apps Script.
