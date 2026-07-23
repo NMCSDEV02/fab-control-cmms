@@ -1,8 +1,8 @@
 {
   "manifestVersion": 2,
   "release": "1.4.0",
-  "status": "canary-published-authenticated-validation-pending",
-  "promotionEligible": false,
+  "status": "canary-homologated",
+  "promotionEligible": true,
   "components": {
     "frontend": "1.4.0",
     "frontendGestor": "1.4.0",
@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "510CAC34A5318A3F3099DCE41229834F2E333462C1759776308549BB2714E2E2",
-    "immutableAppsScriptVersion": 23,
-    "deploymentId": "AKfycbwPYbkxw8TGuFZskRxCabNS7mIpO7lhR9ifusxLAHgGBd_-8BgG1VW5Eh4xHwLkeCQzYw",
+    "backendSourceSha256": "62A917105685C58EE5168C9DA78743E87B7A73F6526FC58A3F38F6E7A86504DF",
+    "immutableAppsScriptVersion": 24,
+    "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "14b6788"
+    "sourceGitCommit": "df10668"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -80,7 +80,7 @@
       "backupContinuity": "implemented-private-confirmed-audited",
       "operationalRestore": "implemented-double-confirmation-safety-backup-automatic-rollback",
       "restoreProtectedCore": "users-sessions-config-audit-locks",
-      "configurationRemoteAuthenticatedValidation": "pending",
+      "configurationRemoteAuthenticatedValidation": "approved",
       "remoteAccessControlValidation": "approved",
       "remoteAuthenticatedValidation": "approved"
     },
@@ -128,17 +128,19 @@
     "productionBootstrapContract": "approved",
     "operatorFrontendBuild": "approved",
     "managerFrontendBuild": "approved",
+    "gestorAdminStartupContract": "approved",
+    "gestorAdminStartupVisual": "approved-admin-and-manager-blocking-role-aware",
     "technicalWorkflowContract": "approved",
     "technicalWorkflowE2E": "approved",
-    "remoteCanary": "public-contract-approved"
+    "remoteCanary": "approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "510CAC34A5318A3F3099DCE41229834F2E333462C1759776308549BB2714E2E2",
-    "immutableAppsScriptVersion": 23,
-    "sourceGitCommit": "14b6788",
-    "deploymentId": "AKfycbwPYbkxw8TGuFZskRxCabNS7mIpO7lhR9ifusxLAHgGBd_-8BgG1VW5Eh4xHwLkeCQzYw",
+    "backendSourceSha256": "62A917105685C58EE5168C9DA78743E87B7A73F6526FC58A3F38F6E7A86504DF",
+    "immutableAppsScriptVersion": 24,
+    "sourceGitCommit": "df10668",
+    "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
@@ -182,20 +184,22 @@
       "usersRequiresAuthentication": "approved",
       "invalidPermissionTokenRejected": "approved",
       "productionDeploymentUnchanged": "approved",
+      "gestorAdminStartupContract": "approved",
+      "gestorAdminStartupVisual": "approved",
       "technicalWorkflowEndpointDeclared": "approved",
       "technicalKpiEndpointDeclared": "approved",
-      "authenticatedTechnicalContextRead": "pending",
-      "authenticatedTechnicalQueueRead": "pending",
-      "technicalSchemaSeeded": "pending",
-      "authenticatedConfigurationStateRead": "pending",
-      "configurationSchemaSeeded": "pending",
-      "authenticatedImportCatalogRead": "pending",
-      "importSchemaSeeded": "pending",
-      "permanentAdminLogin": "pending",
-      "authenticatedAdminRead": "pending",
-      "authenticatedPermissionMatrixRead": "pending",
-      "remoteLogout": "pending",
-      "revokedTokenRejected": "pending"
+      "authenticatedTechnicalContextRead": "approved",
+      "authenticatedTechnicalQueueRead": "approved",
+      "technicalSchemaSeeded": "approved",
+      "authenticatedConfigurationStateRead": "approved",
+      "configurationSchemaSeeded": "approved",
+      "authenticatedImportCatalogRead": "approved",
+      "importSchemaSeeded": "approved",
+      "permanentAdminLogin": "approved",
+      "authenticatedAdminRead": "approved",
+      "authenticatedPermissionMatrixRead": "approved",
+      "remoteLogout": "approved",
+      "revokedTokenRejected": "approved"
     }
   },
   "legacyEvidence": {
