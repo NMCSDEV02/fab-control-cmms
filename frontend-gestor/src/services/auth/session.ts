@@ -8,6 +8,9 @@ import {
 const AUTH_SESSION_KEY = 'fab-control.gestor-auth-session'
 const AUTH_NOTICE_KEY = 'fab-control.gestor-auth-notice'
 const STARTUP_COMPLETED_KEY = 'fab-control.gestor-startup-completed'
+const LOGIN_BOOTSTRAP_COMPLETED_KEY = 'fab-control.gestor-login-bootstrap-completed'
+const STARTUP_COMPLETED_VALUE = '2'
+const LOGIN_BOOTSTRAP_COMPLETED_VALUE = '2'
 
 const LEGACY_PREVIEW_KEYS = [
   'fab-control.gestor-auth-preview-session',
@@ -104,7 +107,7 @@ export function clearGestorSession(): void {
 
 export function hasCompletedStartup(): boolean {
   try {
-    return window.sessionStorage.getItem(STARTUP_COMPLETED_KEY) === '1'
+    return window.sessionStorage.getItem(STARTUP_COMPLETED_KEY) === STARTUP_COMPLETED_VALUE
   } catch {
     return false
   }
@@ -112,9 +115,25 @@ export function hasCompletedStartup(): boolean {
 
 export function markStartupCompleted(): void {
   try {
-    window.sessionStorage.setItem(STARTUP_COMPLETED_KEY, '1')
+    window.sessionStorage.setItem(STARTUP_COMPLETED_KEY, STARTUP_COMPLETED_VALUE)
   } catch {
     // Sem impacto funcional; o pré-carregamento poderá repetir.
+  }
+}
+
+export function hasCompletedLoginBootstrap(): boolean {
+  try {
+    return window.sessionStorage.getItem(LOGIN_BOOTSTRAP_COMPLETED_KEY) === LOGIN_BOOTSTRAP_COMPLETED_VALUE
+  } catch {
+    return false
+  }
+}
+
+export function markLoginBootstrapCompleted(): void {
+  try {
+    window.sessionStorage.setItem(LOGIN_BOOTSTRAP_COMPLETED_KEY, LOGIN_BOOTSTRAP_COMPLETED_VALUE)
+  } catch {
+    // A verificação de entrada poderá repetir sem comprometer a autenticação.
   }
 }
 

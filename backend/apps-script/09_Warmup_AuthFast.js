@@ -86,7 +86,7 @@ function sistemaWarmup_(p){
     "execucao_locks"
   ];
 
-  if(perfil === ROLE.ADMIN || perfil === ROLE.GESTOR){
+  if(perfil === ROLE.GESTOR){
     tables = tables.concat([
       "plantas",
       "setores",
@@ -94,9 +94,50 @@ function sistemaWarmup_(p){
       "usuarios",
       "execucoes",
       "checklist_execucao",
-      "historico"
+      "historico",
+      "materiais",
+      "plano_itens",
+      "evidencias",
+      "materiais_uso",
+      "parametros",
+      "paradas_equipamento",
+      "paradas_manutencao",
+      "ocorrencias_operacionais",
+      "areas_tecnicas",
+      "cargos_tecnicos",
+      "demandas_tecnicas",
+      "demanda_tramitacoes",
+      "assinaturas_tecnicas",
+      "analises_tecnicas",
+      "notificacoes",
+      "turnos",
+      "apontamentos_producao",
+      "sla_politicas",
+      "checklist_modelo_validacoes",
+      "checklist_tipos_item",
+      "checklist_validacao_regras",
+      "dashboard_cache"
     ]);
   }
+
+  if(perfil === ROLE.ADMIN){
+    var deferredAdminTables = {
+      sessoes:true,
+      audit_log:true,
+      historico:true,
+      telemetria_sessoes:true,
+      modelo_checklist_auditoria:true,
+      importacao_registros:true,
+      documento_revisoes:true
+    };
+    tables = Object.keys(SH).filter(function(name){
+      return !deferredAdminTables[name];
+    });
+  }
+
+  tables = tables.filter(function(name, index, collection){
+    return !!SH[name] && collection.indexOf(name) === index;
+  });
 
   var loaded = {};
   tables.forEach(function(name){
@@ -128,6 +169,7 @@ function sistemaWarmup_(p){
     usuario_id:auth.usuario_id || "",
     elapsed_internal_ms:Date.now()-started,
     loaded:loaded,
+    loaded_tables:Object.keys(loaded).length,
     qr_index_keys:qrIndex.keys,
     resumo:resumo ? {totais:resumo.totais || null, cache:resumo.cache || null} : null,
     qr_result:qrResult ? {
@@ -149,6 +191,7 @@ function sistemaWarmup_(p){
     usuario_id:auth.usuario_id || "",
     elapsed_internal_ms:out.elapsed_internal_ms,
     loaded:loaded,
+    loaded_tables:out.loaded_tables,
     qr_index_keys:qrIndex.keys
   }, FAB.WARMUP_CACHE_SECONDS || 300);
 

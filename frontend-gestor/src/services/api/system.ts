@@ -14,6 +14,8 @@ export interface GestorWarmupData {
   perfil: string
   usuario_id: string
   elapsed_internal_ms: number
+  loaded?: Record<string, number>
+  loaded_tables?: number
 }
 
 export async function getSystemHealth(

@@ -5,6 +5,7 @@ import {
 } from '../components/AppNavigation'
 import { AdminWorkspace } from '../components/AdminWorkspace'
 import { PlatformMotorWorkspace } from '../components/PlatformMotorWorkspace'
+import { WorkspaceStartupGate } from '../components/WorkspaceStartupGate'
 import { AssetsPage } from '../pages/AssetsPage'
 import type { AdminModule } from '../pages/AdminPage'
 import { DashboardPage } from '../pages/DashboardPage'
@@ -17,7 +18,6 @@ import {
   revokeGestorSession,
   type GestorSession,
 } from '../services/api/auth'
-import { warmupGestor } from '../services/api/system'
 import {
   clearGestorSession,
   hasCompletedStartup,
@@ -36,6 +36,7 @@ export function App() {
   const [adminModule, setAdminModule] = useState<AdminModule>('overview')
   const [validationCount, setValidationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [workspaceReady, setWorkspaceReady] = useState(hasCompletedStartup)
   const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
   const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
 
@@ -43,6 +44,7 @@ export function App() {
     markExpiredGestorSession()
     setSession(null)
     setSection('home')
+    setWorkspaceReady(false)
   }, [])
 
   useEffect(() => {
@@ -58,19 +60,6 @@ export function App() {
     return () => window.clearTimeout(timer)
   }, [expireSession, session])
 
-  useEffect(() => {
-    if (!session || isSystem || hasCompletedStartup()) return
-
-    const controller = new AbortController()
-    void warmupGestor(session.token, controller.signal)
-      .then(() => markStartupCompleted())
-      .catch(() => {
-        // O carregamento das telas continua mesmo se o warmup não responder.
-      })
-
-    return () => controller.abort()
-  }, [isSystem, session])
-
   function leaveMaintenanceEntry() {
     const url = new URL(window.location.href)
     url.searchParams.delete('maintenance')
@@ -83,7 +72,13 @@ export function App() {
     setSession(nextSession)
     setSection('home')
     setAdminModule('overview')
+    setWorkspaceReady(false)
   }
+
+  const completeWorkspaceStartup = useCallback(() => {
+    markStartupCompleted()
+    setWorkspaceReady(true)
+  }, [])
 
   function handleNavigate(nextSection: GestorSection) {
     setSection(nextSection)
@@ -103,6 +98,7 @@ export function App() {
       clearGestorSession()
       setSession(null)
       setSection('home')
+      setWorkspaceReady(false)
       if (systemSession) leaveMaintenanceEntry()
       setLoggingOut(false)
     }
@@ -125,6 +121,17 @@ export function App() {
       <PlatformMotorWorkspace
         session={session}
         loggingOut={loggingOut}
+        onSessionExpired={expireSession}
+        onLogout={() => void handleLogout()}
+      />
+    )
+  }
+
+  if (!workspaceReady) {
+    return (
+      <WorkspaceStartupGate
+        session={session}
+        onReady={completeWorkspaceStartup}
         onSessionExpired={expireSession}
         onLogout={() => void handleLogout()}
       />

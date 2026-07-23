@@ -1,6 +1,10 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { ApiConnectionPanel } from '../components/ApiConnectionPanel'
-import { API_COMPATIBLE_RELEASE, APP_RELEASE_VERSION } from '../release'
+import {
+  API_COMPATIBLE_RELEASE,
+  APP_RELEASE_VERSION,
+  isCompatibleRelease,
+} from '../release'
 import {
   completeFirstAccess,
   loginGestor,
@@ -9,12 +13,22 @@ import {
 } from '../services/api/auth'
 import { ApiRequestError } from '../services/api/client'
 import { getApiUrl } from '../services/api/config'
+import { getSystemHealth } from '../services/api/system'
+import {
+  hasCompletedLoginBootstrap,
+  markLoginBootstrapCompleted,
+} from '../services/auth/session'
 
 export interface LoginPageProps {
   onAuthenticated: (session: GestorSession) => void
 }
 
-type LoginView = 'login' | 'first-access' | 'recovery'
+type LoginView = 'startup' | 'login' | 'first-access' | 'recovery' | 'connection-error'
+type StartupState = 'checking' | 'online' | 'offline' | 'local'
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+}
 
 function passwordMeetsRules(password: string): boolean {
   return (
@@ -26,7 +40,14 @@ function passwordMeetsRules(password: string): boolean {
 }
 
 export function LoginPage({ onAuthenticated }: LoginPageProps) {
-  const [view, setView] = useState<LoginView>('login')
+  const [view, setView] = useState<LoginView>(
+    () => hasCompletedLoginBootstrap() ? 'login' : 'startup',
+  )
+  const [startupLabel, setStartupLabel] = useState('Carregando o sistema…')
+  const [startupState, setStartupState] = useState<StartupState>('checking')
+  const [connectionErrorMessage, setConnectionErrorMessage] = useState(
+    'Verifique a rede e tente novamente. Nenhuma credencial foi alterada.',
+  )
   const [registration, setRegistration] = useState('')
   const [password, setPassword] = useState('')
   const [firstAccessRegistration, setFirstAccessRegistration] = useState('')
@@ -39,6 +60,81 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [showConnection, setShowConnection] = useState(() => !getApiUrl())
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    if (view !== 'startup') return
+
+    let active = true
+    const controller = new AbortController()
+
+    async function prepareLogin() {
+      setStartupState('checking')
+      setStartupLabel('Preparando a interface…')
+      await wait(280)
+      if (!active) return
+
+      setStartupLabel('Verificando a configuração local…')
+      await wait(280)
+      if (!active) return
+
+      if (!getApiUrl()) {
+        setStartupState('local')
+        setStartupLabel('Ambiente local preparado')
+        await wait(420)
+        if (active) {
+          markLoginBootstrapCompleted()
+          setView('login')
+        }
+        return
+      }
+
+      setStartupLabel('Conferindo a conexão com a API…')
+      const abortTimer = window.setTimeout(() => controller.abort(), 4_500)
+
+      try {
+        const health = await getSystemHealth(controller.signal)
+        const receivedVersion = health.release_version ?? health.version
+        if (!isCompatibleRelease(receivedVersion)) {
+          if (!active) return
+          setStartupState('offline')
+          setStartupLabel('Atualização necessária')
+          setConnectionErrorMessage(
+            `Versão incompatível: aplicativo ${APP_RELEASE_VERSION}; API ${receivedVersion || 'não identificada'}.`,
+          )
+          await wait(420)
+          if (active) setView('connection-error')
+          return
+        }
+        if (!active) return
+        setStartupState('online')
+        setStartupLabel('Conexão inicial confirmada')
+      } catch {
+        if (!active) return
+        setStartupState('offline')
+        setStartupLabel('Não foi possível confirmar a API')
+        setConnectionErrorMessage(
+          'Verifique a rede e tente novamente. Nenhuma credencial foi alterada.',
+        )
+        await wait(420)
+        if (active) setView('connection-error')
+        return
+      } finally {
+        window.clearTimeout(abortTimer)
+      }
+
+      await wait(420)
+      if (active) {
+        markLoginBootstrapCompleted()
+        setView('login')
+      }
+    }
+
+    void prepareLogin()
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [view])
 
   function clearFeedback() {
     setError('')
@@ -196,6 +292,31 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     }
   }
 
+  if (view === 'startup') {
+    return (
+      <main className="auth-shell auth-shell--startup">
+        <section className="auth-startup" aria-live="polite" aria-busy="true">
+          <span className="auth-brand__mark auth-brand__mark--startup" aria-hidden="true">FC</span>
+          <div className="auth-startup__spinner" aria-hidden="true" />
+          <h1>FAB Control</h1>
+          <p>{startupLabel}</p>
+          <div className="auth-startup__progress" aria-hidden="true">
+            <span />
+          </div>
+          <small>
+            {startupState === 'online'
+              ? 'API disponível'
+              : startupState === 'offline'
+                ? 'Conexão pendente'
+                : startupState === 'local'
+                  ? 'Configuração local preparada'
+                  : 'Inicializando recursos essenciais'}
+          </small>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="auth-shell">
       <section className="auth-panel" aria-labelledby="auth-title">
@@ -215,6 +336,29 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
           <p className="feedback feedback--warning">
             Configure a URL publicada da API antes de entrar.
           </p>
+        ) : null}
+
+        {view === 'connection-error' ? (
+          <div className="auth-connection-error">
+            <strong>Não foi possível preparar o acesso</strong>
+            <p>{connectionErrorMessage}</p>
+            <div className="auth-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setShowConnection(true)}
+              >
+                Configurar conexão
+              </button>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => setView('startup')}
+              >
+                Tentar novamente
+              </button>
+            </div>
+          </div>
         ) : null}
 
         {view === 'login' ? (
@@ -383,6 +527,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
             onSaved={() => {
               setShowConnection(false)
               setMessage('Conexão validada. Informe suas credenciais.')
+              if (view === 'connection-error') setView('startup')
             }}
           />
         ) : null}
