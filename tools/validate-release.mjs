@@ -200,6 +200,8 @@ const publicChecks = [
   'internalCatalogEditorHiddenFromBootstrap',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
+  'entityActionEndpointDeclared',
+  'entityActionRequiresAuthentication',
   'governanceEndpointsDeclared',
   'governanceEndpointsRequireAuthentication',
   'restoreEndpointsDeclared',
