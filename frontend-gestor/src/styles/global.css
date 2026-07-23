@@ -7988,6 +7988,7 @@ p {
 
 @container admin-window (max-width: 1050px) {
   .admin-app-window__body .admin-command-kpis,
+  .admin-app-window__body .admin-metric-grid,
   .admin-app-window__body .admin-technical-metrics,
   .admin-app-window__body .admin-intervention-metrics,
   .admin-app-window__body .admin-analytics-kpis,
@@ -8028,6 +8029,35 @@ p {
   .admin-app-window__body .admin-import-layout,
   .admin-app-window__body .permission-panel {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-import-guardrail {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .admin-app-window__body .admin-import-guardrail > div {
+    min-width: 0;
+  }
+
+  .admin-app-window__body .admin-import-guardrail ol {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 12px;
+  }
+
+  .admin-app-window__body .admin-import-guardrail li {
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .admin-app-window__body .admin-import-guardrail li::after {
+    display: none;
+  }
+
+  .admin-app-window__body .admin-filter-bar {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(115px, 0.42fr));
   }
 
   .admin-app-window__body .admin-import-models {
@@ -8085,6 +8115,12 @@ p {
     border-radius: 10px;
   }
 
+  .admin-app-window__body .admin-user-panel {
+    gap: 11px;
+    padding: 12px;
+    border-radius: 10px;
+  }
+
   .admin-app-window__body .admin-catalog-panel > header,
   .admin-app-window__body .admin-technical-panel > header,
   .admin-app-window__body .admin-intervention-panel > header {
@@ -8105,6 +8141,73 @@ p {
   .admin-app-window__body .config-fields,
   .admin-app-window__body .admin-intervention-filters {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-filter-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-user-table {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .admin-app-window__body .admin-user-table__head {
+    display: none;
+  }
+
+  .admin-app-window__body .admin-user-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    align-items: start;
+    margin-bottom: 8px;
+    padding: 11px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+  }
+
+  .admin-app-window__body .admin-user-identity,
+  .admin-app-window__body .admin-user-actions {
+    grid-column: 1 / -1;
+  }
+
+  .admin-app-window__body .admin-user-identity small,
+  .admin-app-window__body .admin-user-last-access small {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-app-window__body .admin-import-workbench__header,
+  .admin-app-window__body .admin-import-history > header,
+  .admin-app-window__body .admin-import-file-card > footer,
+  .admin-app-window__body .admin-import-file-card > header,
+  .admin-app-window__body .admin-import-analysis > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-app-window__body .admin-import-analysis__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-app-window__body .admin-import-analysis__metrics article:nth-child(2) {
+    border-right: 0;
+  }
+
+  .admin-app-window__body .admin-import-records article,
+  .admin-app-window__body .admin-import-batch-list article {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-app-window__body .admin-import-records article > strong,
+  .admin-app-window__body .admin-import-records article > ul,
+  .admin-app-window__body .admin-import-batch-list article > div {
+    grid-column: 1 / -1;
+  }
+
+  .admin-app-window__body .admin-import-batch-list article > span:not(.admin-import-status) {
+    text-align: left;
   }
 
   .admin-app-window__body .admin-checklist-plan-form .is-wide,
@@ -8182,6 +8285,7 @@ p {
   }
 
   .admin-app-window__body .admin-command-kpis,
+  .admin-app-window__body .admin-metric-grid,
   .admin-app-window__body .admin-technical-metrics,
   .admin-app-window__body .admin-intervention-metrics,
   .admin-app-window__body .admin-analytics-kpis,
@@ -8208,6 +8312,28 @@ p {
 
   .admin-app-window__body .config-field > .permission-switch {
     justify-self: start;
+  }
+
+  .admin-app-window__body .admin-user-panel__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-app-window__body .admin-user-panel__header .primary-button {
+    width: 100%;
+  }
+
+  .admin-app-window__body .admin-user-row,
+  .admin-app-window__body .admin-import-analysis__metrics,
+  .admin-app-window__body .admin-import-records article,
+  .admin-app-window__body .admin-import-batch-list article,
+  .admin-app-window__body .admin-import-guardrail ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-window__body .admin-user-identity,
+  .admin-app-window__body .admin-user-actions {
+    grid-column: auto;
   }
 }
 

@@ -48,6 +48,9 @@ assert(styles.includes('touch-action: none'), 'barra de titulo nao protege o ges
 assert(styles.includes('.admin-app-window.is-tiled'), 'janela encaixada nao possui acabamento proprio')
 assert(styles.includes('flex-basis: 24px'), 'cabecalho encaixado nao foi compactado')
 assert(styles.includes('max-height: none'), 'janela encaixada nao ocupa toda a altura util')
+assert(styles.includes('.admin-app-window__body .admin-import-guardrail ol'), 'trilha da importacao nao adapta as etapas por janela')
+assert(styles.includes('.admin-app-window__body .admin-filter-bar'), 'filtros de usuarios nao adaptam as colunas por janela')
+assert(styles.includes('.admin-app-window__body .admin-user-row'), 'diretorio de usuarios nao converte linhas em cartoes compactos')
 
 for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
