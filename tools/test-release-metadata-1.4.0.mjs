@@ -44,14 +44,15 @@ assert(production.release === '1.3.1', 'produção não permaneceu em 1.3.1')
 assert(production.health === 'approved-unchanged', 'produção não foi reconfirmada')
 assert(production.deploymentId !== target.deploymentId, 'deployment canário não está isolado')
 assert(production.spreadsheetId !== target.spreadsheetId, 'planilha canária não está isolada')
-assert(target.immutableAppsScriptVersion === 21, 'versão imutável canária incorreta')
+assert(target.immutableAppsScriptVersion === 22, 'versão imutável canária incorreta')
 assert(target.deploymentId !== 'HEAD', 'deployment canário não pode usar HEAD')
-assert(target.sourceGitCommit === 'aaa713e', 'commit-fonte canário incorreto')
+assert(target.sourceGitCommit === 'fdc8ac3', 'commit-fonte canário incorreto')
 
 assert(manifest.candidateEvidence?.motorCommercialAccessContract === 'approved', 'contrato comercial do motor ausente')
 assert(manifest.candidateEvidence?.motorCommercialAccessE2E === 'approved', 'E2E comercial do motor ausente')
 assert(manifest.candidateEvidence?.motorInternalMaintenanceAccessE2E === 'approved', 'E2E interno do motor ausente')
 assert(manifest.candidateEvidence?.motorInternalCatalogContract === 'approved', 'catálogo interno do motor ausente')
+assert(manifest.candidateEvidence?.motorInternalCatalogVersioningE2E === 'approved', 'versionamento interno do catálogo ausente')
 
 const checks = manifest.canaryEvidence?.checks
 for (const check of [
@@ -69,6 +70,8 @@ for (const check of [
   'maintenanceAccessEndpointHiddenFromBootstrap',
   'internalCatalogRequiresAuthentication',
   'internalCatalogHiddenFromBootstrap',
+  'internalCatalogEditorRequiresAuthentication',
+  'internalCatalogEditorHiddenFromBootstrap',
   'adminImportEndpointDeclared',
   'adminImportRequiresAuthentication',
   'manualRegistrationEndpointDeclared',
