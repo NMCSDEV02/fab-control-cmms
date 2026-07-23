@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "64843519581CFF64484C5471FF8BD94BAC81A63A905042F5994A723F32C4F5B0",
-    "immutableAppsScriptVersion": 16,
+    "backendSourceSha256": "EE31FE86EEE49A431042C2B575221DACDD7273724822E22818ADD7EF2D2310AA",
+    "immutableAppsScriptVersion": 17,
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "84948f3"
+    "sourceGitCommit": "bd689e6"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -99,7 +99,7 @@
     "adminImportE2E": "approved",
     "adminCommandWorkspaceContract": "approved",
     "adminCompanyProfileE2E": "approved",
-    "adminCommandWorkspaceVisual": "approved-responsive-containers-hidden-scrollbars-one-pixel-divider-compact-chrome-snap-import-users-production-welcome-help-quick-access-company-dialog-audit-search",
+    "adminCommandWorkspaceVisual": "approved-responsive-containers-hidden-scrollbars-one-pixel-divider-compact-chrome-snap-import-users-production-welcome-help-quick-access-company-dialog-audit-search-modals-switches-notifications-protected-labels",
     "adminManualCatalogE2E": "approved",
     "adminInterventionWorkflowE2E": "approved",
     "adminGovernanceE2E": "approved",
@@ -113,9 +113,9 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "64843519581CFF64484C5471FF8BD94BAC81A63A905042F5994A723F32C4F5B0",
-    "immutableAppsScriptVersion": 16,
-    "sourceGitCommit": "84948f3",
+    "backendSourceSha256": "EE31FE86EEE49A431042C2B575221DACDD7273724822E22818ADD7EF2D2310AA",
+    "immutableAppsScriptVersion": 17,
+    "sourceGitCommit": "bd689e6",
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
