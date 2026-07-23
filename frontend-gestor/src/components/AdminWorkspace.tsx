@@ -105,6 +105,8 @@ const MODULES: WorkspaceModule[] = [
   { id: 'backup', code: 'BK', label: 'Continuidade', description: 'Backup e restauração', Icon: DatabaseIcon },
 ]
 
+const QUICK_ACCESS_MODULES: AdminModule[] = ['overview', 'checklists', 'operations', 'configuration']
+
 const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; subtitle: string }> = {
   overview: {
     eyebrow: 'CENTRO DE COMANDO',
@@ -303,6 +305,7 @@ export function AdminWorkspace({
   const [windows, setWindows] = useState<WorkspaceWindow[]>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [windowManagerOpen, setWindowManagerOpen] = useState(false)
+  const [layoutQuickOpen, setLayoutQuickOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
@@ -337,6 +340,7 @@ export function AdminWorkspace({
     })
     setPaletteOpen(false)
     setWindowManagerOpen(false)
+    setLayoutQuickOpen(false)
     setProfileOpen(false)
     if (notify) onModuleChange(module)
   }, [onModuleChange])
@@ -358,6 +362,7 @@ export function AdminWorkspace({
       if (event.key === 'Escape') {
         setPaletteOpen(false)
         setWindowManagerOpen(false)
+        setLayoutQuickOpen(false)
         setHelpOpen(false)
         setProfileOpen(false)
       }
@@ -627,6 +632,7 @@ export function AdminWorkspace({
     }))
     setWindowLayout(layout)
     setWindowManagerOpen(false)
+    setLayoutQuickOpen(false)
   }, [])
 
   useEffect(() => {
@@ -674,7 +680,7 @@ export function AdminWorkspace({
         </button>
 
         <div className="admin-desktop-top-actions">
-          <button type="button" title="Gerenciador de janelas" aria-label="Gerenciador de janelas" onClick={() => setWindowManagerOpen((current) => !current)}><WindowsIcon /></button>
+          <button type="button" title="Gerenciador de janelas" aria-label="Gerenciador de janelas" onClick={() => { setLayoutQuickOpen(false); setWindowManagerOpen((current) => !current) }}><WindowsIcon /></button>
           <button className="admin-notification-button" type="button" title="Avisos operacionais" aria-label="Avisos operacionais" onClick={() => openModule('operations')}><BellIcon /><span>6</span></button>
           <button type="button" title="Ajuda do Workspace" aria-label="Ajuda do Workspace" onClick={() => setHelpOpen(true)}>?</button>
           <button
@@ -722,14 +728,23 @@ export function AdminWorkspace({
         <div className="admin-desktop-workspace" ref={workspaceRef}>
           {!visibleWindowCount ? (
             <section className="admin-desktop-welcome">
-              <div>
-                <h1>Command Workspace — vFinal Enterprise</h1>
-                <p>Seu ambiente de implantação, configuração, governança e análise técnica. A vFinal Enterprise inclui estoque, custos, equipes, documentos, segurança e continuidade.</p>
-                <div className="admin-welcome-tips">
-                  <article><b>Acesso rápido</b><span>Pressione <kbd>Ctrl</kbd> + <kbd>K</kbd> e digite o nome ou código do módulo.</span></article>
-                  <article><b>Janelas livres</b><span>Arraste uma janela para sair do modo organizado. Encoste nas bordas para encaixar.</span></article>
-                  <article><b>Organização</b><span>Use o gerenciador inferior para focar, dividir, agrupar ou otimizar o cache.</span></article>
+              <div className="admin-welcome-card">
+                <div className="admin-welcome-copy">
+                  <span className="admin-welcome-eyebrow">FAB CONTROL · ADMINISTRAÇÃO INDUSTRIAL</span>
+                  <h1>Command Workspace</h1>
+                  <p>Centralize configurações, governança, cadastros e decisões técnicas em um único ambiente operacional.</p>
+                  <div className="admin-welcome-actions">
+                    <button type="button" onClick={() => openModule('overview')}>Abrir visão geral</button>
+                    <button type="button" onClick={() => setPaletteOpen(true)}><SearchIcon />Pesquisar módulos</button>
+                  </div>
+                  <small className="admin-welcome-help"><b>?</b> Em caso de dúvida, acesse a Central de Ajuda no cabeçalho.</small>
                 </div>
+                <aside className="admin-welcome-capabilities" aria-label="Recursos do ambiente">
+                  <header><span>Ambiente operacional</span><i aria-hidden="true" /></header>
+                  <article><ShieldIcon /><span><strong>Governança e acesso</strong><small>Perfis, permissões e rastreabilidade.</small></span></article>
+                  <article><SettingsIcon /><span><strong>Estrutura e regras</strong><small>Cadastros, fluxos e configuração.</small></span></article>
+                  <article><ChartIcon /><span><strong>Operação e indicadores</strong><small>Intervenções, custos, OEE e SLA.</small></span></article>
+                </aside>
               </div>
             </section>
           ) : null}
@@ -786,11 +801,49 @@ export function AdminWorkspace({
           </div>
 
           <footer className="admin-desktop-statusbar">
-            <button type="button" onClick={() => setWindowManagerOpen((current) => !current)}>
+            <button type="button" onClick={() => { setLayoutQuickOpen(false); setWindowManagerOpen((current) => !current) }}>
               {windows.length} {windows.length === 1 ? 'janela' : 'janelas'}
             </button>
-            <span>Modo: {layoutLabels[windowLayout]}</span>
-            <span>Empresa: Empresa Demonstração</span>
+            <div className="admin-status-layout-picker">
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={layoutQuickOpen}
+                onClick={() => { setWindowManagerOpen(false); setLayoutQuickOpen((current) => !current) }}
+              >
+                Modo: {layoutLabels[windowLayout]} <span aria-hidden="true">⌃</span>
+              </button>
+              {layoutQuickOpen ? (
+                <div className="admin-status-layout-menu" role="menu" aria-label="Alterar organização das janelas">
+                  <button className={windowLayout === 'smart' ? 'is-active' : ''} type="button" role="menuitem" onClick={() => arrangeWindows('smart')}>Auto</button>
+                  <button className={windowLayout === 'focus' ? 'is-active' : ''} type="button" role="menuitem" onClick={() => arrangeWindows('focus')}>Foco</button>
+                  <button className={windowLayout === 'columns' ? 'is-active' : ''} type="button" role="menuitem" onClick={() => arrangeWindows('columns')}>2 colunas</button>
+                  <button className={windowLayout === 'rows' ? 'is-active' : ''} type="button" role="menuitem" onClick={() => arrangeWindows('rows')}>2 linhas</button>
+                  <button className={windowLayout === 'grid' ? 'is-active' : ''} type="button" role="menuitem" onClick={() => arrangeWindows('grid')}>Grade</button>
+                  <button className={windowLayout === 'cascade' ? 'is-active' : ''} type="button" role="menuitem" onClick={() => arrangeWindows('cascade')}>Cascata</button>
+                </div>
+              ) : null}
+            </div>
+            <div className="admin-status-quick-access" aria-label="Acesso rápido">
+              <span>Rápido</span>
+              {QUICK_ACCESS_MODULES.map((moduleId) => {
+                const module = getModule(moduleId)
+                const open = windows.some((item) => item.module === moduleId && !item.minimized)
+                return (
+                  <button
+                    key={moduleId}
+                    className={open ? 'is-open' : ''}
+                    type="button"
+                    title={module.label}
+                    aria-label={`Abrir ${module.label}`}
+                    onClick={() => openModule(moduleId)}
+                  >
+                    {module.code}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="admin-status-company">Empresa: Empresa Demonstração</span>
             <div className="admin-desktop-statusbar__right">
               <button type="button" onClick={optimizeCache}>Otimizar cache</button>
               <span>Workspace: {memoryMb} MB</span>
@@ -868,13 +921,20 @@ export function AdminWorkspace({
           if (event.currentTarget === event.target) setHelpOpen(false)
         }}>
           <section className="admin-workspace-help" role="dialog" aria-modal="true" aria-label="Ajuda do Workspace">
-            <header><strong>Como usar o Command Workspace</strong><button type="button" aria-label="Fechar" onClick={() => setHelpOpen(false)}>×</button></header>
-            <div>
-              <article><kbd>Ctrl K</kbd><span><strong>Pesquisa rápida</strong><small>Abra qualquer cadastro, programação ou comando.</small></span></article>
-              <article><kbd>Arrastar</kbd><span><strong>Janela livre</strong><small>Mova módulos e compare informações lado a lado.</small></span></article>
-              <article><kbd>2× clique</kbd><span><strong>Maximizar</strong><small>Expanda ou restaure uma janela pelo título.</small></span></article>
-              <article><kbd>▦</kbd><span><strong>Organizar</strong><small>Use foco, colunas, linhas, grade ou cascata para as janelas abertas.</small></span></article>
+            <header>
+              <div><span aria-hidden="true">?</span><div><small>CENTRAL DE AJUDA</small><strong>Command Workspace</strong></div></div>
+              <button type="button" aria-label="Fechar" onClick={() => setHelpOpen(false)}>×</button>
+            </header>
+            <div className="admin-workspace-help__content">
+              <p>Encontre rapidamente módulos, organize sua área de trabalho e mantenha as operações mais usadas ao alcance.</p>
+              <div className="admin-workspace-help__grid">
+                <article><span><SearchIcon /></span><div><strong>Navegação e pesquisa</strong><small>Use a barra lateral ou pressione <kbd>Ctrl K</kbd> para localizar qualquer módulo e comando.</small></div></article>
+                <article><span><WindowsIcon /></span><div><strong>Janelas e encaixe</strong><small>Arraste pelo título. Encoste nas bordas para maximizar, dividir a tela ou formar quadrantes.</small></div></article>
+                <article><span><SettingsIcon /></span><div><strong>Organização do espaço</strong><small>Clique em <b>Modo</b> na barra inferior para escolher foco, colunas, linhas, grade ou cascata.</small></div></article>
+                <article><span><DashboardIcon /></span><div><strong>Acesso rápido</strong><small>Os atalhos inferiores abrem ou trazem para frente Visão geral, Checklists, Intervenções e Motor.</small></div></article>
+              </div>
             </div>
+            <footer><span>O gerenciador completo continua disponível pelo ícone de janelas no cabeçalho.</span><button type="button" onClick={() => setHelpOpen(false)}>Entendi</button></footer>
           </section>
         </div>
       ) : null}

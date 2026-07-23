@@ -6690,7 +6690,7 @@ p {
   }
 }
 
-/* Command Workspace desktop: shell em janelas conforme o mockup administrativo. */
+/* Command Workspace desktop. */
 .admin-desktop-shell {
   --admin-topbar: 48px;
   --admin-rail: 50px;
@@ -7103,62 +7103,169 @@ p {
   padding: 24px;
 }
 
-.admin-desktop-welcome > div {
-  width: min(690px, 90%);
-  padding: 28px;
+.admin-welcome-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 278px;
+  width: min(820px, 92%);
+  overflow: hidden;
   border: 1px solid var(--admin-line);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 90%);
-  box-shadow: 0 8px 30px rgb(34 54 63 / 8%);
-  backdrop-filter: blur(8px);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 95%);
+  box-shadow: 0 16px 48px rgb(34 54 63 / 11%);
+  backdrop-filter: blur(10px);
+}
+
+.admin-welcome-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 34px 36px;
+}
+
+.admin-welcome-eyebrow {
+  color: var(--admin-brand);
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
 }
 
 .admin-desktop-welcome h1 {
-  margin: 0 0 8px;
-  font-size: 1.55rem;
+  margin: 9px 0 10px;
+  color: #1d3038;
+  font-size: 1.8rem;
+  line-height: 1.1;
 }
 
 .admin-desktop-welcome p {
+  max-width: 470px;
   margin: 0;
-  color: #667982;
-  line-height: 1.5;
+  color: #60747d;
+  font-size: 0.78rem;
+  line-height: 1.65;
 }
 
-.admin-desktop-welcome .admin-welcome-tips {
+.admin-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.admin-welcome-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--admin-brand);
+  border-radius: 8px;
+  color: #fff;
+  background: var(--admin-brand);
+  font-size: 0.65rem;
+  font-weight: 850;
+}
+
+.admin-welcome-actions button + button {
+  color: var(--admin-brand-strong);
+  background: #fff;
+}
+
+.admin-welcome-actions button:hover {
+  background: var(--admin-brand-strong);
+}
+
+.admin-welcome-actions button + button:hover {
+  background: var(--admin-brand-soft);
+}
+
+.admin-welcome-actions svg {
+  width: 15px;
+}
+
+.admin-welcome-help {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 22px;
+  color: #71838b;
+  font-size: 0.57rem;
+}
+
+.admin-welcome-help b {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid #bfccd1;
+  border-radius: 50%;
+  color: #526870;
+  background: #f7f9fa;
+  font-size: 0.58rem;
+}
+
+.admin-welcome-capabilities {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 24px;
+  border-left: 1px solid #dce4e7;
+  background: linear-gradient(145deg, #f2f7f7, #f9fbfb);
+}
+
+.admin-welcome-capabilities > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  color: #5d7179;
+  font-size: 0.56rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.admin-welcome-capabilities > header i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #239064;
+  box-shadow: 0 0 0 4px rgb(35 144 100 / 10%);
+}
+
+.admin-welcome-capabilities article {
+  display: grid;
+  grid-template-columns: 29px minmax(0, 1fr);
+  align-items: center;
   gap: 9px;
-  margin-top: 18px;
+  min-height: 58px;
+  padding: 9px;
+  border: 1px solid #dce5e7;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 82%);
 }
 
-.admin-desktop-welcome .admin-welcome-tips article {
-  min-height: 92px;
-  padding: 11px;
-  border: 1px solid var(--admin-line);
-  border-radius: 6px;
-  background: var(--admin-soft);
+.admin-welcome-capabilities article > svg {
+  width: 17px;
+  color: var(--admin-brand);
 }
 
-.admin-desktop-welcome .admin-welcome-tips b,
-.admin-desktop-welcome .admin-welcome-tips span {
+.admin-welcome-capabilities article span,
+.admin-welcome-capabilities article strong,
+.admin-welcome-capabilities article small {
   display: block;
 }
 
-.admin-desktop-welcome .admin-welcome-tips b {
-  margin-bottom: 5px;
-  color: #26383f;
-  font-size: 0.68rem;
-}
-
-.admin-desktop-welcome .admin-welcome-tips span {
-  color: #33464e;
+.admin-welcome-capabilities article strong {
+  color: #30454d;
   font-size: 0.61rem;
-  line-height: 1.55;
 }
 
-.admin-desktop-welcome small {
-  color: #667982;
-  font-size: 0.63rem;
+.admin-welcome-capabilities article small {
+  margin-top: 3px;
+  color: #75868d;
+  font-size: 0.52rem;
+  line-height: 1.35;
 }
 
 .admin-desktop-window-layer {
@@ -7435,6 +7542,99 @@ p {
   background: var(--admin-soft-strong);
 }
 
+.admin-status-layout-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.admin-status-layout-picker > button {
+  min-height: 19px;
+  font-weight: 750;
+}
+
+.admin-status-layout-picker > button span {
+  margin-left: 2px;
+  color: #8b9aa1;
+  font-size: 0.48rem;
+}
+
+.admin-status-layout-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 15000;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  width: 184px;
+  padding: 6px;
+  border: 1px solid var(--admin-line);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(27 45 53 / 16%);
+}
+
+.admin-desktop-statusbar .admin-status-layout-menu button {
+  min-height: 27px;
+  padding: 0 8px;
+  border: 1px solid #e0e7ea;
+  text-align: left;
+}
+
+.admin-desktop-statusbar .admin-status-layout-menu button.is-active {
+  border-color: #9fc7ca;
+  color: var(--admin-brand-strong);
+  background: var(--admin-brand-soft);
+  font-weight: 850;
+}
+
+.admin-status-quick-access {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 8px;
+  border-left: 1px solid #e2e8eb;
+}
+
+.admin-status-quick-access > span {
+  margin-right: 2px;
+  color: #8a989f;
+  font-size: 0.48rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.admin-desktop-statusbar .admin-status-quick-access > button {
+  position: relative;
+  min-width: 24px;
+  height: 19px;
+  padding: 0 5px;
+  border: 1px solid #dce4e7;
+  color: #61737b;
+  background: #f8fafb;
+  font-size: 0.48rem;
+  font-weight: 900;
+}
+
+.admin-desktop-statusbar .admin-status-quick-access > button.is-open {
+  border-color: #a9ced1;
+  color: var(--admin-brand-strong);
+  background: var(--admin-brand-soft);
+}
+
+.admin-desktop-statusbar .admin-status-quick-access > button.is-open::after {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--admin-brand);
+  content: "";
+}
+
 .admin-desktop-statusbar > span {
   display: inline-flex;
   align-items: center;
@@ -7469,6 +7669,21 @@ p {
   border-radius: inherit;
   background: var(--admin-brand);
   transition: width 180ms ease;
+}
+
+@media (max-width: 1100px) and (min-width: 901px) {
+  .admin-desktop-statusbar {
+    gap: 7px;
+  }
+
+  .admin-status-company,
+  .admin-status-quick-access > span {
+    display: none;
+  }
+
+  .admin-status-quick-access {
+    padding-left: 5px;
+  }
 }
 
 .admin-desktop-overlay {
@@ -7860,48 +8075,146 @@ p {
 }
 
 .admin-workspace-help {
-  width: min(580px, 92vw);
+  width: min(720px, 92vw);
   overflow: hidden;
   border: 1px solid var(--admin-line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: #fff;
   box-shadow: 0 25px 80px rgb(24 42 50 / 24%);
 }
 
-.admin-workspace-help > div {
-  display: grid;
-  gap: 7px;
-  padding: 12px;
+.admin-workspace-help > header {
+  height: auto;
+  min-height: 64px;
+  padding: 9px 14px;
+  background: linear-gradient(90deg, #f7fafa, #fff);
 }
 
-.admin-workspace-help article {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
+.admin-workspace-help > header > div {
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px;
-  border: 1px solid var(--admin-line);
-  border-radius: 8px;
-  background: var(--admin-soft);
 }
 
-.admin-workspace-help article > kbd {
-  justify-self: start;
+.admin-workspace-help > header > div > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 9px;
+  color: #fff;
+  background: var(--admin-brand);
+  font-size: 0.9rem;
+  font-weight: 900;
 }
 
-.admin-workspace-help article span,
-.admin-workspace-help article small {
+.admin-workspace-help > header small,
+.admin-workspace-help > header strong {
   display: block;
 }
 
-.admin-workspace-help article strong {
-  font-size: 0.65rem;
+.admin-workspace-help > header small {
+  margin-bottom: 3px;
+  color: #71838b;
+  font-size: 0.49rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
 }
 
-.admin-workspace-help article small {
-  margin-top: 2px;
+.admin-workspace-help > header strong {
+  color: #253941;
+  font-size: 0.82rem;
+}
+
+.admin-workspace-help__content {
+  display: grid;
+  gap: 13px;
+  padding: 16px;
+}
+
+.admin-workspace-help__content > p {
+  margin: 0;
+  color: #63767e;
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+.admin-workspace-help__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.admin-workspace-help__grid article {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-height: 98px;
+  padding: 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: #f8fafb;
+}
+
+.admin-workspace-help__grid article > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--admin-brand);
+  background: var(--admin-brand-soft);
+}
+
+.admin-workspace-help__grid article svg {
+  width: 17px;
+}
+
+.admin-workspace-help__grid article strong,
+.admin-workspace-help__grid article small {
+  display: block;
+}
+
+.admin-workspace-help__grid article strong {
+  margin-top: 1px;
+  color: #30454d;
+  font-size: 0.67rem;
+}
+
+.admin-workspace-help__grid article small {
+  margin-top: 5px;
   color: #667982;
   font-size: 0.57rem;
+  line-height: 1.5;
+}
+
+.admin-workspace-help > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 50px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--admin-line);
+  color: #71838b;
+  background: #f8fafb;
+  font-size: 0.55rem;
+}
+
+.admin-workspace-help > footer button {
+  min-height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: var(--admin-brand);
+  font-size: 0.61rem;
+  font-weight: 850;
+}
+
+.admin-workspace-help > footer button:hover {
+  background: var(--admin-brand-strong);
 }
 
 /* Responsividade e encaixe são calculados pela janela, não pelo viewport. */

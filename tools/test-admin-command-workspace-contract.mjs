@@ -39,6 +39,8 @@ assert(workspace.includes('if (distance < 5) return'), 'clique simples no titulo
 assert(workspace.includes('restoreBounds'), 'encaixe perde o tamanho anterior da janela')
 assert(workspace.includes('tiled: true'), 'janelas organizadas nao usam modo compacto')
 assert(workspace.includes('const divider = 1'), 'layout organizado nao preserva o divisor de 1 px')
+assert(workspace.includes('QUICK_ACCESS_MODULES'), 'barra inferior nao oferece acesso rapido')
+assert(workspace.includes('layoutQuickOpen'), 'modo inferior nao abre o seletor de organizacao')
 assert(workspace.includes('admin-window-snap-preview'), 'encaixe nao possui pre-visualizacao visual')
 assert(styles.includes('container-type: inline-size'), 'modulos nao respondem a largura da propria janela')
 assert(styles.includes('@container admin-window'), 'layouts internos nao possuem pontos de adaptacao por janela')
@@ -51,6 +53,8 @@ assert(styles.includes('max-height: none'), 'janela encaixada nao ocupa toda a a
 assert(styles.includes('.admin-app-window__body .admin-import-guardrail ol'), 'trilha da importacao nao adapta as etapas por janela')
 assert(styles.includes('.admin-app-window__body .admin-filter-bar'), 'filtros de usuarios nao adaptam as colunas por janela')
 assert(styles.includes('.admin-app-window__body .admin-user-row'), 'diretorio de usuarios nao converte linhas em cartoes compactos')
+assert(styles.includes('.admin-status-layout-menu'), 'seletor rapido de layout nao foi estilizado')
+assert(styles.includes('.admin-status-quick-access'), 'atalhos inferiores nao foram estilizados')
 
 for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
@@ -69,9 +73,12 @@ assert(workspace.includes('useState<WorkspaceWindow[]>([])'), 'Workspace não in
 for (const layout of ['smart', 'focus', 'columns', 'rows', 'grid', 'cascade']) {
   assert(workspace.includes(`arrangeWindows('${layout}')`), `layout da vFinal ausente: ${layout}`)
 }
-for (const shellFeature of ['Command Workspace — vFinal Enterprise', 'admin-profile-menu', 'Organizar ao abrir', 'DESEMPENHO DO WORKSPACE', 'Otimizar cache']) {
+for (const shellFeature of ['FAB CONTROL · ADMINISTRAÇÃO INDUSTRIAL', 'admin-profile-menu', 'Organizar ao abrir', 'DESEMPENHO DO WORKSPACE', 'Otimizar cache']) {
   assert(workspace.includes(shellFeature), `refinamento da vFinal ausente: ${shellFeature}`)
 }
+assert(!workspace.includes('vFinal Enterprise'), 'tela inicial ainda exibe marcacao interna de desenvolvimento')
+assert(workspace.includes('CENTRAL DE AJUDA'), 'ajuda nao possui apresentacao de produto final')
+assert(workspace.includes('Em caso de dúvida, acesse a Central de Ajuda'), 'tela inicial nao direciona duvidas ao botao de ajuda')
 const railIcons = [...workspace.matchAll(/id: '[^']+'.+?Icon: (\w+)Icon/g)].map((match) => match[1])
 assert(railIcons.length === 16, 'catálogo do rail não contém os 16 módulos esperados')
 assert(new Set(railIcons).size === railIcons.length, 'rail repete ícones entre módulos')
