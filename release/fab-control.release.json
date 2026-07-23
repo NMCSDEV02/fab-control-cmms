@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "EE31FE86EEE49A431042C2B575221DACDD7273724822E22818ADD7EF2D2310AA",
-    "immutableAppsScriptVersion": 17,
+    "backendSourceSha256": "16320AABDC2F30F86EF4FA0132ACA4AE2EA8090EA899B3FB0E9D8849787F591D",
+    "immutableAppsScriptVersion": 18,
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "bd689e6"
+    "sourceGitCommit": "540df11"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -58,6 +58,10 @@
       "configurationEngine": "implemented-versioned-safe",
       "configurationPublication": "draft-validate-atomic-pointer",
       "configurationRollback": "immutable-republish",
+      "commercialPlans": "initial-basic-complete",
+      "commercialEntitlements": "signed-tenant-bound-server-enforced",
+      "commercialRoutePolicy": "deny-unclassified",
+      "fullEngineAccess": "system-role-signed-maintenance-window",
       "governedSpreadsheetImport": "implemented-two-phase-audited-rollback",
       "importModels": "plants-sectors-lines-assets-components-materials-plans-checklist-items",
       "importedPlansWorkflow": "forced-draft-inactive-until-manager-validation",
@@ -95,6 +99,9 @@
     "adminIdentityContract": "approved",
     "configurationEngineContract": "approved",
     "configurationEngineE2E": "approved",
+    "motorCommercialAccessContract": "approved",
+    "motorCommercialAccessE2E": "approved",
+    "motorCommercialAccessRemote": "approved-legacy-complete",
     "adminImportContract": "approved",
     "adminImportE2E": "approved",
     "adminCommandWorkspaceContract": "approved",
@@ -113,9 +120,9 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "EE31FE86EEE49A431042C2B575221DACDD7273724822E22818ADD7EF2D2310AA",
-    "immutableAppsScriptVersion": 17,
-    "sourceGitCommit": "bd689e6",
+    "backendSourceSha256": "16320AABDC2F30F86EF4FA0132ACA4AE2EA8090EA899B3FB0E9D8849787F591D",
+    "immutableAppsScriptVersion": 18,
+    "sourceGitCommit": "540df11",
     "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
@@ -128,6 +135,7 @@
       "companyProfileRequiresAuthentication": "approved",
       "configurationEngineEndpointDeclared": "approved",
       "configurationEngineRequiresAuthentication": "approved",
+      "commercialPolicyRuntime": "approved",
       "adminImportEndpointDeclared": "approved",
       "adminImportRequiresAuthentication": "approved",
       "manualRegistrationEndpointDeclared": "approved",

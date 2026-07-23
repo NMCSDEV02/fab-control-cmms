@@ -249,6 +249,8 @@ requireChecks(candidate, [
   'adminIdentityContract',
   'configurationEngineContract',
   'configurationEngineE2E',
+  'motorCommercialAccessContract',
+  'motorCommercialAccessE2E',
   'adminImportContract',
   'adminImportE2E',
   'productionBootstrapContract',
