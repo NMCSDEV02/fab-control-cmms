@@ -7,6 +7,7 @@
 - Adicionada gestão segura de usuários, perfis, bloqueios, sessões e recuperação de acesso.
 - Adicionada matriz auditável de capacidades para gestor e operador.
 - Removida a exposição de hashes de PIN e senha nas consultas administrativas.
+- Adicionado acesso interno ao Motor por identidade assinada, janela temporária, código de uso único e sessão revalidada sem cache.
 
 ## [0.1.0]
 

@@ -170,8 +170,16 @@ export interface AdminCommercialAccess {
     estado: 'ABERTA' | 'FECHADA' | 'BLOQUEADA'
     motivo: string
     expira_em: string
+    janela_id?: string
+    operador_nome?: string
+    ambiente?: string
   }
-  acesso_integral: false
+  acesso_integral: boolean
+  identidade_interna?: {
+    nome: string
+    ambiente: string
+    janela_id: string
+  } | null
   usuario_id: string
 }
 

@@ -63,7 +63,7 @@ const ST = {
 const SH = {
   config: ["chave", "valor", "descricao", "atualizado_em"],
   usuarios: ["id","nome","email","perfil","status","pin_hash","criado_em","atualizado_em","matricula","senha_hash","primeiro_acesso","tentativas_login","bloqueado_ate","ultimo_login_em","senha_atualizada_em","recuperacao_referencia","recuperacao_solicitada_em","area_id","cargo_id","especialidades_json","escopo_ids_json"],
-  sessoes: ["token","usuario_id","perfil","status","criado_em","expira_em","ultimo_uso_em","user_agent","escopo","expira_ms","revogado_em","motivo_revogacao"],
+  sessoes: ["token","usuario_id","perfil","status","criado_em","expira_em","ultimo_uso_em","user_agent","escopo","expira_ms","revogado_em","motivo_revogacao","janela_id","ambiente","tenant_id"],
 
   plantas: ["id", "tag", "nome", "status", "criado_em", "atualizado_em"],
   setores: ["id", "planta_id", "tag", "nome", "status", "criado_em", "atualizado_em"],
@@ -131,7 +131,7 @@ const SH = {
   legado_quarentena: ["id", "aba_origem", "linha_origem", "motivo", "payload_json", "movido_em"]
 };
 
-const PUBLIC_ACTIONS = ["sistema.health", "sistema.bootstrap", "auth.login", "auth.first_access.complete", "auth.recovery.request", "auth.logout"];
+const PUBLIC_ACTIONS = ["sistema.health", "sistema.bootstrap", "auth.login", "auth.first_access.complete", "auth.recovery.request", "auth.maintenance.exchange", "auth.logout"];
 
 const PERM = {
   ADMIN: [
@@ -172,5 +172,8 @@ const PERM = {
     "operador.contexto_qr", "operador.contexto_qr_fast", "operador.historico_qr", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
+  ],
+  SISTEMA: [
+    "admin.acesso.estado"
   ]
 };

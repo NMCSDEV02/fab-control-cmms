@@ -12,10 +12,16 @@ function assert(condition, message) {
 }
 
 const motor = read('backend/apps-script/30_Motor_Acesso_Comercial.js')
+const internalAccess = read('backend/apps-script/31_Motor_Acesso_Interno.js')
 const auth = read('backend/apps-script/03_Http_Auth.js')
+const authCache = read('backend/apps-script/09_Warmup_AuthFast.js')
 const configuration = read('backend/apps-script/26_Motor_Configuracao.js')
 const adminApi = read('frontend-gestor/src/services/api/admin.ts')
 const workspace = read('frontend-gestor/src/components/AdminWorkspace.tsx')
+const app = read('frontend-gestor/src/app/App.tsx')
+const maintenancePage = read('frontend-gestor/src/pages/MaintenanceAccessPage.tsx')
+const platformWorkspace = read('frontend-gestor/src/components/PlatformMotorWorkspace.tsx')
+const authApi = read('frontend-gestor/src/services/api/auth.ts')
 
 for (const plan of ['INICIAL', 'BASICO', 'COMPLETO']) {
   assert(motor.includes(`${plan}: {`), `plano comercial ausente: ${plan}`)
@@ -48,11 +54,52 @@ assert(motor.includes('tenantId !== configuredTenantId'), 'assinatura não está
 assert(motor.includes('SUBSCRIPTION_ACTION_UNCLASSIFIED'), 'novas ações não falham de forma fechada')
 
 const authorizationCalls = auth.match(/motorAuthorizeAction_\(action,/g) || []
-assert(authorizationCalls.length === 2, 'autorização comercial deve validar sessão em cache e sessão persistida')
+assert(authorizationCalls.length === 3, 'autorização comercial deve validar sessões em cache, persistida e interna')
 assert(configuration.includes('acesso_comercial:typeof motorCommercialAccessContext_'), 'estado do motor não informa o escopo comercial seguro')
 assert(auth.includes('case "admin.acesso.estado"'), 'endpoint seguro de consulta do plano ausente')
 assert(adminApi.includes("'admin.acesso.estado'"), 'frontend não consulta o plano no servidor')
 assert(workspace.includes('commercialAccess.status') && workspace.includes('grantedFeatures.has'), 'workspace não limita módulos pelos recursos contratados')
+
+assert(
+  internalAccess.includes('FAB_CONTROL_PLATFORM_IDENTITY_V1') &&
+    internalAccess.includes('FAB_CONTROL_PLATFORM_IDENTITY_SIGNING_SECRET'),
+  'identidade interna assinada não foi implementada',
+)
+assert(
+  internalAccess.includes('FAB_CONTROL_MOTOR_MAINTENANCE_REDEEMED_V1') &&
+    internalAccess.includes('MOTOR_INTERNAL_MAX_ATTEMPTS = 5'),
+  'janela interna não protege uso único e tentativas',
+)
+assert(
+  internalAccess.includes('PLATFORM_MAINTENANCE') &&
+    internalAccess.includes('Math.min(') &&
+    internalAccess.includes('MOTOR_INTERNAL_SESSION_MINUTES = 30'),
+  'sessão interna não está limitada à janela e ao máximo de 30 minutos',
+)
+assert(
+  auth.includes('motorInternalAuthorizeSession_(sess)') &&
+    auth.includes('upper_(sess.escopo) !== "PLATFORM_MAINTENANCE"'),
+  'sessão interna não é revalidada em cada requisição',
+)
+assert(
+  authCache.includes('upper_(auth.perfil) === ROLE.SISTEMA') &&
+    authCache.includes('upper_(hit.perfil) === ROLE.SISTEMA'),
+  'sessão interna não foi excluída do cache operacional',
+)
+assert(auth.includes('case "auth.maintenance.exchange"'), 'troca da autorização temporária não possui rota')
+assert(authApi.includes("'auth.maintenance.exchange'"), 'frontend não troca o código temporário no servidor')
+assert(
+  app.includes("get('maintenance') === '1'") &&
+    app.includes('<MaintenanceAccessPage') &&
+    app.includes('<PlatformMotorWorkspace'),
+  'entrada interna não está isolada do login operacional',
+)
+assert(
+  maintenancePage.includes('exchangeMaintenanceAccess') &&
+    platformWorkspace.includes('getAdminCommercialAccess') &&
+    platformWorkspace.includes('result.manutencao.aberta'),
+  'workspace interno não valida a janela ativa no servidor',
+)
 
 const publicActions = new Set([
   'sistema.health',
@@ -60,6 +107,7 @@ const publicActions = new Set([
   'auth.login',
   'auth.first_access.complete',
   'auth.recovery.request',
+  'auth.maintenance.exchange',
   'auth.logout',
 ])
 const routeActions = [...auth.matchAll(/case "([^"]+)"/g)].map((match) => match[1])
@@ -72,6 +120,14 @@ for (const action of routeActions) {
   const classified = coreActions.has(action) || featurePrefixes.some((prefix) => action.startsWith(prefix))
   assert(classified, `ação autenticada sem classificação comercial: ${action}`)
 }
+
+const bootstrapStart = auth.indexOf('function sistemaBootstrap_')
+const bootstrapEnd = auth.indexOf('function ensureAuthSchema_', bootstrapStart)
+assert(bootstrapStart >= 0 && bootstrapEnd > bootstrapStart, 'bloco de bootstrap não localizado')
+assert(
+  !auth.slice(bootstrapStart, bootstrapEnd).includes('"auth.maintenance.exchange"'),
+  'bootstrap público não deve anunciar a entrada interna',
+)
 
 console.log('CONTRATO DO ACESSO COMERCIAL AO MOTOR APROVADO')
 console.log(`${routeActions.length - publicActions.size} ações autenticadas, planos, assinatura e manutenção conferidos`)

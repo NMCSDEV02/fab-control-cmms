@@ -93,7 +93,10 @@
       "escopo",
       "expira_ms",
       "revogado_em",
-      "motivo_revogacao"
+      "motivo_revogacao",
+      "janela_id",
+      "ambiente",
+      "tenant_id"
     ],
     "migration": "append-only-columns-on-first-auth-call",
     "dataIncluded": false,

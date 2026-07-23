@@ -4,10 +4,12 @@ import {
   type GestorSection,
 } from '../components/AppNavigation'
 import { AdminWorkspace } from '../components/AdminWorkspace'
+import { PlatformMotorWorkspace } from '../components/PlatformMotorWorkspace'
 import { AssetsPage } from '../pages/AssetsPage'
 import type { AdminModule } from '../pages/AdminPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { LoginPage } from '../pages/LoginPage'
+import { MaintenanceAccessPage } from '../pages/MaintenanceAccessPage'
 import { MorePage } from '../pages/MorePage'
 import { ValidationsPage } from '../pages/ValidationsPage'
 import { APP_RELEASE_VERSION } from '../release'
@@ -27,11 +29,15 @@ import {
 
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
+  const [maintenanceEntry, setMaintenanceEntry] = useState(
+    () => new URLSearchParams(window.location.search).get('maintenance') === '1',
+  )
   const [section, setSection] = useState<GestorSection>('home')
   const [adminModule, setAdminModule] = useState<AdminModule>('overview')
   const [validationCount, setValidationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
   const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
+  const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
 
   const expireSession = useCallback(() => {
     markExpiredGestorSession()
@@ -53,7 +59,7 @@ export function App() {
   }, [expireSession, session])
 
   useEffect(() => {
-    if (!session || hasCompletedStartup()) return
+    if (!session || isSystem || hasCompletedStartup()) return
 
     const controller = new AbortController()
     void warmupGestor(session.token, controller.signal)
@@ -63,7 +69,14 @@ export function App() {
       })
 
     return () => controller.abort()
-  }, [session])
+  }, [isSystem, session])
+
+  function leaveMaintenanceEntry() {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('maintenance')
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    setMaintenanceEntry(false)
+  }
 
   function handleAuthenticated(nextSession: GestorSession) {
     saveGestorSession(nextSession)
@@ -80,6 +93,7 @@ export function App() {
   async function handleLogout() {
     if (!session || loggingOut) return
 
+    const systemSession = session.user.perfil.trim().toUpperCase() === 'SISTEMA'
     setLoggingOut(true)
     try {
       await revokeGestorSession(session.token)
@@ -89,12 +103,32 @@ export function App() {
       clearGestorSession()
       setSession(null)
       setSection('home')
+      if (systemSession) leaveMaintenanceEntry()
       setLoggingOut(false)
     }
   }
 
   if (!session) {
+    if (maintenanceEntry) {
+      return (
+        <MaintenanceAccessPage
+          onAuthenticated={handleAuthenticated}
+          onReturn={leaveMaintenanceEntry}
+        />
+      )
+    }
     return <LoginPage onAuthenticated={handleAuthenticated} />
+  }
+
+  if (isSystem) {
+    return (
+      <PlatformMotorWorkspace
+        session={session}
+        loggingOut={loggingOut}
+        onSessionExpired={expireSession}
+        onLogout={() => void handleLogout()}
+      />
+    )
   }
 
   if (isAdmin) {

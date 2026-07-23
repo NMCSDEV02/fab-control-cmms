@@ -50,6 +50,7 @@ assert(target.sourceGitCommit === '948ae5a', 'commit-fonte canário incorreto')
 
 assert(manifest.candidateEvidence?.motorCommercialAccessContract === 'approved', 'contrato comercial do motor ausente')
 assert(manifest.candidateEvidence?.motorCommercialAccessE2E === 'approved', 'E2E comercial do motor ausente')
+assert(manifest.candidateEvidence?.motorInternalMaintenanceAccessE2E === 'approved', 'E2E interno do motor ausente')
 
 const checks = manifest.canaryEvidence?.checks
 for (const check of [

@@ -9,6 +9,7 @@ function authCacheKey_(token){
 
 function cacheAuthSession_(auth){
   if(!auth || !auth.token) return false;
+  if(upper_(auth.perfil) === ROLE.SISTEMA) return false;
   var expMs = auth.expira_ms || new Date(auth.expira_em || "").getTime();
   if(!expMs || expMs < Date.now()) return false;
 
@@ -31,6 +32,10 @@ function getCachedAuthSession_(token){
   var hit = safeCacheGetJson_(authCacheKey_(token));
   if(!hit) return null;
   if(hit.expira_ms && Number(hit.expira_ms) < Date.now()){
+    safeCacheRemove_(authCacheKey_(token));
+    return null;
+  }
+  if(upper_(hit.perfil) === ROLE.SISTEMA){
     safeCacheRemove_(authCacheKey_(token));
     return null;
   }

@@ -268,6 +268,10 @@ function motorFeatureForAction_(action){
 }
 
 function motorAuthorizeAction_(action, auth){
+  if(upper_(auth && auth.perfil) === ROLE.SISTEMA){
+    motorRequireMaintenanceAccess_(auth);
+    return true;
+  }
   var feature = motorFeatureForAction_(action);
   if(!feature){
     if(MOTOR_CORE_ACTIONS.indexOf(clean_(action)) >= 0) return true;
@@ -314,6 +318,11 @@ function motorCommercialAccessContext_(auth){
   var subscription = motorSubscriptionState_();
   var allowed = {};
   subscription.recursos.forEach(function(code){ allowed[code] = true; });
+  var internal = upper_(auth && auth.perfil) === ROLE.SISTEMA;
+  var maintenance = typeof motorInternalMaintenancePublicState_ === "function"
+    ? motorInternalMaintenancePublicState_(auth)
+    : motorMaintenanceState_();
+  var fullAccess = internal && maintenance.aberta === true;
   return {
     schema_version:MOTOR_COMMERCIAL_SCHEMA_VERSION,
     plano:{codigo:subscription.plano.codigo, nome:subscription.plano.nome},
@@ -322,21 +331,34 @@ function motorCommercialAccessContext_(auth){
     recursos:MOTOR_FEATURE_CATALOG.filter(function(item){ return allowed[item.codigo]; }).map(function(item){
       return {codigo:item.codigo, nome:item.nome};
     }),
-    manutencao:motorMaintenanceState_(),
-    acesso_integral:false,
+    manutencao:maintenance,
+    acesso_integral:fullAccess,
+    identidade_interna:fullAccess ? {
+      nome:clean_(auth && auth.nome),
+      ambiente:clean_(auth && auth.ambiente),
+      janela_id:clean_(auth && auth.janela_id)
+    } : null,
     usuario_id:auth && auth.usuario_id || ""
   };
 }
 
 function motorCommercialAccessState_(p, auth){
-  if(upper_(auth && auth.perfil) !== ROLE.ADMIN){
+  var profile = upper_(auth && auth.perfil);
+  if(profile === ROLE.SISTEMA){
+    motorRequireMaintenanceAccess_(auth);
+    return motorCommercialAccessContext_(auth);
+  }
+  if(profile !== ROLE.ADMIN){
     err_("FORBIDDEN_ADMIN_REQUIRED", "A consulta do plano exige perfil ADMIN.", 403);
   }
   return motorCommercialAccessContext_(auth);
 }
 
 function motorRequireMaintenanceAccess_(auth){
-  var maintenance = motorMaintenanceState_();
-  if(maintenance.aberta && upper_(auth && auth.perfil) === ROLE.SISTEMA) return true;
+  var maintenance = typeof motorInternalMaintenanceState_ === "function"
+    ? motorInternalMaintenanceState_()
+    : motorMaintenanceState_();
+  var sameWindow = !clean_(auth && auth.janela_id) || clean_(auth && auth.janela_id) === clean_(maintenance.janela_id);
+  if(maintenance.aberta && sameWindow && upper_(auth && auth.perfil) === ROLE.SISTEMA) return true;
   err_("MOTOR_MAINTENANCE_REQUIRED", "O acesso integral ao Motor exige uma janela interna de manutenção.", 403);
 }

@@ -58,6 +58,7 @@ function route_(action, p, req){
     case "auth.login": return authLogin_(p, req);
     case "auth.first_access.complete": return authCompleteFirstAccess_(p, req);
     case "auth.recovery.request": return authRecoveryRequest_(p, req);
+    case "auth.maintenance.exchange": return motorInternalMaintenanceExchange_(p);
     case "auth.logout": return authLogout_(p, req);
 
     case "admin.resumo": return adminResumo_();
@@ -607,8 +608,19 @@ function authorize_(action, token){
 
   if(!sess) err_("TOKEN_INVALID","Sessão inválida. Faça login novamente.",401);
   if(upper_(sess.status) !== ST.ATIVO) err_("TOKEN_INACTIVE","Sessão inativa.",401);
-  if(clean_(sess.escopo) && upper_(sess.escopo) !== "APP") err_("TOKEN_SCOPE_INVALID","Sessão sem escopo operacional.",401);
   if(authSessionExpiryMs_(sess) < Date.now()) err_("TOKEN_EXPIRED","Sessão expirada. Faça login novamente.",401);
+
+  if(upper_(sess.perfil) === ROLE.SISTEMA){
+    if(upper_(sess.escopo) !== "PLATFORM_MAINTENANCE"){
+      err_("TOKEN_SCOPE_INVALID","Sessão interna sem escopo de manutenção.",401);
+    }
+    var systemAuth = motorInternalAuthorizeSession_(sess);
+    ensurePermission_(ROLE.SISTEMA, action);
+    if(typeof motorAuthorizeAction_ === "function") motorAuthorizeAction_(action, systemAuth);
+    return systemAuth;
+  }
+
+  if(clean_(sess.escopo) && upper_(sess.escopo) !== "APP") err_("TOKEN_SCOPE_INVALID","Sessão sem escopo operacional.",401);
 
   var user = find_("usuarios","id",sess.usuario_id);
   if(!user || upper_(user.status) !== ST.ATIVO) err_("USER_INACTIVE","Usuário inativo.",403);

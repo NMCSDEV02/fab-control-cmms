@@ -46,6 +46,19 @@ export interface RecoveryResponseData {
   release_version?: string
 }
 
+export interface MaintenanceAccessResponseData extends LoginResponseData {
+  acesso_integral: boolean
+  manutencao: {
+    aberta: boolean
+    estado: 'ABERTA' | 'FECHADA' | 'BLOQUEADA'
+    motivo: string
+    expira_em: string
+    janela_id?: string
+    operador_nome?: string
+    ambiente?: string
+  }
+}
+
 function assertReleaseVersion(receivedVersion?: string): void {
   if (isCompatibleRelease(receivedVersion)) return
   throw new ApiRequestError(
@@ -83,6 +96,39 @@ export async function loginGestor(
       'Este aplicativo permite acesso apenas aos perfis GESTOR ou ADMIN.',
       'ROLE_NOT_ALLOWED',
       { received: profile },
+    )
+  }
+
+  return response.data
+}
+
+export async function exchangeMaintenanceAccess(
+  code: string,
+  signal?: AbortSignal,
+): Promise<MaintenanceAccessResponseData> {
+  const response = await callApi<MaintenanceAccessResponseData>(
+    'auth.maintenance.exchange',
+    {
+      codigo: code,
+      user_agent: navigator.userAgent,
+    },
+    signal,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
+  )
+
+  if (!response.data) {
+    throw new ApiRequestError(
+      'A API não retornou a sessão interna.',
+      'AUTH_EMPTY_RESPONSE',
+    )
+  }
+
+  assertReleaseVersion(response.data.release_version)
+  const profile = response.data.usuario.perfil.trim().toUpperCase()
+  if (profile !== 'SISTEMA' || !response.data.acesso_integral) {
+    throw new ApiRequestError(
+      'A autorização recebida não possui escopo interno.',
+      'MAINTENANCE_SCOPE_INVALID',
     )
   }
 
