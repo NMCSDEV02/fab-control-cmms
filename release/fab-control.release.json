@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "5529CE4A5F8F9EF685AF2CF63FB302E96A86A4F4F143DE82C3B1948FEC908B8D",
-    "immutableAppsScriptVersion": 9,
-    "deploymentId": "AKfycbzaVUb-24M3GYBGcpAMFP7L1BlFOxX8W3risnOSXEgWLVQPTj7uuNMZ__XkYs7AqfvyxQ",
+    "backendSourceSha256": "80939DF5624CC78BF292DC98FECAC9BF79CF36BCC8CBC1236CBEED1040ED6047",
+    "immutableAppsScriptVersion": 10,
+    "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "151cbcc"
+    "sourceGitCommit": "193d841"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -67,7 +67,8 @@
       "technicalDocuments": "implemented-private-versioned-linked",
       "auditMonitoring": "implemented-read-only-redacted",
       "backupContinuity": "implemented-private-confirmed-audited",
-      "destructiveRestore": "disabled-pending-double-confirmation",
+      "operationalRestore": "implemented-double-confirmation-safety-backup-automatic-rollback",
+      "restoreProtectedCore": "users-sessions-config-audit-locks",
       "configurationRemoteAuthenticatedValidation": "pending",
       "remoteAccessControlValidation": "approved",
       "remoteAuthenticatedValidation": "approved"
@@ -107,10 +108,10 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "5529CE4A5F8F9EF685AF2CF63FB302E96A86A4F4F143DE82C3B1948FEC908B8D",
-    "immutableAppsScriptVersion": 9,
-    "sourceGitCommit": "151cbcc",
-    "deploymentId": "AKfycbzaVUb-24M3GYBGcpAMFP7L1BlFOxX8W3risnOSXEgWLVQPTj7uuNMZ__XkYs7AqfvyxQ",
+    "backendSourceSha256": "80939DF5624CC78BF292DC98FECAC9BF79CF36BCC8CBC1236CBEED1040ED6047",
+    "immutableAppsScriptVersion": 10,
+    "sourceGitCommit": "193d841",
+    "deploymentId": "AKfycbxAA1JIbcCoPKFwY7hhecTAh1MQmwP2NeNFX8zYJlJCZegKqie3edypPjvuQGGRPMtoHQ",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
       "health": "approved",
@@ -129,6 +130,8 @@
       "interventionEndpointsRequireAuthentication": "approved",
       "governanceEndpointsDeclared": "approved",
       "governanceEndpointsRequireAuthentication": "approved",
+      "restoreEndpointsDeclared": "approved",
+      "restoreEndpointsRequireAuthentication": "approved",
       "unknownLoginRejected": "approved",
       "recoveryNonEnumeration": "approved",
       "usersRequiresAuthentication": "approved",

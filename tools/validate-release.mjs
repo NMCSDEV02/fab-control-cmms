@@ -192,6 +192,8 @@ const publicChecks = [
   'adminImportRequiresAuthentication',
   'governanceEndpointsDeclared',
   'governanceEndpointsRequireAuthentication',
+  'restoreEndpointsDeclared',
+  'restoreEndpointsRequireAuthentication',
   'unknownLoginRejected',
   'recoveryNonEnumeration',
   'usersRequiresAuthentication',
