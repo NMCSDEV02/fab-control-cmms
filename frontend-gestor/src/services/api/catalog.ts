@@ -1,5 +1,7 @@
 import type {
   AdminEntity,
+  AdminEntityActionInput,
+  AdminEntityActionResult,
   AdminEntityList,
   AdminEntityRecord,
   AdminEntitySaveResult,
@@ -43,5 +45,22 @@ export async function saveAdminEntity(
     { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
   )
   if (!response.data) throw new ApiRequestError(`A API não confirmou o cadastro de ${entity}.`, 'ADMIN_ENTITY_EMPTY')
+  return response.data
+}
+
+export async function actionAdminEntity(
+  input: AdminEntityActionInput,
+): Promise<AdminEntityActionResult> {
+  const response = await callApi<AdminEntityActionResult>(
+    'admin.entidade.acao',
+    {
+      token: adminToken(),
+      ...input,
+      user_agent: navigator.userAgent,
+    },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
+  )
+  if (!response.data) throw new ApiRequestError(`A API não confirmou a ação em ${input.entidade}.`, 'ADMIN_ENTITY_EMPTY')
   return response.data
 }

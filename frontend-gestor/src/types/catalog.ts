@@ -26,3 +26,22 @@ export interface AdminEntitySaveResult {
   entidade: AdminEntity
   row: AdminEntityRecord
 }
+
+export type AdminEntityAction = 'ALTERAR_STATUS' | 'EXCLUIR'
+
+export interface AdminEntityActionInput {
+  entidade: AdminEntity
+  id: string
+  acao: AdminEntityAction
+  status?: string
+}
+
+export interface AdminEntityActionResult {
+  acted: boolean
+  acao: AdminEntityAction
+  entidade: AdminEntity
+  id: string
+  deleted: boolean
+  row?: AdminEntityRecord
+  itens_rascunho_excluidos?: number
+}

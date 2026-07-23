@@ -29,11 +29,13 @@ function adminIntervencaoNormalize_(input, auth, old){
   req_(data, ["ativo_id","titulo","descricao","tipo","prioridade"]);
   var asset = find_("ativos", "id", data.ativo_id);
   if(!asset) err_("ASSET_NOT_FOUND", "Ativo não encontrado: "+data.ativo_id, 404);
+  if(upper_(asset.status) === ST.INATIVO) err_("ASSET_INACTIVE", "Reative o equipamento antes de criar uma nova intervenção.", 409);
   if(data.componente_id){
     var component = find_("componentes", "id", data.componente_id);
     if(!component || String(component.ativo_id) !== String(asset.id)){
       err_("COMPONENT_ASSET_MISMATCH", "O componente não pertence ao ativo selecionado.", 400);
     }
+    if(upper_(component.status) === ST.INATIVO) err_("COMPONENT_INACTIVE", "Reative o componente antes de vinculá-lo à intervenção.", 409);
   }
   var type = upper_(data.tipo);
   if(ADMIN_INTERVENTION_TYPES.indexOf(type) < 0) err_("INTERVENTION_TYPE_INVALID", "Tipo de intervenção inválido.", 400);

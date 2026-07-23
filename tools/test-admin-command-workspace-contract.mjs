@@ -14,6 +14,7 @@ const page = read('frontend-gestor/src/pages/AdminPage.tsx')
 const catalog = read('frontend-gestor/src/components/AdminCatalogWorkspace.tsx')
 const checklist = read('frontend-gestor/src/components/AdminChecklistBuilder.tsx')
 const checklistApi = read('frontend-gestor/src/services/api/checklists.ts')
+const catalogApi = read('frontend-gestor/src/services/api/catalog.ts')
 const adminApi = read('frontend-gestor/src/services/api/admin.ts')
 const companyDialog = read('frontend-gestor/src/components/AdminCompanyDialog.tsx')
 const technicalStructure = read('frontend-gestor/src/components/AdminTechnicalStructure.tsx')
@@ -131,6 +132,17 @@ assert(admin.includes('row.workflow_status = ST.RASCUNHO'), 'plano manual pode p
 assert(admin.includes('LockService.getScriptLock()'), 'cadastro manual sem lock de concorrência')
 assert(admin.includes('ADMIN_ENTITY_CREATED'), 'criação manual sem auditoria')
 assert(admin.includes('ADMIN_ENTITY_UPDATED'), 'alteração manual sem auditoria')
+assert(router.includes('case "admin.entidade.acao": return adminEntityAction_(p, p.__auth)'), 'rota de ações contextuais ausente')
+assert(catalogApi.includes("'admin.entidade.acao'"), 'cliente não usa a rota protegida de ações')
+assert(admin.includes('adminEntityReferenceSummary_'), 'exclusão não verifica vínculos declarados')
+assert(admin.includes('ENTITY_IN_USE'), 'exclusão não bloqueia cadastro utilizado')
+assert(admin.includes('ENTITY_HAS_OPEN_OPERATIONS'), 'desativação não protege trabalhos abertos')
+assert(admin.includes('ADMIN_ENTITY_STATUS_CHANGED'), 'alteração de status não gera auditoria')
+assert(admin.includes('ADMIN_ENTITY_DELETED'), 'exclusão permitida não gera auditoria')
+assert(catalog.includes('admin-catalog-manage'), 'tabela não oferece gerenciador contextual')
+assert(catalog.includes('Confirmar exclusão'), 'exclusão não exige confirmação explícita')
+assert(catalog.includes('Versão protegida'), 'plano validado não orienta revisão')
+assert(catalog.includes('EMPTY_STATE_CONTENT'), 'áreas vazias não explicam as ações futuras')
 
 for (const relation of ['planta_id', 'setor_id', 'linha_id', 'ativo_id', 'componente_id']) {
   assert(catalog.includes(`key: '${relation}'`), `dropdown de vínculo ausente: ${relation}`)
@@ -146,7 +158,7 @@ assert(catalog.includes('RECURRENCE_OPTIONS'), 'periodicidade de plano permanece
 assert(catalog.includes('ESTIMATED_TIME_OPTIONS'), 'tempo estimado de plano permanece manual')
 assert(catalog.includes('Selecione o campo anterior…'), 'dropdown dependente não orienta a sequência de cadastro')
 
-for (const action of ['admin.listar_modelos_checklist', 'admin.detalhe_modelo_checklist', 'admin.salvar_modelo_checklist', 'admin.enviar_modelo_checklist_validacao']) {
+for (const action of ['admin.listar_modelos_checklist', 'admin.detalhe_modelo_checklist', 'admin.salvar_modelo_checklist', 'admin.enviar_modelo_checklist_validacao', 'admin.criar_revisao_modelo_checklist']) {
   assert(checklistApi.includes(`'${action}'`), `cliente de checklist não usa ${action}`)
 }
 for (const assistedField of ['Ativo *', 'Componente', 'Tipo de resposta', 'Área responsável *', 'Cargo técnico', 'Exigir assinatura']) {
@@ -155,6 +167,9 @@ for (const assistedField of ['Ativo *', 'Componente', 'Tipo de resposta', 'Área
 assert(checklist.includes('availableComponents'), 'componentes não são filtrados pelo ativo')
 assert(checklist.includes('availableRoles'), 'cargos não são filtrados pela área')
 assert(checklist.includes('saveModel()'), 'envio não garante rascunho salvo')
+assert(checklist.includes('Nova revisão') && checklist.includes('Criar nova revisão'), 'biblioteca não oferece revisão formal')
+assert(checklist.includes('Excluir rascunho'), 'biblioteca não oferece exclusão protegida de rascunho')
+assert(checklist.includes('duplicateItem(index)'), 'itens do checklist não podem ser duplicados')
 for (const action of ['admin.areas_tecnicas.listar', 'admin.areas_tecnicas.salvar', 'admin.cargos_tecnicos.listar', 'admin.cargos_tecnicos.salvar']) {
   assert(adminApi.includes(`'${action}'`), `cliente da estrutura técnica não usa ${action}`)
 }

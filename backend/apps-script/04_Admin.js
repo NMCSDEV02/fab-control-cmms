@@ -2,6 +2,16 @@ const ADMIN_ENT = {
   plantas:"plantas", setores:"setores", linhas:"linhas", ativos:"ativos", componentes:"componentes",
   materiais:"materiais", planos:"planos_manutencao", plano_itens:"plano_itens", usuarios:"usuarios"
 };
+const ADMIN_ACTIONABLE_ENTITIES = ["plantas","setores","linhas","ativos","componentes","materiais","planos"];
+const ADMIN_ENTITY_REFERENCE_FIELDS = {
+  plantas:"planta_id",
+  setores:"setor_id",
+  linhas:"linha_id",
+  ativos:"ativo_id",
+  componentes:"componente_id",
+  materiais:"material_id",
+  planos:"plano_id"
+};
 
 const ADMIN_PERMISSION_CONFIG_KEY = "permissions.matrix.capabilities.v1";
 const ADMIN_PERMISSION_CAPABILITIES = [
@@ -610,12 +620,15 @@ function adminAssertEntityReferences_(ent, row){
     err_("ENTITY_REFERENCE_INVALID", "Ativo não encontrado: "+row.ativo_id, 400);
   }
   if(ent === "planos"){
-    if(!find_("ativos", "id", row.ativo_id)) err_("ENTITY_REFERENCE_INVALID", "Ativo não encontrado: "+row.ativo_id, 400);
+    var planAsset = find_("ativos", "id", row.ativo_id);
+    if(!planAsset) err_("ENTITY_REFERENCE_INVALID", "Ativo não encontrado: "+row.ativo_id, 400);
+    if(upper_(planAsset.status) === ST.INATIVO) err_("ASSET_INACTIVE", "Reative o equipamento antes de criar um plano.", 409);
     if(row.componente_id){
       var component = find_("componentes", "id", row.componente_id);
       if(!component || String(component.ativo_id) !== String(row.ativo_id)){
         err_("ENTITY_REFERENCE_INVALID", "Componente não pertence ao ativo informado: "+row.componente_id, 400);
       }
+      if(upper_(component.status) === ST.INATIVO) err_("COMPONENT_INACTIVE", "Reative o componente antes de criar um plano.", 409);
     }
   }
   if(ent === "plano_itens"){
@@ -654,10 +667,169 @@ function adminSalvarSeguro_(p, auth){
   if(!lock.tryLock(10000)) err_("ADMIN_WRITE_BUSY", "Outra alteração administrativa está em andamento.", 409);
   try{
     var old = normalized.id ? find_(sheetName, "id", normalized.id) : null;
+    adminValidateEntityStatusTransition_(ent, old, normalized);
     var before = old ? adminSanitizeEntityRow_(sheetName, old) : null;
     var result = adminSalvar_({entidade:ent, dados:normalized, __auth:auth});
     audit_(auth, old ? "ADMIN_ENTITY_UPDATED" : "ADMIN_ENTITY_CREATED", sheetName, result.row.id, before, result.row, clean_(p.user_agent));
     return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function adminEntityAllowedStatuses_(ent){
+  if(ent === "ativos") return [ST.OPERANDO, ST.PARADO, ST.INATIVO];
+  if(["plantas","setores","linhas","componentes","materiais"].indexOf(ent) >= 0) return [ST.ATIVO, ST.INATIVO];
+  return [];
+}
+
+function adminEntityAssertParentAvailable_(ent, row){
+  var parent = null;
+  if(ent === "setores") parent = find_("plantas", "id", row.planta_id);
+  if(ent === "linhas") parent = find_("setores", "id", row.setor_id);
+  if(ent === "ativos") parent = find_("linhas", "id", row.linha_id);
+  if(ent === "componentes") parent = find_("ativos", "id", row.ativo_id);
+  if(parent && upper_(parent.status) === ST.INATIVO){
+    err_("ENTITY_PARENT_INACTIVE", "Reative o cadastro superior antes de ativar este registro.", 409);
+  }
+}
+
+function adminEntityOpenOperations_(ent, entityId){
+  if(["ativos","componentes"].indexOf(ent) < 0) return [];
+  var field = ent === "ativos" ? "ativo_id" : "componente_id";
+  var isOpen = function(row){
+    return [ST.CONCLUIDA, ST.CANCELADA, ST.FINALIZADA].indexOf(upper_(row.status)) < 0;
+  };
+  var checks = [
+    {sheet:"ordens_servico", open:isOpen},
+    {sheet:"os_acoes", open:isOpen},
+    {sheet:"execucoes", open:isOpen}
+  ];
+  var found = [];
+  checks.forEach(function(check){
+    if(typeof sheetExists_ === "function" && !sheetExists_(check.sheet)) return;
+    var count = rows_(check.sheet, true).filter(function(row){
+      return String(row[field]) === String(entityId) && check.open(row);
+    }).length;
+    if(count) found.push({entidade:check.sheet, total:count});
+  });
+  return found;
+}
+
+function adminEntityActiveChildren_(ent, entityId){
+  var relation = {
+    plantas:{sheet:"setores", field:"planta_id"},
+    setores:{sheet:"linhas", field:"setor_id"},
+    linhas:{sheet:"ativos", field:"linha_id"}
+  }[ent];
+  if(!relation) return 0;
+  return rows_(relation.sheet, true).filter(function(row){
+    return String(row[relation.field]) === String(entityId) && upper_(row.status) !== ST.INATIVO;
+  }).length;
+}
+
+function adminValidateEntityStatusTransition_(ent, old, next){
+  var allowed = adminEntityAllowedStatuses_(ent);
+  if(!allowed.length) return;
+  var target = upper_(next.status);
+  if(allowed.indexOf(target) < 0){
+    err_("ENTITY_STATUS_INVALID", "Status inválido para "+ent+": "+target, 400);
+  }
+  if(target !== ST.INATIVO) adminEntityAssertParentAvailable_(ent, next);
+  if(old && upper_(old.status) !== ST.INATIVO && target === ST.INATIVO){
+    var activeChildren = adminEntityActiveChildren_(ent, old.id);
+    if(activeChildren){
+      err_("ENTITY_HAS_ACTIVE_CHILDREN", "Desative primeiro os cadastros vinculados a este nível da estrutura.", 409);
+    }
+    var openOperations = adminEntityOpenOperations_(ent, old.id);
+    if(openOperations.length){
+      err_("ENTITY_HAS_OPEN_OPERATIONS", "Conclua ou cancele as ordens e execuções abertas antes de desativar este registro.", 409);
+    }
+  }
+}
+
+function adminEntityReferenceSummary_(ent, entityId){
+  var field = ADMIN_ENTITY_REFERENCE_FIELDS[ent];
+  var ownSheet = ADMIN_ENT[ent];
+  if(!field) return [];
+  return Object.keys(SH).filter(function(sheetName){
+    if(sheetName === ownSheet || sheetName === "audit_log" || sheetName === "modelo_checklist_auditoria") return false;
+    if(ent === "planos" && sheetName === "plano_itens") return false;
+    if(SH[sheetName].indexOf(field) < 0) return false;
+    return typeof sheetExists_ !== "function" || sheetExists_(sheetName);
+  }).map(function(sheetName){
+    return {
+      entidade:sheetName,
+      total:rows_(sheetName, true).filter(function(row){ return String(row[field]) === String(entityId); }).length
+    };
+  }).filter(function(reference){ return reference.total > 0; });
+}
+
+function adminDeleteEntity_(ent, row, auth, userAgent){
+  if(ent === "planos"){
+    if(upper_(row.workflow_status || ST.RASCUNHO) !== ST.RASCUNHO || upper_(row.status || ST.INATIVO) !== ST.INATIVO){
+      err_("ENTITY_PROTECTED_PLAN", "Somente um plano em rascunho inativo pode ser excluído.", 409);
+    }
+    if(clean_(row.revisao_origem_id) || clean_(row.substitui_plano_id)){
+      err_("ENTITY_PROTECTED_REVISION", "Uma revisão formal deve permanecer rastreável e não pode ser excluída.", 409);
+    }
+  }
+
+  var references = adminEntityReferenceSummary_(ent, row.id);
+  if(references.length){
+    var summary = references.map(function(reference){ return reference.entidade+" ("+reference.total+")"; }).join(", ");
+    err_("ENTITY_IN_USE", "Este registro possui vínculos e não pode ser excluído: "+summary+". Desative-o para preservar o histórico.", 409);
+  }
+
+  var removedItems = [];
+  if(ent === "planos"){
+    removedItems = rows_("plano_itens", true)
+      .filter(function(item){ return String(item.plano_id) === String(row.id); })
+      .sort(function(left, right){ return right.__rowIndex - left.__rowIndex; });
+    removedItems.forEach(function(item){ deleteRow_("plano_itens", item.__rowIndex); });
+  }
+
+  deleteRow_(ADMIN_ENT[ent], row.__rowIndex);
+  var before = adminSanitizeEntityRow_(ADMIN_ENT[ent], row);
+  audit_(auth, "ADMIN_ENTITY_DELETED", ADMIN_ENT[ent], row.id, before, {
+    excluido:true,
+    itens_rascunho_excluidos:removedItems.length
+  }, userAgent);
+  return {
+    acted:true,
+    acao:"EXCLUIR",
+    entidade:ent,
+    id:row.id,
+    deleted:true,
+    itens_rascunho_excluidos:removedItems.length
+  };
+}
+
+function adminEntityAction_(p, auth){
+  adminRequireIdentityAdmin_(auth);
+  req_(p, ["entidade","id","acao"]);
+  var ent = clean_(p.entidade);
+  var action = upper_(p.acao);
+  if(ADMIN_ACTIONABLE_ENTITIES.indexOf(ent) < 0) err_("ENTITY_ACTION_INVALID", "Entidade não aceita ações administrativas: "+ent, 400);
+  if(["ALTERAR_STATUS","EXCLUIR"].indexOf(action) < 0) err_("ENTITY_ACTION_INVALID", "Ação administrativa inválida: "+action, 400);
+
+  var sheetName = ADMIN_ENT[ent];
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(10000)) err_("ADMIN_WRITE_BUSY", "Outra alteração administrativa está em andamento.", 409);
+  try{
+    var row = find_(sheetName, "id", p.id);
+    if(!row) err_("NOT_FOUND", "Registro não encontrado.", 404);
+    if(action === "EXCLUIR") return adminDeleteEntity_(ent, row, auth, clean_(p.user_agent));
+    if(ent === "planos") err_("ENTITY_PROTECTED_PLAN", "O estado do plano é controlado pelo fluxo de validação e revisão.", 409);
+
+    var nextStatus = upper_(p.status);
+    var next = Object.assign({}, row, {status:nextStatus, atualizado_em:now_()});
+    adminValidateEntityStatusTransition_(ent, row, next);
+    var before = adminSanitizeEntityRow_(sheetName, row);
+    update_(sheetName, row.__rowIndex, {status:nextStatus, atualizado_em:next.atualizado_em});
+    var saved = adminSanitizeEntityRow_(sheetName, Object.assign({}, row, next));
+    audit_(auth, "ADMIN_ENTITY_STATUS_CHANGED", sheetName, row.id, before, saved, clean_(p.user_agent));
+    return {acted:true, acao:action, entidade:ent, id:row.id, deleted:false, row:saved};
   } finally {
     lock.releaseLock();
   }

@@ -2,6 +2,7 @@ import type {
   AdminChecklistDetail,
   AdminChecklistItem,
   AdminChecklistPlan,
+  AdminChecklistRevisionResult,
   AdminChecklistSaveResult,
   AdminChecklistSendInput,
   AdminChecklistSendResult,
@@ -64,5 +65,23 @@ export async function sendAdminChecklistForValidation(
     { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
   )
   if (!response.data) throw new ApiRequestError('A API não confirmou o envio para validação.', 'ADMIN_CHECKLIST_EMPTY')
+  return response.data
+}
+
+export async function createAdminChecklistRevision(
+  planId: string,
+): Promise<AdminChecklistRevisionResult> {
+  const response = await callApi<AdminChecklistRevisionResult>(
+    'admin.criar_revisao_modelo_checklist',
+    {
+      token: adminToken(),
+      plano_id: planId,
+      justificativa: 'Nova revisão criada pelo Command Workspace.',
+      user_agent: navigator.userAgent,
+    },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
+  )
+  if (!response.data) throw new ApiRequestError('A API não confirmou a nova revisão.', 'ADMIN_CHECKLIST_EMPTY')
   return response.data
 }

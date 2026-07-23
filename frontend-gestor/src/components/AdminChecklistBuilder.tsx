@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { listTechnicalAreas, listTechnicalRoles } from '../services/api/admin'
-import { listAdminEntity } from '../services/api/catalog'
+import { actionAdminEntity, listAdminEntity } from '../services/api/catalog'
 import {
+  createAdminChecklistRevision,
   getAdminChecklistDetail,
   listAdminChecklistModels,
   saveAdminChecklistModel,
@@ -92,6 +93,14 @@ function workflowLabel(value?: string): string {
   return labels[String(value ?? '').toUpperCase()] ?? String(value || 'Rascunho')
 }
 
+function normalizedWorkflow(value?: string): string {
+  return String(value ?? '').trim().toUpperCase()
+}
+
+function isAvailable(record: AdminEntityRecord): boolean {
+  return String(record.status ?? '').trim().toUpperCase() !== 'INATIVO'
+}
+
 export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilderProps) {
   const [models, setModels] = useState<AdminChecklistPlan[]>([])
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
@@ -105,6 +114,8 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
   const [detailLoading, setDetailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  const [libraryBusy, setLibraryBusy] = useState(false)
+  const [modelToDelete, setModelToDelete] = useState<AdminChecklistPlan | null>(null)
   const [routingOpen, setRoutingOpen] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -152,14 +163,18 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
   }, [models, search])
 
   const availableComponents = useMemo(
-    () => components.filter((component) => String(component.ativo_id) === String(plan.ativo_id)),
-    [components, plan.ativo_id],
+    () => components.filter((component) => (
+      String(component.ativo_id) === String(plan.ativo_id)
+      && (isAvailable(component) || String(component.id) === String(plan.componente_id))
+    )),
+    [components, plan.ativo_id, plan.componente_id],
   )
   const availableRoles = useMemo(
     () => roles.filter((role) => String(role.area_id) === String(routing.area_atual_id)),
     [roles, routing.area_atual_id],
   )
   const canEdit = ['RASCUNHO', 'DEVOLVIDO_CORRECAO', ''].includes(String(plan.workflow_status ?? '').toUpperCase())
+  const canCreateRevision = normalizedWorkflow(plan.workflow_status) === 'VALIDADO'
 
   function newModel() {
     setPlan(emptyPlan())
@@ -217,6 +232,21 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
     setItems((current) => {
       const next = [...current]
       ;[next[index], next[target]] = [next[target], next[index]]
+      return next.map((item, itemIndex) => ({ ...item, ordem: itemIndex + 1 }))
+    })
+  }
+
+  function duplicateItem(index: number) {
+    setItems((current) => {
+      const source = current[index]
+      if (!source) return current
+      const copy: AdminChecklistItem = {
+        ...source,
+        id: '',
+        plano_id: '',
+        titulo: source.titulo ? `${source.titulo} · cópia` : 'Nova etapa',
+      }
+      const next = [...current.slice(0, index + 1), copy, ...current.slice(index + 1)]
       return next.map((item, itemIndex) => ({ ...item, ordem: itemIndex + 1 }))
     })
   }
@@ -311,6 +341,54 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
     }
   }
 
+  async function createRevision(modelId: string) {
+    setLibraryBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await createAdminChecklistRevision(modelId)
+      setPlan(result.plano)
+      setItems(result.itens.map((item, index) => ({
+        ...item,
+        ordem: index + 1,
+        opcoes_texto: parseOptions(item.opcoes_json),
+      })))
+      setModels(await listAdminChecklistModels())
+      setRoutingOpen(false)
+      setNotice(`Revisão ${result.revisao} criada em rascunho. A versão validada continua ativa até a aprovação desta revisão.`)
+    } catch (cause) {
+      handleFailure(cause, 'Não foi possível criar a nova revisão.')
+    } finally {
+      setLibraryBusy(false)
+    }
+  }
+
+  async function deleteDraftModel() {
+    if (!modelToDelete) return
+    setLibraryBusy(true)
+    setError('')
+    try {
+      await actionAdminEntity({
+        entidade: 'planos',
+        id: modelToDelete.id,
+        acao: 'EXCLUIR',
+      })
+      const deletedId = modelToDelete.id
+      const nextModels = await listAdminChecklistModels()
+      setModels(nextModels)
+      if (plan.id === deletedId) {
+        setPlan(emptyPlan())
+        setItems([emptyItem(1)])
+      }
+      setModelToDelete(null)
+      setNotice('Rascunho excluído com auditoria. Nenhum modelo validado foi alterado.')
+    } catch (cause) {
+      handleFailure(cause, 'Não foi possível excluir o rascunho.')
+    } finally {
+      setLibraryBusy(false)
+    }
+  }
+
   if (loading) return <div className="dashboard-loading">Carregando construtor de checklist…</div>
 
   return (
@@ -325,13 +403,19 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
           <button className="primary-button admin-checklist-new" type="button" onClick={newModel}>+ Novo checklist</button>
           <div className="admin-checklist-models">
             {filteredModels.map((model) => (
-              <button key={model.id} type="button" className={plan.id === model.id ? 'is-active' : ''} onClick={() => void openModel(model.id)}>
-                <span><strong>{model.nome}</strong><small>{model.ativo_tag || model.ativo_nome}{model.componente_nome ? ` · ${model.componente_nome}` : ''}</small></span>
-                <i className={`admin-workflow-chip admin-workflow-chip--${String(model.workflow_status || 'rascunho').toLowerCase()}`}>{workflowLabel(model.workflow_status)}</i>
-                <b>{model.itens_count ?? 0} itens</b>
-              </button>
+              <article key={model.id} className={plan.id === model.id ? 'is-active' : ''}>
+                <button className="admin-checklist-model-open" type="button" onClick={() => void openModel(model.id)}>
+                  <span><strong>{model.nome}</strong><small>{model.ativo_tag || model.ativo_nome}{model.componente_nome ? ` · ${model.componente_nome}` : ''}</small></span>
+                  <i className={`admin-workflow-chip admin-workflow-chip--${String(model.workflow_status || 'rascunho').toLowerCase()}`}>{workflowLabel(model.workflow_status)}</i>
+                  <b>{model.itens_count ?? 0} itens · revisão {model.revisao || 1}</b>
+                </button>
+                <div className="admin-checklist-model-actions">
+                  {normalizedWorkflow(model.workflow_status) === 'VALIDADO' ? <button type="button" disabled={libraryBusy} onClick={() => void createRevision(model.id)}>Nova revisão</button> : null}
+                  {normalizedWorkflow(model.workflow_status) === 'RASCUNHO' && !model.revisao_origem_id && !model.substitui_plano_id ? <button className="is-danger" type="button" disabled={libraryBusy} onClick={() => setModelToDelete(model)}>Excluir</button> : null}
+                </div>
+              </article>
             ))}
-            {!filteredModels.length ? <div className="admin-empty-state">Nenhum modelo encontrado.</div> : null}
+            {!filteredModels.length ? <div className="admin-empty-state admin-checklist-empty"><ShieldIcon /><strong>Nenhum modelo encontrado</strong><span>Crie o primeiro checklist. Depois, a biblioteca exibirá ações de edição, envio, correção, revisão e exclusão segura de rascunhos.</span></div> : null}
           </div>
         </aside>
 
@@ -346,7 +430,7 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
               {!canEdit ? <div className="admin-checklist-lock"><ShieldIcon /><span><strong>Versão protegida</strong><small>Este modelo está em validação ou já foi validado. Ele não pode ser alterado diretamente.</small></span></div> : null}
               <fieldset disabled={!canEdit || saving || sending} className="admin-checklist-plan-form">
                 <legend>Programação e contexto</legend>
-                <label><span>Ativo *</span><select value={plan.ativo_id} onChange={(event) => updatePlan('ativo_id', event.target.value)}><option value="">Selecione o equipamento…</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
+                <label><span>Ativo *</span><select value={plan.ativo_id} onChange={(event) => updatePlan('ativo_id', event.target.value)}><option value="">Selecione o equipamento…</option>{assets.filter((asset) => isAvailable(asset) || String(asset.id) === String(plan.ativo_id)).map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
                 <label><span>Componente</span><select value={plan.componente_id || ''} onChange={(event) => updatePlan('componente_id', event.target.value)}><option value="">Checklist do ativo completo</option>{availableComponents.map((component) => <option value={component.id} key={component.id}>{String(component.tag || component.id)} · {String(component.nome)}</option>)}</select></label>
                 <label className="is-wide"><span>Nome do checklist *</span><input value={plan.nome} onChange={(event) => updatePlan('nome', event.target.value)} /></label>
                 <label><span>Tipo</span><select value={plan.tipo} onChange={(event) => updatePlan('tipo', event.target.value)}><option value="PREVENTIVA">Preventiva</option><option value="PREDITIVA">Preditiva</option><option value="INSPECAO">Inspeção</option><option value="QUALIDADE">Qualidade</option><option value="SEGURANCA">Segurança</option></select></label>
@@ -363,7 +447,7 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
                 <header><div><span className="eyebrow">ETAPAS</span><h3>Itens do checklist</h3><p>Escolha o tipo de resposta e o sistema exibe somente as regras necessárias.</p></div>{canEdit ? <button type="button" onClick={() => setItems((current) => [...current, emptyItem(current.length + 1)])}>+ Adicionar item</button> : null}</header>
                 {items.map((item, index) => (
                   <fieldset className="admin-checklist-item" disabled={!canEdit || saving || sending} key={`${item.id || 'new'}-${index}`}>
-                    <header><b>{String(index + 1).padStart(2, '0')}</b><span><strong>{item.titulo || 'Nova etapa'}</strong><small>{RESPONSE_TYPES.find((type) => type.value === item.tipo_resposta)?.label}</small></span><div><button type="button" disabled={index === 0} onClick={() => moveItem(index, -1)} aria-label="Mover para cima">↑</button><button type="button" disabled={index === items.length - 1} onClick={() => moveItem(index, 1)} aria-label="Mover para baixo">↓</button><button type="button" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index).map((currentItem, itemIndex) => ({ ...currentItem, ordem: itemIndex + 1 })))} aria-label="Remover item">×</button></div></header>
+                    <header><b>{String(index + 1).padStart(2, '0')}</b><span><strong>{item.titulo || 'Nova etapa'}</strong><small>{RESPONSE_TYPES.find((type) => type.value === item.tipo_resposta)?.label}</small></span><div><button type="button" disabled={index === 0} onClick={() => moveItem(index, -1)} aria-label="Mover para cima">↑</button><button type="button" disabled={index === items.length - 1} onClick={() => moveItem(index, 1)} aria-label="Mover para baixo">↓</button><button type="button" onClick={() => duplicateItem(index)} aria-label="Duplicar item">⧉</button><button type="button" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index).map((currentItem, itemIndex) => ({ ...currentItem, ordem: itemIndex + 1 })))} aria-label="Remover item">×</button></div></header>
                     <div className="admin-checklist-item-form">
                       <label className="is-wide"><span>Título da etapa *</span><input value={item.titulo} onChange={(event) => updateItem(index, { titulo: event.target.value })} /></label>
                       <label><span>Tipo de resposta</span><select value={item.tipo_resposta} onChange={(event) => updateItem(index, { tipo_resposta: event.target.value as ChecklistResponseType })}>{RESPONSE_TYPES.map((type) => <option value={type.value} key={type.value}>{type.label}</option>)}</select></label>
@@ -394,12 +478,18 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
 
               <footer className="admin-checklist-actions">
                 <span><CheckIcon /><small>Salvar mantém o modelo em rascunho inativo. Somente a aprovação do Gestor libera ao Operador.</small></span>
-                {canEdit ? <div><button type="button" disabled={saving || sending} onClick={() => void saveModel()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button>{routingOpen ? <button className="primary-button" type="button" disabled={saving || sending} onClick={() => void sendForValidation()}>{sending ? 'Enviando…' : 'Confirmar e enviar'}</button> : <button className="primary-button" type="button" disabled={saving || sending} onClick={() => setRoutingOpen(true)}>Enviar para validação</button>}</div> : null}
+                {canEdit ? <div><button type="button" disabled={saving || sending} onClick={() => void saveModel()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button>{routingOpen ? <button className="primary-button" type="button" disabled={saving || sending} onClick={() => void sendForValidation()}>{sending ? 'Enviando…' : 'Confirmar e enviar'}</button> : <button className="primary-button" type="button" disabled={saving || sending} onClick={() => setRoutingOpen(true)}>Enviar para validação</button>}</div> : canCreateRevision ? <div><button className="primary-button" type="button" disabled={libraryBusy} onClick={() => void createRevision(plan.id)}>{libraryBusy ? 'Criando revisão…' : 'Criar nova revisão'}</button></div> : null}
               </footer>
             </>
           )}
         </section>
       </div>
+
+      {modelToDelete ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !libraryBusy) setModelToDelete(null) }}><section role="dialog" aria-modal="true" aria-labelledby="delete-checklist-title">
+        <header><div><span className="eyebrow">EXCLUSÃO PROTEGIDA</span><h2 id="delete-checklist-title">Excluir rascunho</h2></div><button type="button" disabled={libraryBusy} onClick={() => setModelToDelete(null)}>×</button></header>
+        <div className="admin-checklist-delete"><ShieldIcon /><span><strong>{modelToDelete.nome}</strong><small>O servidor verificará planos, ordens, execuções e validações. Se existir qualquer vínculo, a exclusão será bloqueada e o modelo deverá permanecer no histórico.</small></span></div>
+        <footer><span>Modelos validados nunca são excluídos por esta ação.</span><div><button type="button" disabled={libraryBusy} onClick={() => setModelToDelete(null)}>Cancelar</button><button className="is-danger" type="button" disabled={libraryBusy} onClick={() => void deleteDraftModel()}>{libraryBusy ? 'Excluindo…' : 'Excluir rascunho'}</button></div></footer>
+      </section></div> : null}
     </section>
   )
 }

@@ -86,7 +86,8 @@ function adminSalvarModeloChecklist_(p){
 
   planoInput.workflow_status = ST.RASCUNHO;
   planoInput.validado_gestao = "NAO";
-  planoInput.status = upper_(planoInput.status || ST.INATIVO);
+  planoInput.status = ST.INATIVO;
+  adminAssertEntityReferences_("planos", planoInput);
   planoInput.revisao = old
     ? (bool_(p.incrementar_revisao) ? Math.max(1,num_(old.revisao,1)) + 1 : Math.max(Math.max(1,num_(old.revisao,1)), Math.max(1,num_(planoInput.revisao,1))))
     : Math.max(1,num_(planoInput.revisao,1));

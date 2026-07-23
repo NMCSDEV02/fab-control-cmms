@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { listAdminEntity, saveAdminEntity } from '../services/api/catalog'
+import { actionAdminEntity, listAdminEntity, saveAdminEntity } from '../services/api/catalog'
 import { isGestorAuthenticationError } from '../services/api/gestor'
 import type { AdminEntity, AdminEntityRecord } from '../types/catalog'
-import { AssetIcon, CheckIcon, RefreshIcon, SearchIcon, SettingsIcon } from './Icons'
+import { AssetIcon, CheckIcon, MoreIcon, RefreshIcon, SearchIcon, SettingsIcon, StopIcon } from './Icons'
 
 export type AdminCatalogScope = 'structure' | 'assets' | 'inventory' | 'maintenance'
 
@@ -253,9 +253,20 @@ const SCOPE_ENTITIES: Record<AdminCatalogScope, AdminEntity[]> = {
 
 const SCOPE_REFERENCES: Record<AdminCatalogScope, AdminEntity[]> = {
   structure: ['plantas', 'setores', 'linhas'],
-  assets: ['plantas', 'setores', 'linhas', 'ativos', 'componentes'],
+  assets: ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos'],
   inventory: ['materiais'],
-  maintenance: ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos'],
+  maintenance: ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos', 'plano_itens'],
+}
+
+const EMPTY_STATE_CONTENT: Record<AdminEntity, { title: string; description: string }> = {
+  plantas: { title: 'Nenhuma planta cadastrada', description: 'Cadastre a primeira unidade. Depois, a área Ações permitirá editar, desativar, reativar ou excluir quando não houver vínculos.' },
+  setores: { title: 'Nenhum setor cadastrado', description: 'Cadastre um setor vinculado à planta. Registros utilizados serão desativados em vez de apagados.' },
+  linhas: { title: 'Nenhuma linha cadastrada', description: 'Cadastre uma linha vinculada ao setor. O histórico será preservado quando a linha deixar de operar.' },
+  ativos: { title: 'Nenhum equipamento cadastrado', description: 'Após o cadastro, Ações permitirá editar, colocar em operação, registrar parada, desativar, reativar e excluir somente equipamentos nunca utilizados.' },
+  componentes: { title: 'Nenhum componente cadastrado', description: 'Após o cadastro, Ações permitirá editar, desativar, reativar e excluir somente componentes sem planos, OS ou histórico.' },
+  materiais: { title: 'Nenhum material cadastrado', description: 'Cadastre o primeiro item. Materiais já movimentados permanecem rastreáveis e podem apenas ser desativados.' },
+  planos: { title: 'Nenhum plano programado', description: 'Crie um rascunho. Ações permitirá editar ou excluir o rascunho; versões validadas ficam protegidas e exigem nova revisão.' },
+  plano_itens: { title: 'Nenhum item de checklist', description: 'Os itens são administrados pelo construtor de checklists.' },
 }
 
 function valueText(value: unknown): string {
@@ -272,6 +283,29 @@ function formatCell(key: string, value: unknown): string {
   return valueText(value)
 }
 
+function upper(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase()
+}
+
+function isProtectedPlan(record: AdminEntityRecord): boolean {
+  return ['EM_VALIDACAO_GESTAO', 'VALIDADO', 'ATIVO', 'OBSOLETO'].includes(upper(record.workflow_status))
+}
+
+function statusLabel(value: unknown): string {
+  const labels: Record<string, string> = {
+    ATIVO: 'Ativo',
+    INATIVO: 'Inativo',
+    OPERANDO: 'Operando',
+    PARADO: 'Parado',
+    RASCUNHO: 'Rascunho',
+    EM_VALIDACAO_GESTAO: 'Em validação',
+    DEVOLVIDO_CORRECAO: 'Devolvido para correção',
+    VALIDADO: 'Validado',
+    OBSOLETO: 'Obsoleto',
+  }
+  return labels[upper(value)] ?? valueText(value)
+}
+
 export function AdminCatalogWorkspace({
   scope,
   onSessionExpired,
@@ -285,6 +319,10 @@ export function AdminCatalogWorkspace({
   const [draft, setDraft] = useState<AdminEntityRecord>({ id: '' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [actionRecord, setActionRecord] = useState<AdminEntityRecord | null>(null)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -292,6 +330,7 @@ export function AdminCatalogWorkspace({
     setSelectedEntity(SCOPE_ENTITIES[scope][0])
     setSearch('')
     setEditing(undefined)
+    setActionRecord(null)
   }, [scope])
 
   const loadData = useCallback(async (signal?: AbortSignal) => {
@@ -318,6 +357,7 @@ export function AdminCatalogWorkspace({
   }, [loadData, onSessionExpired])
 
   const definition = ENTITY_DEFINITIONS[selectedEntity]
+  const editingReadOnly = selectedEntity === 'planos' && Boolean(editing && isProtectedPlan(editing))
   const visibleRecords = useMemo(() => {
     const term = search.trim().toLowerCase()
     return (records[selectedEntity] ?? []).filter((record) => (
@@ -361,6 +401,12 @@ export function AdminCatalogWorkspace({
     setDraft(next)
     setError('')
     setNotice('')
+  }
+
+  function openActions(record: AdminEntityRecord) {
+    setActionRecord(record)
+    setActionError('')
+    setConfirmDelete(false)
   }
 
   function updateDraftField(field: FieldDefinition, rawValue: string) {
@@ -416,10 +462,92 @@ export function AdminCatalogWorkspace({
       const expected = draft[field.dependsOn.field]
       options = options.filter((item) => String(item[field.dependsOn?.targetField ?? '']) === String(expected))
     }
+    const currentId = String(draft[field.key] ?? '')
+    options = options.filter((item) => upper(item.status) !== 'INATIVO' || String(item.id) === currentId)
     return [...options].sort((left, right) => (
       valueText(left[field.referenceLabel ?? 'nome'])
         .localeCompare(valueText(right[field.referenceLabel ?? 'nome']), 'pt-BR')
     ))
+  }
+
+  function relationSummary(record: AdminEntityRecord): Array<{ label: string; value: number }> {
+    if (selectedEntity === 'ativos') {
+      return [
+        { label: 'Componentes', value: (records.componentes ?? []).filter((item) => String(item.ativo_id) === String(record.id)).length },
+        { label: 'Planos', value: (records.planos ?? []).filter((item) => String(item.ativo_id) === String(record.id)).length },
+      ]
+    }
+    if (selectedEntity === 'componentes') {
+      return [
+        { label: 'Planos', value: (records.planos ?? []).filter((item) => String(item.componente_id) === String(record.id)).length },
+      ]
+    }
+    if (selectedEntity === 'planos') {
+      return [
+        { label: 'Etapas', value: (records.plano_itens ?? []).filter((item) => String(item.plano_id) === String(record.id)).length },
+        { label: 'Revisão', value: Number(record.revisao || 1) },
+      ]
+    }
+    return []
+  }
+
+  async function performStatusAction(status: string) {
+    if (!actionRecord) return
+    setActionBusy(true)
+    setActionError('')
+    try {
+      const result = await actionAdminEntity({
+        entidade: selectedEntity,
+        id: actionRecord.id,
+        acao: 'ALTERAR_STATUS',
+        status,
+      })
+      if (!result.row) throw new Error('O servidor não retornou o cadastro atualizado.')
+      setRecords((current) => ({
+        ...current,
+        [selectedEntity]: (current[selectedEntity] ?? []).map((record) => (
+          record.id === result.row?.id ? result.row : record
+        )),
+      }))
+      setActionRecord(result.row)
+      setNotice(`${definition.singular[0].toUpperCase()}${definition.singular.slice(1)} atualizado para ${statusLabel(status)} com auditoria.`)
+    } catch (cause) {
+      if (isGestorAuthenticationError(cause)) {
+        onSessionExpired()
+        return
+      }
+      setActionError(cause instanceof Error ? cause.message : 'Não foi possível alterar o status.')
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function deleteRecord() {
+    if (!actionRecord) return
+    setActionBusy(true)
+    setActionError('')
+    try {
+      await actionAdminEntity({
+        entidade: selectedEntity,
+        id: actionRecord.id,
+        acao: 'EXCLUIR',
+      })
+      setRecords((current) => ({
+        ...current,
+        [selectedEntity]: (current[selectedEntity] ?? []).filter((record) => record.id !== actionRecord.id),
+      }))
+      setActionRecord(null)
+      setConfirmDelete(false)
+      setNotice(`${definition.singular[0].toUpperCase()}${definition.singular.slice(1)} excluído. A operação foi registrada na auditoria.`)
+    } catch (cause) {
+      if (isGestorAuthenticationError(cause)) {
+        onSessionExpired()
+        return
+      }
+      setActionError(cause instanceof Error ? cause.message : 'Não foi possível excluir o cadastro.')
+    } finally {
+      setActionBusy(false)
+    }
   }
 
   async function save() {
@@ -469,6 +597,19 @@ export function AdminCatalogWorkspace({
     }
   }
 
+  const selectedStatus = upper(actionRecord?.status)
+  const selectedWorkflow = upper(actionRecord?.workflow_status)
+  const selectedRelations = actionRecord ? relationSummary(actionRecord) : []
+  const canDeleteSelected = Boolean(actionRecord) && (
+    selectedEntity !== 'planos'
+    || (
+      selectedWorkflow === 'RASCUNHO'
+      && selectedStatus === 'INATIVO'
+      && !actionRecord?.revisao_origem_id
+      && !actionRecord?.substitui_plano_id
+    )
+  )
+
   if (loading) return <div className="dashboard-loading">Carregando cadastros administrativos…</div>
 
   return (
@@ -479,7 +620,7 @@ export function AdminCatalogWorkspace({
       <section className="admin-catalog-summary">
         {scopeEntities.map((entity) => {
           const item = ENTITY_DEFINITIONS[entity]
-          return <button key={entity} type="button" className={selectedEntity === entity ? 'is-active' : ''} onClick={() => { setSelectedEntity(entity); setSearch('') }}><AssetIcon /><span><strong>{records[entity]?.length ?? 0}</strong><small>{item.label}</small></span></button>
+          return <button key={entity} type="button" className={selectedEntity === entity ? 'is-active' : ''} onClick={() => { setSelectedEntity(entity); setSearch(''); setEditing(undefined); setActionRecord(null) }}><AssetIcon /><span><strong>{records[entity]?.length ?? 0}</strong><small>{item.label}</small></span></button>
         })}
         <button type="button" className="admin-catalog-import" onClick={onOpenImports}><SettingsIcon /><span><strong>Importar</strong><small>Usar modelo .xlsx</small></span></button>
       </section>
@@ -494,16 +635,66 @@ export function AdminCatalogWorkspace({
         <div className="admin-catalog-table">
           <table>
             <thead><tr>{definition.columns.map((column) => <th key={column.key}>{column.label}</th>)}<th>Ações</th></tr></thead>
-            <tbody>{visibleRecords.length ? visibleRecords.map((record) => <tr key={record.id}>{definition.columns.map((column) => <td key={column.key} title={displayCell(column.key, record[column.key])}><span className={column.key === 'status' || column.key === 'workflow_status' ? `admin-catalog-chip admin-catalog-chip--${String(record[column.key] || '').toLowerCase()}` : ''}>{displayCell(column.key, record[column.key])}</span></td>)}<td><button type="button" onClick={() => openEditor(record)}>Editar</button></td></tr>) : <tr><td colSpan={definition.columns.length + 1}><div className="admin-empty-state">Nenhum registro encontrado.</div></td></tr>}</tbody>
+            <tbody>{visibleRecords.length ? visibleRecords.map((record) => <tr key={record.id}>{definition.columns.map((column) => <td key={column.key} title={displayCell(column.key, record[column.key])}><span className={column.key === 'status' || column.key === 'workflow_status' ? `admin-catalog-chip admin-catalog-chip--${String(record[column.key] || '').toLowerCase()}` : ''}>{displayCell(column.key, record[column.key])}</span></td>)}<td><button className="admin-catalog-manage" type="button" onClick={() => openActions(record)}><MoreIcon />Gerenciar</button></td></tr>) : <tr><td colSpan={definition.columns.length + 1}><div className="admin-empty-state admin-catalog-empty"><AssetIcon /><strong>{EMPTY_STATE_CONTENT[selectedEntity].title}</strong><span>{EMPTY_STATE_CONTENT[selectedEntity].description}</span><button type="button" onClick={() => openEditor()}>Criar {definition.singular}</button></div></td></tr>}</tbody>
           </table>
         </div>
       </section>
 
+      {actionRecord ? (
+        <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !actionBusy) setActionRecord(null) }}>
+          <section className="admin-entity-actions" role="dialog" aria-modal="true" aria-labelledby="admin-entity-actions-title">
+            <header>
+              <div><span className="eyebrow">AÇÕES CONTROLADAS</span><h2 id="admin-entity-actions-title">Gerenciar {definition.singular}</h2></div>
+              <button type="button" disabled={actionBusy} onClick={() => setActionRecord(null)}>×</button>
+            </header>
+            <div className="admin-entity-actions__body">
+              <section className="admin-entity-actions__identity">
+                <AssetIcon />
+                <span><strong>{valueText(actionRecord.tag || actionRecord.sku || actionRecord.nome)}</strong><small>{valueText(actionRecord.nome || actionRecord.id)} · {actionRecord.id}</small></span>
+                <i className={`admin-catalog-chip admin-catalog-chip--${String(actionRecord.workflow_status || actionRecord.status || '').toLowerCase()}`}>{statusLabel(actionRecord.workflow_status || actionRecord.status)}</i>
+              </section>
+
+              {selectedRelations.length ? <section className="admin-entity-actions__relations">{selectedRelations.map((relation) => <article key={relation.label}><strong>{relation.value}</strong><small>{relation.label}</small></article>)}</section> : null}
+              {actionError ? <div className="dashboard-error" role="alert"><strong>Ação não concluída.</strong><span>{actionError}</span></div> : null}
+
+              <section className="admin-entity-actions__commands">
+                <button type="button" disabled={actionBusy} onClick={() => { const record = actionRecord; setActionRecord(null); openEditor(record) }}>
+                  <AssetIcon /><span><strong>{selectedEntity === 'planos' && isProtectedPlan(actionRecord) ? 'Visualizar cadastro' : 'Editar cadastro'}</strong><small>{selectedEntity === 'planos' && isProtectedPlan(actionRecord) ? 'Versão protegida para consulta.' : 'Alterar dados técnicos e vínculos permitidos.'}</small></span>
+                </button>
+
+                {selectedEntity === 'ativos' ? (
+                  <>
+                    {selectedStatus !== 'OPERANDO' ? <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('OPERANDO')}><CheckIcon /><span><strong>Colocar em operação</strong><small>Reativa o equipamento para novos fluxos.</small></span></button> : null}
+                    {selectedStatus !== 'PARADO' ? <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('PARADO')}><StopIcon /><span><strong>Registrar parada</strong><small>Mantém o cadastro ativo, mas sinaliza indisponibilidade.</small></span></button> : null}
+                    {selectedStatus !== 'INATIVO' ? <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('INATIVO')}><StopIcon /><span><strong>Desativar equipamento</strong><small>Bloqueado enquanto existirem ordens ou execuções abertas.</small></span></button> : null}
+                  </>
+                ) : null}
+
+                {['plantas', 'setores', 'linhas', 'componentes', 'materiais'].includes(selectedEntity) ? (
+                  selectedStatus === 'INATIVO'
+                    ? <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('ATIVO')}><CheckIcon /><span><strong>Reativar cadastro</strong><small>Volta a disponibilizá-lo nos novos cadastros.</small></span></button>
+                    : <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('INATIVO')}><StopIcon /><span><strong>Desativar cadastro</strong><small>Preserva histórico e vínculos existentes.</small></span></button>
+                ) : null}
+
+                {selectedEntity === 'planos' && isProtectedPlan(actionRecord) ? <div className="admin-entity-actions__guidance"><CheckIcon /><span><strong>Versão protegida</strong><small>Use o construtor de checklists para abrir uma nova revisão. A versão atual não pode ser alterada ou apagada.</small></span></div> : null}
+
+                {canDeleteSelected ? (
+                  confirmDelete
+                    ? <div className="admin-entity-actions__delete-confirm"><strong>Excluir definitivamente?</strong><span>Esta ação só será aceita se o servidor confirmar que não existe qualquer vínculo operacional.</span><div><button type="button" disabled={actionBusy} onClick={() => setConfirmDelete(false)}>Voltar</button><button className="is-danger" type="button" disabled={actionBusy} onClick={() => void deleteRecord()}>{actionBusy ? 'Excluindo…' : 'Confirmar exclusão'}</button></div></div>
+                    : <button className="is-danger" type="button" disabled={actionBusy} onClick={() => setConfirmDelete(true)}><StopIcon /><span><strong>Excluir cadastro</strong><small>Disponível somente para registro nunca utilizado.</small></span></button>
+                ) : null}
+              </section>
+            </div>
+            <footer><span>Toda alteração é validada no servidor e registrada na auditoria.</span><div><button type="button" disabled={actionBusy} onClick={() => setActionRecord(null)}>Fechar</button></div></footer>
+          </section>
+        </div>
+      ) : null}
+
       {editing !== undefined ? (
         <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditing(undefined) }}>
           <section role="dialog" aria-modal="true" aria-label={`${editing ? 'Editar' : 'Novo'} ${definition.singular}`}>
-            <header><div><span className="eyebrow">{editing ? 'EDIÇÃO CONTROLADA' : 'NOVO CADASTRO'}</span><h2>{editing ? `Editar ${definition.singular}` : `Novo ${definition.singular}`}</h2></div><button type="button" disabled={saving} onClick={() => setEditing(undefined)}>×</button></header>
-            <div className="admin-catalog-form">
+            <header><div><span className="eyebrow">{editingReadOnly ? 'VISUALIZAÇÃO PROTEGIDA' : editing ? 'EDIÇÃO CONTROLADA' : 'NOVO CADASTRO'}</span><h2>{editingReadOnly ? `Consultar ${definition.singular}` : editing ? `Editar ${definition.singular}` : `Novo ${definition.singular}`}</h2></div><button type="button" disabled={saving} onClick={() => setEditing(undefined)}>×</button></header>
+            <fieldset className="admin-catalog-form" disabled={editingReadOnly || saving}>
               {definition.fields.map((field) => {
                 const fieldValue = draft[field.key] ?? ''
                 if (field.type === 'select') {
@@ -551,8 +742,8 @@ export function AdminCatalogWorkspace({
                   </label>
                 )
               })}
-            </div>
-            <footer><span>{selectedEntity === 'planos' ? 'O backend força RASCUNHO e INATIVO.' : 'A alteração será registrada na auditoria.'}</span><div><button type="button" disabled={saving} onClick={() => setEditing(undefined)}>Cancelar</button><button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar cadastro'}</button></div></footer>
+            </fieldset>
+            <footer><span>{editingReadOnly ? 'Versões em validação, validadas ou obsoletas permanecem imutáveis.' : selectedEntity === 'planos' ? 'O backend força RASCUNHO e INATIVO.' : 'A alteração será registrada na auditoria.'}</span><div><button type="button" disabled={saving} onClick={() => setEditing(undefined)}>{editingReadOnly ? 'Fechar' : 'Cancelar'}</button>{!editingReadOnly ? <button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar cadastro'}</button> : null}</div></footer>
           </section>
         </div>
       ) : null}

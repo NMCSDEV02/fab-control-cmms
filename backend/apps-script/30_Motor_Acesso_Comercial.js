@@ -109,6 +109,7 @@ const MOTOR_ACTION_FEATURE_RULES = [
   {prefixo:"admin.listar", recurso:MOTOR_FEATURE.CADASTROS},
   {prefixo:"admin.obter", recurso:MOTOR_FEATURE.CADASTROS},
   {prefixo:"admin.salvar", recurso:MOTOR_FEATURE.CADASTROS},
+  {prefixo:"admin.entidade.acao", recurso:MOTOR_FEATURE.CADASTROS},
   {prefixo:"admin.recalcular_ativo", recurso:MOTOR_FEATURE.CADASTROS},
   {prefixo:"admin.gerar_qr", recurso:MOTOR_FEATURE.CADASTROS},
   {prefixo:"admin.criar_demo", recurso:MOTOR_FEATURE.CADASTROS},

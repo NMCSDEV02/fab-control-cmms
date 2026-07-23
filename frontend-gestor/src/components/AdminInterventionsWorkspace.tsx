@@ -31,6 +31,10 @@ function statusLabel(status: string): string {
   return labels[status] ?? status
 }
 
+function available(record: AdminEntityRecord, selectedId?: string): boolean {
+  return String(record.status ?? '').trim().toUpperCase() !== 'INATIVO' || String(record.id) === String(selectedId ?? '')
+}
+
 export function AdminInterventionsWorkspace({ onSessionExpired }: AdminInterventionsWorkspaceProps) {
   const [interventions, setInterventions] = useState<AdminIntervention[]>([])
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
@@ -41,6 +45,7 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
   const [statusFilter, setStatusFilter] = useState('')
   const [editor, setEditor] = useState<AdminInterventionInput | null>(null)
   const [routing, setRouting] = useState<AdminIntervention | null>(null)
+  const [viewing, setViewing] = useState<AdminIntervention | null>(null)
   const [routeDraft, setRouteDraft] = useState({ area_atual_id: '', cargo_atual_id: '', comentario: '', exige_assinatura: 'SIM', assinaturas_necessarias: 1, exige_segregacao: 'SIM' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -90,8 +95,11 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
   }, [interventions, search, statusFilter])
 
   const editorComponents = useMemo(
-    () => components.filter((component) => String(component.ativo_id) === String(editor?.ativo_id)),
-    [components, editor?.ativo_id],
+    () => components.filter((component) => (
+      String(component.ativo_id) === String(editor?.ativo_id)
+      && available(component, editor?.componente_id)
+    )),
+    [components, editor?.ativo_id, editor?.componente_id],
   )
   const routeRoles = useMemo(
     () => roles.filter((role) => role.area_id === routeDraft.area_atual_id),
@@ -193,13 +201,13 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
         <div className="admin-intervention-filters"><label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, título ou equipamento" /></label><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos os status</option><option value="RASCUNHO">Rascunhos</option><option value="DEVOLVIDA_ADMIN">Devolvidas</option><option value="AGUARDANDO_VALIDACAO">Em validação</option><option value="ABERTA">Liberadas</option><option value="EM_EXECUCAO">Em execução</option><option value="FINALIZADA">Finalizadas</option></select></div>
         <div className="admin-intervention-table">
           <div><span>Intervenção</span><span>Equipamento</span><span>Prioridade</span><span>Filtro técnico</span><span>Status</span><span>Ações</span></div>
-          {visibleInterventions.map((item) => <article key={item.id}><span><b>{item.codigo}</b><strong>{item.titulo}</strong><small>{item.tipo}</small></span><span><strong>{item.ativo_tag || item.ativo_nome || item.ativo_id}</strong><small>{item.componente_nome || 'Ativo completo'}</small></span><i className={`is-${item.prioridade.toLowerCase()}`}>{item.prioridade}</i><span><strong>{item.demanda?.area_atual_nome || '—'}</strong><small>{item.demanda?.cargo_atual_nome || 'Sem cargo específico'}</small></span><em className={`is-${item.status.toLowerCase()}`}>{statusLabel(item.status)}</em><span className="admin-intervention-actions">{editable(item) ? <><button type="button" onClick={() => openEditor(item)}>Editar</button><button className="primary-button" type="button" onClick={() => openRouting(item)}>{item.status === 'DEVOLVIDA_ADMIN' ? 'Reenviar' : 'Enviar'}</button></> : <small>Acompanhamento</small>}</span></article>)}
-          {!visibleInterventions.length ? <div className="admin-empty-state">Nenhuma intervenção encontrada.</div> : null}
+          {visibleInterventions.map((item) => <article key={item.id}><span><b>{item.codigo}</b><strong>{item.titulo}</strong><small>{item.tipo}</small></span><span><strong>{item.ativo_tag || item.ativo_nome || item.ativo_id}</strong><small>{item.componente_nome || 'Ativo completo'}</small></span><i className={`is-${item.prioridade.toLowerCase()}`}>{item.prioridade}</i><span><strong>{item.demanda?.area_atual_nome || '—'}</strong><small>{item.demanda?.cargo_atual_nome || 'Sem cargo específico'}</small></span><em className={`is-${item.status.toLowerCase()}`}>{statusLabel(item.status)}</em><span className="admin-intervention-actions">{editable(item) ? <><button type="button" onClick={() => openEditor(item)}>Editar</button><button className="primary-button" type="button" onClick={() => openRouting(item)}>{item.status === 'DEVOLVIDA_ADMIN' ? 'Reenviar' : 'Enviar'}</button></> : <button type="button" onClick={() => setViewing(item)}>Acompanhar</button>}</span></article>)}
+          {!visibleInterventions.length ? <div className="admin-empty-state admin-intervention-empty"><WrenchIcon /><strong>Nenhuma intervenção encontrada</strong><span>Depois do primeiro rascunho, a área Ações exibirá Editar e Enviar. Após a validação, exibirá Acompanhar sem permitir alterações no documento liberado.</span></div> : null}
         </div>
       </section>
 
       {editor ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditor(null) }}><section role="dialog" aria-modal="true" aria-labelledby="intervention-editor-title"><header><div><span className="eyebrow">PLANEJAMENTO ASSISTIDO</span><h2 id="intervention-editor-title">{editor.id ? 'Editar intervenção' : 'Nova intervenção'}</h2></div><button type="button" onClick={() => setEditor(null)}>×</button></header><div className="admin-catalog-form">
-        <label><span>Ativo *</span><select value={editor.ativo_id} onChange={(event) => setEditor((current) => current ? { ...current, ativo_id: event.target.value, componente_id: '' } : current)}><option value="">Selecione…</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
+        <label><span>Ativo *</span><select value={editor.ativo_id} onChange={(event) => setEditor((current) => current ? { ...current, ativo_id: event.target.value, componente_id: '' } : current)}><option value="">Selecione…</option>{assets.filter((asset) => available(asset, editor.ativo_id)).map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
         <label><span>Componente</span><select value={editor.componente_id || ''} onChange={(event) => setEditor((current) => current ? { ...current, componente_id: event.target.value } : current)}><option value="">Ativo completo</option>{editorComponents.map((component) => <option value={component.id} key={component.id}>{String(component.tag || component.id)} · {String(component.nome)}</option>)}</select></label>
         <label><span>Tipo</span><select value={editor.tipo} onChange={(event) => setEditor((current) => current ? { ...current, tipo: event.target.value } : current)}><option value="CORRETIVA">Corretiva</option><option value="PREVENTIVA">Preventiva</option><option value="PREDITIVA">Preditiva</option><option value="INSPECAO">Inspeção</option><option value="QUALIDADE">Qualidade</option><option value="SEGURANCA">Segurança</option></select></label>
         <label><span>Prioridade</span><select value={editor.prioridade} onChange={(event) => setEditor((current) => current ? { ...current, prioridade: event.target.value } : current)}><option value="BAIXA">Baixa</option><option value="MEDIA">Média</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select></label>
@@ -217,6 +225,20 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
         <label><span>Segregar criador e aprovador</span><select value={routeDraft.exige_segregacao} onChange={(event) => setRouteDraft((current) => ({ ...current, exige_segregacao: event.target.value }))}><option value="SIM">Sim</option><option value="NAO">Não</option></select></label>
         <label style={{ gridColumn: '1 / -1' }}><span>Orientação ao Gestor *</span><textarea rows={4} value={routeDraft.comentario} onChange={(event) => setRouteDraft((current) => ({ ...current, comentario: event.target.value }))} /></label>
       </div><footer><span>A ação operacional só será criada depois da decisão técnica.</span><div><button type="button" disabled={sending} onClick={() => setRouting(null)}>Cancelar</button><button className="primary-button" type="button" disabled={sending} onClick={() => void send()}>{sending ? 'Enviando…' : 'Enviar ao Gestor'}</button></div></footer></section></div> : null}
+
+      {viewing ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setViewing(null) }}><section role="dialog" aria-modal="true" aria-labelledby="intervention-view-title">
+        <header><div><span className="eyebrow">ACOMPANHAMENTO</span><h2 id="intervention-view-title">{viewing.codigo} · {viewing.titulo}</h2></div><button type="button" onClick={() => setViewing(null)}>×</button></header>
+        <div className="admin-intervention-detail">
+          <article><small>Status</small><strong>{statusLabel(viewing.status)}</strong></article>
+          <article><small>Equipamento</small><strong>{viewing.ativo_tag || viewing.ativo_nome || viewing.ativo_id}</strong></article>
+          <article><small>Componente</small><strong>{viewing.componente_nome || 'Ativo completo'}</strong></article>
+          <article><small>Prioridade</small><strong>{viewing.prioridade}</strong></article>
+          <article><small>Área atual</small><strong>{viewing.demanda?.area_atual_nome || 'Fluxo operacional'}</strong></article>
+          <article><small>Responsável técnico</small><strong>{viewing.demanda?.cargo_atual_nome || 'Sem cargo específico'}</strong></article>
+          <article className="is-wide"><small>Descrição</small><strong>{viewing.descricao}</strong></article>
+        </div>
+        <footer><span>O registro liberado permanece imutável e rastreável.</span><div><button type="button" onClick={() => setViewing(null)}>Concluir acompanhamento</button></div></footer>
+      </section></div> : null}
     </section>
   )
 }

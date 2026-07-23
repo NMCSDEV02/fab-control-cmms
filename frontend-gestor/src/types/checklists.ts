@@ -93,3 +93,15 @@ export interface AdminChecklistSendResult {
   workflow_status: string
   demanda_tecnica?: AdminEntityRecord | null
 }
+
+export interface AdminChecklistRevisionResult {
+  created: boolean
+  plano_id: string
+  revisao: number
+  workflow_status: string
+  status: string
+  operacional: boolean
+  itens_count: number
+  plano: AdminChecklistPlan
+  itens: AdminChecklistItem[]
+}

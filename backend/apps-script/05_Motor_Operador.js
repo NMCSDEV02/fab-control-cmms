@@ -1,11 +1,18 @@
 function cmmsMotorRecalcular_(p){
   var alvo = clean_(p.ativo_id);
-  var ativos = alvo ? rows_("ativos").filter(function(a){ return String(a.id) === alvo; }) : rows_("ativos");
+  var ativos = (alvo ? rows_("ativos").filter(function(a){ return String(a.id) === alvo; }) : rows_("ativos"))
+    .filter(function(a){ return upper_(a.status) !== ST.INATIVO; });
+  var componentesAtivos = {};
+  rows_("componentes").forEach(function(component){
+    componentesAtivos[String(component.id)] = upper_(component.status) !== ST.INATIVO;
+  });
   var criadas = [];
 
   ativos.forEach(function(ativo){
     rows_("planos_manutencao").filter(function(pl){
-      return String(pl.ativo_id) === String(ativo.id) && isPlanoOperacional_(pl);
+      return String(pl.ativo_id) === String(ativo.id) &&
+        isPlanoOperacional_(pl) &&
+        (!clean_(pl.componente_id) || componentesAtivos[String(pl.componente_id)] === true);
     }).forEach(function(plano){
       ensureDefaultPlanoItem_(plano);
 
