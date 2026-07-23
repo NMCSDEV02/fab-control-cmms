@@ -246,9 +246,23 @@ const access = context.motorCommercialAccessState_({}, authorized)
 assert(access.acesso_integral === true, 'estado interno não informou acesso integral')
 assert(access.manutencao.janela_id === configured.windowId, 'estado interno omitiu a janela atual')
 
+const catalog = context.motorPlatformCatalogState_({}, authorized)
+assert(catalog.ambiente === 'HOMOLOGACAO', 'catálogo interno omitiu o ambiente')
+assert(catalog.tenant_id === 'TENANT-01', 'catálogo interno omitiu o tenant')
+assert(catalog.recursos.length === 10, 'catálogo interno não retornou os dez grupos de recursos')
+assert(catalog.planos.length === 3, 'catálogo interno não retornou os três planos')
+assert(catalog.politicas.padrao === 'NEGAR_ACAO_NAO_CLASSIFICADA', 'catálogo não informou a política de falha fechada')
+assert(catalog.politicas.regras.length > 40, 'catálogo interno retornou poucas regras classificadas')
+assert(catalog.protecoes.revalidacao_por_requisicao === true, 'catálogo omitiu a revalidação por requisição')
+
 const adminAccess = context.motorCommercialAccessState_({}, { perfil: 'ADMIN', usuario_id: 'USR-ADMIN' })
 assert(adminAccess.acesso_integral === false, 'administrador comum recebeu acesso integral')
 assert(!adminAccess.manutencao.janela_id, 'administrador comum recebeu o identificador da janela')
+expectCode(
+  () => context.motorPlatformCatalogState_({}, { perfil: 'ADMIN', usuario_id: 'USR-ADMIN' }),
+  'MOTOR_INTERNAL_IDENTITY_REQUIRED',
+  'administrador comum acessou o catálogo interno',
+)
 
 signProperty('FAB_CONTROL_MOTOR_MAINTENANCE_V1', 'FAB_CONTROL_MOTOR_MAINTENANCE_SIGNING_SECRET', {
   ativa: false,

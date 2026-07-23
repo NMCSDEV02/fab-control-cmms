@@ -174,6 +174,7 @@ const PERM = {
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
   ],
   SISTEMA: [
-    "admin.acesso.estado"
+    "admin.acesso.estado",
+    "platform.motor.catalogo"
   ]
 };

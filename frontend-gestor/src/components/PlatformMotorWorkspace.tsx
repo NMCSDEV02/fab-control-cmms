@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
-import { getAdminCommercialAccess } from '../services/api/admin'
+import {
+  getAdminCommercialAccess,
+  getPlatformMotorCatalog,
+} from '../services/api/admin'
 import { isGestorAuthenticationError } from '../services/api/gestor'
-import type { AdminCommercialAccess } from '../types/admin'
+import type {
+  AdminCommercialAccess,
+  AdminCommercialFeatureCode,
+  PlatformMotorCatalog,
+} from '../types/admin'
 
 interface PlatformMotorWorkspaceProps {
   session: GestorSession
@@ -29,6 +36,12 @@ function countdown(expiresAt: number, now: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+function subscriptionSource(value?: string): string {
+  if (value === 'ASSINATURA_DE_PLATAFORMA') return 'Assinatura interna validada'
+  if (value === 'COMPATIBILIDADE_1_4_0') return 'Compatibilidade segura'
+  return 'Política interna protegida'
+}
+
 export function PlatformMotorWorkspace({
   session,
   loggingOut,
@@ -36,6 +49,7 @@ export function PlatformMotorWorkspace({
   onLogout,
 }: PlatformMotorWorkspaceProps) {
   const [access, setAccess] = useState<AdminCommercialAccess | null>(null)
+  const [catalog, setCatalog] = useState<PlatformMotorCatalog | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [now, setNow] = useState(Date.now())
@@ -44,12 +58,16 @@ export function PlatformMotorWorkspace({
     setLoading(true)
     setError('')
     try {
-      const result = await getAdminCommercialAccess()
+      const [result, catalogResult] = await Promise.all([
+        getAdminCommercialAccess(),
+        getPlatformMotorCatalog(),
+      ])
       if (!result.acesso_integral || !result.manutencao.aberta) {
         onSessionExpired()
         return
       }
       setAccess(result)
+      setCatalog(catalogResult)
     } catch (cause) {
       if (isGestorAuthenticationError(cause)) {
         onSessionExpired()
@@ -74,6 +92,23 @@ export function PlatformMotorWorkspace({
     () => countdown(session.expiresAt, now),
     [now, session.expiresAt],
   )
+  const policyCoverage = useMemo(() => {
+    if (!catalog) return []
+    const featureNames = new Map(
+      catalog.recursos.map((feature) => [feature.codigo, feature.nome]),
+    )
+    const totals = new Map<AdminCommercialFeatureCode, number>()
+    catalog.politicas.regras.forEach((rule) => {
+      totals.set(rule.recurso, (totals.get(rule.recurso) ?? 0) + 1)
+    })
+    return [...totals.entries()]
+      .map(([code, total]) => ({
+        code,
+        name: featureNames.get(code) ?? code,
+        total,
+      }))
+      .sort((left, right) => right.total - left.total)
+  }, [catalog])
 
   return (
     <main className="platform-motor-shell">
@@ -144,6 +179,88 @@ export function PlatformMotorWorkspace({
             <li><strong>Isolamento por empresa</strong><span>Tenant e ambiente precisam coincidir no servidor.</span></li>
             <li><strong>Revogação imediata</strong><span>Alterar ou encerrar a janela invalida a próxima requisição.</span></li>
           </ul>
+        </section>
+
+        <section className="platform-motor-catalog">
+          <div className="platform-motor-section-heading">
+            <div>
+              <span className="eyebrow">CATÁLOGO COMERCIAL</span>
+              <h2>Recursos por assinatura</h2>
+              <p>A visão interna mostra a composição efetiva sem permitir alterações diretas nesta etapa.</p>
+            </div>
+            <span className="platform-motor-readonly">Somente leitura</span>
+          </div>
+
+          <div className="platform-motor-plan-grid">
+            {catalog?.planos.map((plan) => (
+              <article
+                key={plan.codigo}
+                className={plan.codigo === catalog.assinatura.plano.codigo ? 'is-current' : ''}
+              >
+                <header>
+                  <div>
+                    <span>{plan.codigo}</span>
+                    <h3>{plan.nome}</h3>
+                  </div>
+                  {plan.codigo === catalog.assinatura.plano.codigo ? <b>Atual</b> : null}
+                </header>
+                <ul>
+                  {catalog.recursos.map((feature) => {
+                    const enabled = plan.recursos.includes(feature.codigo)
+                    return (
+                      <li key={feature.codigo} className={enabled ? 'is-enabled' : ''}>
+                        <i aria-hidden="true">{enabled ? '✓' : '—'}</i>
+                        <span>{feature.nome}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="platform-motor-governance">
+          <div className="platform-motor-section-heading">
+            <div>
+              <span className="eyebrow">GOVERNANÇA DE ROTAS</span>
+              <h2>Cobertura das políticas</h2>
+              <p>Ações novas continuam bloqueadas até receberem classificação comercial explícita.</p>
+            </div>
+          </div>
+
+          <div className="platform-motor-governance-grid">
+            <article className="platform-motor-governance-summary">
+              <div>
+                <span>Regras classificadas</span>
+                <strong>{catalog?.politicas.regras.length ?? 0}</strong>
+              </div>
+              <div>
+                <span>Ações do núcleo</span>
+                <strong>{catalog?.politicas.acoes_nucleo.length ?? 0}</strong>
+              </div>
+              <div>
+                <span>Política padrão</span>
+                <strong>Negar</strong>
+              </div>
+              <small>{subscriptionSource(catalog?.assinatura.origem)}</small>
+            </article>
+
+            <article className="platform-motor-policy-list">
+              <header>
+                <strong>Distribuição por recurso</strong>
+                <span>{policyCoverage.length} grupos cobertos</span>
+              </header>
+              <ul>
+                {policyCoverage.map((item) => (
+                  <li key={item.code}>
+                    <span>{item.name}</span>
+                    <b>{item.total} política(s)</b>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </div>
         </section>
 
         <footer className="platform-motor-footer">

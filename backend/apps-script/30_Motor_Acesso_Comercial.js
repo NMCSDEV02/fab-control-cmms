@@ -354,6 +354,62 @@ function motorCommercialAccessState_(p, auth){
   return motorCommercialAccessContext_(auth);
 }
 
+function motorPlatformCatalogState_(p, auth){
+  if(upper_(auth && auth.perfil) !== ROLE.SISTEMA){
+    err_("MOTOR_INTERNAL_IDENTITY_REQUIRED", "A operação exige identidade interna da plataforma.", 403);
+  }
+  motorRequireMaintenanceAccess_(auth);
+
+  var subscription = motorSubscriptionState_();
+  var maintenance = typeof motorInternalMaintenancePublicState_ === "function"
+    ? motorInternalMaintenancePublicState_(auth)
+    : motorMaintenanceState_();
+
+  return {
+    schema_version:MOTOR_COMMERCIAL_SCHEMA_VERSION,
+    gerado_em:now_(),
+    ambiente:motorEnvironment_(),
+    tenant_id:motorConfiguredTenantId_(),
+    assinatura:{
+      plano:{
+        codigo:subscription.plano && subscription.plano.codigo || "",
+        nome:subscription.plano && subscription.plano.nome || ""
+      },
+      status:subscription.status,
+      origem:subscription.origem,
+      integridade:subscription.integridade,
+      valido_ate:subscription.valido_ate || "",
+      recursos:motorUniqueKnownFeatures_(subscription.recursos)
+    },
+    manutencao:maintenance,
+    recursos:MOTOR_FEATURE_CATALOG.map(function(feature){
+      return {codigo:feature.codigo, nome:feature.nome};
+    }),
+    planos:Object.keys(MOTOR_PLAN_CATALOG).map(function(code){
+      var plan = MOTOR_PLAN_CATALOG[code];
+      return {
+        codigo:plan.codigo,
+        nome:plan.nome,
+        recursos:motorUniqueKnownFeatures_(plan.recursos)
+      };
+    }),
+    politicas:{
+      padrao:"NEGAR_ACAO_NAO_CLASSIFICADA",
+      regras:MOTOR_ACTION_FEATURE_RULES.map(function(rule){
+        return {prefixo:rule.prefixo, recurso:rule.recurso};
+      }),
+      acoes_nucleo:MOTOR_CORE_ACTIONS.slice()
+    },
+    protecoes:{
+      identidade_assinada:true,
+      janela_assinada:true,
+      codigo_uso_unico:true,
+      sessao_sem_cache:true,
+      revalidacao_por_requisicao:true
+    }
+  };
+}
+
 function motorRequireMaintenanceAccess_(auth){
   var maintenance = typeof motorInternalMaintenanceState_ === "function"
     ? motorInternalMaintenanceState_()

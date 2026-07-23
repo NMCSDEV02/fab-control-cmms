@@ -8,6 +8,7 @@
 - Adicionada matriz auditável de capacidades para gestor e operador.
 - Removida a exposição de hashes de PIN e senha nas consultas administrativas.
 - Adicionado acesso interno ao Motor por identidade assinada, janela temporária, código de uso único e sessão revalidada sem cache.
+- Adicionada visão interna somente leitura do catálogo de planos, recursos e cobertura das políticas comerciais.
 
 ## [0.1.0]
 

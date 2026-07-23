@@ -256,6 +256,7 @@ requireChecks(candidate, [
   'motorCommercialAccessContract',
   'motorCommercialAccessE2E',
   'motorInternalMaintenanceAccessE2E',
+  'motorInternalCatalogContract',
   'adminImportContract',
   'adminImportE2E',
   'productionBootstrapContract',

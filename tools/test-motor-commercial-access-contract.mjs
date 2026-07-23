@@ -15,6 +15,7 @@ const motor = read('backend/apps-script/30_Motor_Acesso_Comercial.js')
 const internalAccess = read('backend/apps-script/31_Motor_Acesso_Interno.js')
 const auth = read('backend/apps-script/03_Http_Auth.js')
 const authCache = read('backend/apps-script/09_Warmup_AuthFast.js')
+const appConfig = read('backend/apps-script/00_Config.js')
 const configuration = read('backend/apps-script/26_Motor_Configuracao.js')
 const adminApi = read('frontend-gestor/src/services/api/admin.ts')
 const workspace = read('frontend-gestor/src/components/AdminWorkspace.tsx')
@@ -49,7 +50,16 @@ assert(motor.includes('motorBlockedSubscription_'), 'falha fechada da assinatura
 assert(motor.includes('SUBSCRIPTION_FEATURE_REQUIRED'), 'bloqueio por recurso não contratado ausente')
 assert(motor.includes('MOTOR_MAINTENANCE_REQUIRED'), 'bloqueio do motor integral ausente')
 assert(motor.includes('upper_(auth && auth.perfil) === ROLE.SISTEMA'), 'motor integral não exige identidade interna')
-assert(!auth.includes('case "platform.motor.'), 'operações internas do motor não podem estar expostas na API pública')
+assert(
+  auth.match(/case "platform\.motor\.[^"]+"/g)?.length === 1 &&
+    auth.includes('case "platform.motor.catalogo"'),
+  'catálogo interno deve possuir uma única rota protegida',
+)
+assert(
+  appConfig.includes('SISTEMA: [') &&
+    appConfig.includes('"platform.motor.catalogo"'),
+  'perfil interno não recebeu permissão mínima para consultar o catálogo',
+)
 assert(motor.includes('tenantId !== configuredTenantId'), 'assinatura não está vinculada ao cliente configurado')
 assert(motor.includes('SUBSCRIPTION_ACTION_UNCLASSIFIED'), 'novas ações não falham de forma fechada')
 
@@ -100,6 +110,13 @@ assert(
     platformWorkspace.includes('result.manutencao.aberta'),
   'workspace interno não valida a janela ativa no servidor',
 )
+assert(
+  motor.includes('function motorPlatformCatalogState_') &&
+    motor.includes('padrao:"NEGAR_ACAO_NAO_CLASSIFICADA"') &&
+    platformWorkspace.includes('getPlatformMotorCatalog') &&
+    platformWorkspace.includes('Recursos por assinatura'),
+  'catálogo comercial interno somente leitura está incompleto',
+)
 
 const publicActions = new Set([
   'sistema.health',
@@ -111,12 +128,14 @@ const publicActions = new Set([
   'auth.logout',
 ])
 const routeActions = [...auth.matchAll(/case "([^"]+)"/g)].map((match) => match[1])
+const internalActions = new Set(routeActions.filter((action) => action.startsWith('platform.motor.')))
 const featurePrefixes = [...motor.matchAll(/\{prefixo:"([^"]+)", recurso:/g)].map((match) => match[1])
 const coreStart = motor.indexOf('const MOTOR_CORE_ACTIONS = [')
 const coreEnd = motor.indexOf('];', coreStart)
 const coreActions = new Set([...motor.slice(coreStart, coreEnd).matchAll(/"([^"]+)"/g)].map((match) => match[1]))
 for (const action of routeActions) {
   if (publicActions.has(action)) continue
+  if (internalActions.has(action)) continue
   const classified = coreActions.has(action) || featurePrefixes.some((prefix) => action.startsWith(prefix))
   assert(classified, `ação autenticada sem classificação comercial: ${action}`)
 }
@@ -127,6 +146,10 @@ assert(bootstrapStart >= 0 && bootstrapEnd > bootstrapStart, 'bloco de bootstrap
 assert(
   !auth.slice(bootstrapStart, bootstrapEnd).includes('"auth.maintenance.exchange"'),
   'bootstrap público não deve anunciar a entrada interna',
+)
+assert(
+  !auth.slice(bootstrapStart, bootstrapEnd).includes('"platform.motor.catalogo"'),
+  'bootstrap público não deve anunciar o catálogo interno',
 )
 
 console.log('CONTRATO DO ACESSO COMERCIAL AO MOTOR APROVADO')

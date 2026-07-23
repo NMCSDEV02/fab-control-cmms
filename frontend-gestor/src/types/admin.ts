@@ -183,6 +183,49 @@ export interface AdminCommercialAccess {
   usuario_id: string
 }
 
+export interface PlatformMotorCatalog {
+  schema_version: string
+  gerado_em: string
+  ambiente: string
+  tenant_id: string
+  assinatura: {
+    plano: {
+      codigo: 'INICIAL' | 'BASICO' | 'COMPLETO' | 'BLOQUEADO'
+      nome: string
+    }
+    status: 'ATIVA' | 'BLOQUEADA'
+    origem: string
+    integridade: string
+    valido_ate: string
+    recursos: AdminCommercialFeatureCode[]
+  }
+  manutencao: AdminCommercialAccess['manutencao']
+  recursos: Array<{
+    codigo: AdminCommercialFeatureCode
+    nome: string
+  }>
+  planos: Array<{
+    codigo: 'INICIAL' | 'BASICO' | 'COMPLETO'
+    nome: string
+    recursos: AdminCommercialFeatureCode[]
+  }>
+  politicas: {
+    padrao: 'NEGAR_ACAO_NAO_CLASSIFICADA'
+    regras: Array<{
+      prefixo: string
+      recurso: AdminCommercialFeatureCode
+    }>
+    acoes_nucleo: string[]
+  }
+  protecoes: {
+    identidade_assinada: boolean
+    janela_assinada: boolean
+    codigo_uso_unico: boolean
+    sessao_sem_cache: boolean
+    revalidacao_por_requisicao: boolean
+  }
+}
+
 export type ConfigurationValue = string | number | boolean
 
 export interface ConfigurationDefinition {

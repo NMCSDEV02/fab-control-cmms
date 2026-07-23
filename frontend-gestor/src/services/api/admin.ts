@@ -2,6 +2,7 @@ import type {
   AdminCompanyProfile,
   AdminCompanySaveResult,
   AdminCommercialAccess,
+  PlatformMotorCatalog,
   AdminPasswordResetResult,
   AdminPermissionMatrix,
   AdminPermissionSaveResult,
@@ -237,6 +238,12 @@ export function getAdminCommercialAccess(
   signal?: AbortSignal,
 ): Promise<AdminCommercialAccess> {
   return readAdminData<AdminCommercialAccess>('admin.acesso.estado', {}, signal)
+}
+
+export function getPlatformMotorCatalog(
+  signal?: AbortSignal,
+): Promise<PlatformMotorCatalog> {
+  return readAdminData<PlatformMotorCatalog>('platform.motor.catalogo', {}, signal)
 }
 
 export function saveAdminCompanyProfile(

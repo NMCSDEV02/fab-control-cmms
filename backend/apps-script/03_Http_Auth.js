@@ -76,6 +76,7 @@ function route_(action, p, req){
     case "admin.empresa.obter": return adminEmpresaObter_(p, p.__auth);
     case "admin.empresa.salvar": return adminEmpresaSalvar_(p, p.__auth);
     case "admin.acesso.estado": return motorCommercialAccessState_(p, p.__auth);
+    case "platform.motor.catalogo": return motorPlatformCatalogState_(p, p.__auth);
     case "admin.configuracao.estado": return configurationState_(p, p.__auth);
     case "admin.configuracao.rascunho.salvar": return configurationSaveDraft_(p, p.__auth);
     case "admin.configuracao.validar": return configurationValidate_(p, p.__auth);
