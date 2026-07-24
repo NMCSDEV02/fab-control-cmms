@@ -9,6 +9,7 @@ import {
   completeFirstAccess,
   loginGestor,
   requestPasswordRecovery,
+  revokeGestorSession,
   type GestorSession,
 } from '../services/api/auth'
 import { ApiRequestError } from '../services/api/client'
@@ -18,6 +19,10 @@ import {
   hasCompletedLoginBootstrap,
   markLoginBootstrapCompleted,
 } from '../services/auth/session'
+import {
+  getPortalPresentation,
+  portalAllowsProfile,
+} from '../portal'
 
 export interface LoginPageProps {
   onAuthenticated: (session: GestorSession) => void
@@ -40,6 +45,7 @@ function passwordMeetsRules(password: string): boolean {
 }
 
 export function LoginPage({ onAuthenticated }: LoginPageProps) {
+  const portal = getPortalPresentation()
   const [view, setView] = useState<LoginView>(
     () => hasCompletedLoginBootstrap() ? 'login' : 'startup',
   )
@@ -154,6 +160,24 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setSubmitting(true)
     try {
       const result = await loginGestor(normalizedRegistration, password)
+      if (!portalAllowsProfile(result.usuario.perfil)) {
+        const issuedToken = result.token || result.change_token
+        if (issuedToken) {
+          try {
+            await revokeGestorSession(issuedToken)
+          } catch {
+            // A sessão não é persistida quando o perfil usa o portal incorreto.
+          }
+        }
+        throw new ApiRequestError(
+          `Este endereço é exclusivo para o perfil ${portal.exclusiveProfileLabel}. Use o portal correspondente ao seu acesso.`,
+          'PORTAL_PROFILE_MISMATCH',
+          {
+            expected: portal.profile,
+            received: result.usuario.perfil,
+          },
+        )
+      }
 
       if (result.requires_password_change) {
         if (!result.change_token) {
@@ -187,6 +211,11 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
       })
     } catch (cause) {
       if (cause instanceof ApiRequestError) {
+        if (cause.code === 'PORTAL_PROFILE_MISMATCH') {
+          setError(cause.message)
+          return
+        }
+
         if (cause.code === 'ROLE_NOT_ALLOWED') {
           setError(cause.message)
           return
@@ -323,14 +352,12 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
         <div className="auth-brand">
           <span className="auth-brand__mark" aria-hidden="true">FC</span>
           <div>
-            <span className="eyebrow">FAB CONTROL</span>
-            <h1 id="auth-title">Acesso do Gestor</h1>
+            <span className="eyebrow">{portal.eyebrow}</span>
+            <h1 id="auth-title">{portal.title}</h1>
           </div>
         </div>
 
-        <p className="auth-intro">
-          Supervisão de ações, paradas, ocorrências e auditoria operacional.
-        </p>
+        <p className="auth-intro">{portal.intro}</p>
 
         {!getApiUrl() ? (
           <p className="feedback feedback--warning">

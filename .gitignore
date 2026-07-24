@@ -21,3 +21,4 @@ mockups/*.zip
 **/.clasp*.json
 **/.clasprc.json
 release/fab-control.environment.local.json
+.homologation-runtime/

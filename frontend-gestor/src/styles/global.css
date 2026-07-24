@@ -12373,6 +12373,15 @@ p {
     padding: 15px;
   }
 
+  .manager-summary-card {
+    min-height: 104px;
+    padding: 14px 15px;
+  }
+
+  .manager-kpi-card {
+    min-height: 168px;
+  }
+
   .manager-performance__filters {
     grid-template-columns: minmax(0, 1fr) 40px;
   }
@@ -12410,19 +12419,27 @@ p {
 }
 
 @media (max-width: 480px) {
-  .manager-summary-grid,
-  .manager-operation-strip > div,
   .manager-performance__detail-grid,
-  .manager-data-grid,
-  .manager-support-metrics,
   .manager-work-guide ol,
   .manager-demand-progress,
   .manager-demand-operations {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .manager-summary-grid,
+  .manager-operation-strip > div,
+  .manager-data-grid,
+  .manager-support-metrics,
+  .manager-work-page .validation-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .manager-summary-card {
     min-height: 100px;
+  }
+
+  .manager-summary-card > strong {
+    font-size: 1.7rem;
   }
 
   .manager-next-work,
@@ -12442,7 +12459,16 @@ p {
     white-space: normal;
   }
 
-  .manager-work-page .validation-tabs {
-    grid-template-columns: minmax(0, 1fr);
+  .manager-operation-strip article {
+    align-items: flex-start;
+    padding: 10px;
+  }
+
+  .manager-operation-strip article > svg {
+    width: 19px;
+  }
+
+  .manager-kpi-card {
+    min-height: 154px;
   }
 }
