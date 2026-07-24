@@ -55,6 +55,14 @@ assert(
   manifest.candidateEvidence?.gestorAdminStartupVisual?.startsWith('approved-'),
   'validação visual do pré-carregamento Gestor/Admin ausente',
 )
+assert(
+  manifest.candidateEvidence?.managerWorkCenterContract?.startsWith('approved-'),
+  'contrato da Central de trabalho do Gestor ausente',
+)
+assert(
+  manifest.candidateEvidence?.managerPerformanceContract?.startsWith('approved-'),
+  'contrato de desempenho técnico do Gestor ausente',
+)
 
 assert(manifest.candidateEvidence?.motorCommercialAccessContract === 'approved', 'contrato comercial do motor ausente')
 assert(manifest.candidateEvidence?.motorCommercialAccessE2E === 'approved', 'E2E comercial do motor ausente')

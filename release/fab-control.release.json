@@ -136,6 +136,8 @@
     "managerFrontendBuild": "approved",
     "gestorAdminStartupContract": "approved",
     "gestorAdminStartupVisual": "approved-admin-and-manager-blocking-role-aware",
+    "managerWorkCenterContract": "approved-single-inbox-four-categories-next-action-guidance",
+    "managerPerformanceContract": "approved-period-asset-previous-window-oee-breakdown-no-fake-zero",
     "technicalWorkflowContract": "approved",
     "technicalWorkflowE2E": "approved",
     "remoteCanary": "approved"

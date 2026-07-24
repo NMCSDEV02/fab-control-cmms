@@ -238,7 +238,24 @@ export async function getGestorKpis(
 export async function getGestorTechnicalKpis(
   signal?: AbortSignal,
 ): Promise<GestorTechnicalKpis> {
-  return readGestorData<GestorTechnicalKpis>('cmms.kpis_tecnicos', {}, signal)
+  return getGestorTechnicalKpisForPeriod({}, signal)
+}
+
+export interface GestorTechnicalKpiFilters {
+  ativo_id?: string
+  inicio_em?: string
+  fim_em?: string
+}
+
+export async function getGestorTechnicalKpisForPeriod(
+  filters: GestorTechnicalKpiFilters,
+  signal?: AbortSignal,
+): Promise<GestorTechnicalKpis> {
+  return readGestorData<GestorTechnicalKpis>(
+    'cmms.kpis_tecnicos',
+    { ...filters },
+    signal,
+  )
 }
 
 export async function getGestorTechnicalContext(
@@ -277,7 +294,11 @@ export function forwardGestorTechnicalDemand(input: {
 export function signGestorTechnicalDemand(
   demandId: string,
   declaration: string,
-): Promise<{ signed: boolean; demanda: GestorTechnicalDemand }> {
+): Promise<{
+  signed: boolean
+  already_signed?: boolean
+  demanda: GestorTechnicalDemand
+}> {
   return writeGestorData('gestor.demandas.assinar', {
     demanda_id: demandId,
     declaracao: declaration,

@@ -26,6 +26,7 @@ import {
   readGestorSession,
   saveGestorSession,
 } from '../services/auth/session'
+import type { GestorWorkView } from '../types/gestor'
 
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
@@ -33,6 +34,7 @@ export function App() {
     () => new URLSearchParams(window.location.search).get('maintenance') === '1',
   )
   const [section, setSection] = useState<GestorSection>('home')
+  const [validationView, setValidationView] = useState<GestorWorkView>('demands')
   const [adminModule, setAdminModule] = useState<AdminModule>('overview')
   const [validationCount, setValidationCount] = useState(0)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -81,7 +83,14 @@ export function App() {
   }, [])
 
   function handleNavigate(nextSection: GestorSection) {
+    if (nextSection === 'validations') setValidationView('demands')
     setSection(nextSection)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function handleOpenWork(view: GestorWorkView = 'demands') {
+    setValidationView(view)
+    setSection('validations')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -190,12 +199,14 @@ export function App() {
         {section === 'home' ? (
           <DashboardPage
             onNavigate={handleNavigate}
+            onOpenWork={handleOpenWork}
             onQueueCountChange={setValidationCount}
             onSessionExpired={expireSession}
           />
         ) : null}
         {section === 'validations' ? (
           <ValidationsPage
+            initialView={validationView}
             onQueueCountChange={setValidationCount}
             onSessionExpired={expireSession}
           />

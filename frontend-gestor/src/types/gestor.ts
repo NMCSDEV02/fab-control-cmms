@@ -274,6 +274,8 @@ export interface GestorOverview {
   }
 }
 
+export type GestorWorkView = 'demands' | 'actions' | 'models' | 'operations'
+
 export interface GestorChecklistModel {
   id: string
   nome?: string

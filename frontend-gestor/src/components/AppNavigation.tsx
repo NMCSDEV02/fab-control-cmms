@@ -17,7 +17,7 @@ export interface AppNavigationProps {
 
 const ITEMS = [
   { id: 'home' as const, label: 'Início', Icon: HomeIcon },
-  { id: 'validations' as const, label: 'Validar', Icon: ValidationIcon },
+  { id: 'validations' as const, label: 'Trabalho', Icon: ValidationIcon },
   { id: 'assets' as const, label: 'Ativos', Icon: AssetIcon },
   { id: 'admin' as const, label: 'Admin', Icon: UsersIcon },
   { id: 'more' as const, label: 'Mais', Icon: MoreIcon },

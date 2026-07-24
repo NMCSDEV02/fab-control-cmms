@@ -22,6 +22,10 @@ const workflow = read('backend/apps-script/25_Workflow_Tecnico_KPI.js')
 const gestorApi = read('frontend-gestor/src/services/api/gestor.ts')
 const validations = read('frontend-gestor/src/pages/ValidationsPage.tsx')
 const dashboard = read('frontend-gestor/src/pages/DashboardPage.tsx')
+const performance = read('frontend-gestor/src/components/GestorPerformancePanel.tsx')
+const demandDialog = read('frontend-gestor/src/components/TechnicalDemandDialog.tsx')
+const navigation = read('frontend-gestor/src/components/AppNavigation.tsx')
+const gestorStyles = read('frontend-gestor/src/styles/global.css')
 const interventionsApi = read('frontend-gestor/src/services/api/interventions.ts')
 const interventionsBackend = read('backend/apps-script/28_Admin_Intervencoes.js')
 
@@ -77,12 +81,27 @@ for (const action of requiredActions.filter((action) => action.startsWith('gesto
   assert(gestorApi.includes(`'${action}'`), `cliente gestor não usa ${action}`)
 }
 
-assert(validations.includes('Fila técnica'), 'fila técnica não está visível')
+assert(validations.includes('Central de trabalho'), 'central única de trabalho não está visível')
+assert(!validations.includes('Fila técnica'), 'nome duplicado de fila técnica continua visível')
+assert(dashboard.includes('Uma única entrada'), 'painel inicial não orienta para a central única')
+assert(!dashboard.includes('MINHA FILA TÉCNICA'), 'painel inicial ainda apresenta uma segunda fila')
+assert(navigation.includes("label: 'Trabalho'"), 'navegação não usa a Central de trabalho')
+assert(
+  gestorStyles.includes('.manager-work-page .validation-tabs') &&
+    gestorStyles.includes('grid-template-columns: repeat(4, minmax(0, 1fr))'),
+  'quatro categorias não estão organizadas na mesma grade',
+)
 assert(validations.includes('Criar análise técnica'), 'ocorrência não permite análise técnica')
-assert(dashboard.includes('MTBF'), 'painel não exibe MTBF')
-assert(dashboard.includes('Lead time OS'), 'painel não exibe lead time')
-assert(dashboard.includes('SLA resolução'), 'painel não exibe SLA')
-assert(dashboard.includes("'Aguardando dados'"), 'OEE sem amostra não é diferenciado de zero')
+assert(demandDialog.includes('Assumir e continuar'), 'fluxo não orienta o primeiro aceite')
+assert(demandDialog.includes('Assinaturas concluídas'), 'fluxo não evidencia o gate de assinatura')
+assert(demandDialog.includes('ESCOLHA O RESULTADO'), 'decisão técnica não possui orientação')
+assert(performance.includes("label: 'MTBF'"), 'painel não exibe MTBF')
+assert(performance.includes("label: 'Lead time de OS'"), 'painel não exibe lead time')
+assert(performance.includes("label: 'SLA de resolução'"), 'painel não exibe SLA')
+assert(performance.includes('Aguardando apontamentos de produção'), 'OEE sem amostra não é diferenciado de zero')
+assert(performance.includes('período anterior'), 'painel não compara tendências')
+assert(performance.includes('Todos os ativos'), 'painel não permite recorte por ativo')
+assert(gestorApi.includes('getGestorTechnicalKpisForPeriod'), 'cliente não envia período e ativo aos KPIs')
 assert(workflow.includes('TECH_SIGNATURE_SEGREGATION'), 'segregação de assinatura ausente')
 assert(workflow.includes('payload_hash'), 'assinatura não está vinculada ao hash do payload')
 assert(workflow.includes('workflow.tecnico.text.repair.version'), 'catálogo técnico não versiona a correção de acentuação')

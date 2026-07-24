@@ -33,7 +33,7 @@ export function MorePage({ session, onNavigate }: MorePageProps) {
       <section className="more-grid">
         <button className="more-card" type="button" onClick={() => onNavigate('validations')}>
           <span className="more-card__icon"><ValidationIcon /></span>
-          <span><strong>Central de validações</strong><small>Execuções, modelos, paradas e anormalidades.</small></span>
+          <span><strong>Central de trabalho</strong><small>Solicitações, execuções, checklists, ocorrências e paradas em uma única entrada.</small></span>
         </button>
         <button className="more-card" type="button" onClick={() => onNavigate('assets')}>
           <span className="more-card__icon"><AssetIcon /></span>

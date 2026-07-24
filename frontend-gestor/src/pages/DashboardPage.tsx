@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GestorSection } from '../components/AppNavigation'
-import { ActionReviewDialog } from '../components/ActionReviewDialog'
+import { GestorPerformancePanel } from '../components/GestorPerformancePanel'
 import {
   AlertIcon,
   AssetIcon,
+  CheckIcon,
   ChevronRightIcon,
   RefreshIcon,
   StopIcon,
@@ -12,18 +13,33 @@ import {
 import {
   getGestorChecklistModels,
   getGestorOverview,
+  getGestorTechnicalDemands,
   isGestorAuthenticationError,
 } from '../services/api/gestor'
 import type {
-  GestorAction,
-  GestorDecisionResult,
+  GestorChecklistModel,
   GestorOverview,
+  GestorTechnicalDemand,
+  GestorWorkView,
 } from '../types/gestor'
 
 export interface DashboardPageProps {
   onNavigate: (section: GestorSection) => void
+  onOpenWork: (view?: GestorWorkView) => void
   onQueueCountChange: (count: number) => void
   onSessionExpired: () => void
+}
+
+interface WorkItem {
+  id: string
+  view: GestorWorkView
+  category: string
+  title: string
+  context: string
+  priority: string
+  overdue: boolean
+  nextAction: string
+  createdAt?: string
 }
 
 const EMPTY_OVERVIEW: GestorOverview = {
@@ -67,52 +83,81 @@ const EMPTY_OVERVIEW: GestorOverview = {
   },
 }
 
+const PRIORITY_SCORE: Record<string, number> = {
+  CRITICA: 5,
+  CRÍTICA: 5,
+  ALTA: 4,
+  MEDIA: 3,
+  MÉDIA: 3,
+  NORMAL: 2,
+  BAIXA: 1,
+}
+
+function upper(value: unknown): string {
+  return String(value ?? '').trim().toLocaleUpperCase('pt-BR')
+}
+
+function humanize(value: unknown): string {
+  const normalized = String(value ?? '').trim().replaceAll('_', ' ').toLocaleLowerCase('pt-BR')
+  return normalized
+    ? normalized.charAt(0).toLocaleUpperCase('pt-BR') + normalized.slice(1)
+    : 'Não informado'
+}
+
 function formatDate(value?: string): string {
   if (!value) return 'Sem data registrada'
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return value
-
   return new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(parsed)
 }
 
-function formatDuration(seconds: number): string {
-  const totalMinutes = Math.max(0, Math.round(seconds / 60))
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  if (!hours) return `${minutes} min`
-  return minutes ? `${hours}h ${minutes}min` : `${hours}h`
+function demandNextAction(demand: GestorTechnicalDemand): string {
+  if (!demand.responsavel_atual_id) return 'Assumir e iniciar análise'
+  const pendingSignatures = Math.max(
+    0,
+    Number(demand.assinaturas_necessarias ?? 0) -
+      Number(demand.assinaturas_realizadas ?? 0),
+  )
+  if (pendingSignatures > 0) return 'Registrar ou solicitar assinatura'
+  return upper(demand.entidade_tipo) === 'ORDEM_SERVICO_RASCUNHO'
+    ? 'Liberar para operação'
+    : 'Registrar decisão técnica'
 }
 
-function formatOptionalDuration(seconds: number | null): string {
-  return seconds == null ? 'Sem amostra' : formatDuration(seconds)
-}
-
-function formatOptionalPercent(value: number | null): string {
-  return value == null
-    ? 'Sem amostra'
-    : `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
-}
-
-function actionTitle(action: GestorAction): string {
-  return action.titulo?.trim() || 'Ação sem título'
+function modelWorkItem(model: GestorChecklistModel): WorkItem {
+  return {
+    id: model.id,
+    view: 'models',
+    category: 'Checklist técnico',
+    title: model.nome || 'Modelo sem nome',
+    context: [
+      model.ativo_tag || model.ativo_nome || model.ativo_id,
+      `Revisão ${model.revisao ?? 1}`,
+      `${model.itens_count ?? 0} item(ns)`,
+    ].filter(Boolean).join(' · '),
+    priority: upper(model.criticidade || 'NORMAL'),
+    overdue: false,
+    nextAction: 'Revisar conteúdo e decidir',
+    createdAt: model.enviado_validacao_em || model.atualizado_em,
+  }
 }
 
 export function DashboardPage({
   onNavigate,
+  onOpenWork,
   onQueueCountChange,
   onSessionExpired,
 }: DashboardPageProps) {
   const [overview, setOverview] = useState<GestorOverview>(EMPTY_OVERVIEW)
-  const [modelValidationCount, setModelValidationCount] = useState(0)
-  const [selectedAction, setSelectedAction] = useState<GestorAction | null>(null)
+  const [models, setModels] = useState<GestorChecklistModel[]>([])
+  const [demands, setDemands] = useState<GestorTechnicalDemand[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [updatedAt, setUpdatedAt] = useState('')
-  const [decisionNotice, setDecisionNotice] = useState('')
 
   const load = useCallback(
     async (signal?: AbortSignal, background = false) => {
@@ -121,14 +166,21 @@ export function DashboardPage({
       setError('')
 
       try {
-        const [overviewData, models] = await Promise.all([
+        const [overviewData, modelData, demandData] = await Promise.all([
           getGestorOverview(signal),
           getGestorChecklistModels(signal),
+          getGestorTechnicalDemands(signal),
         ])
         setOverview(overviewData)
-        setModelValidationCount(models.length)
+        setModels(modelData)
+        setDemands(demandData)
         setUpdatedAt(new Date().toISOString())
-        onQueueCountChange(overviewData.validationQueue.length + models.length)
+        onQueueCountChange(
+          demandData.length +
+          overviewData.validationQueue.length +
+          modelData.length +
+          overviewData.occurrences.length,
+        )
       } catch (cause) {
         if (signal?.aborted) return
         if (isGestorAuthenticationError(cause)) {
@@ -138,7 +190,7 @@ export function DashboardPage({
         setError(
           cause instanceof Error
             ? cause.message
-            : 'Não foi possível carregar a visão do gestor.',
+            : 'Não foi possível carregar o painel do gestor.',
         )
       } finally {
         if (!signal?.aborted) {
@@ -156,214 +208,258 @@ export function DashboardPage({
     return () => controller.abort()
   }, [load])
 
-  async function handleDecisionComplete(result: GestorDecisionResult) {
-    setDecisionNotice(
-      result.decisao === 'APROVAR'
-        ? 'Execução aprovada e removida da fila de validação.'
-        : 'Execução devolvida para a fila operacional.',
-    )
-    await load(undefined, true)
-  }
+  const workItems = useMemo<WorkItem[]>(() => {
+    const items: WorkItem[] = [
+      ...demands.map((demand) => ({
+        id: demand.id,
+        view: 'demands' as const,
+        category: humanize(demand.entidade_tipo),
+        title: demand.titulo,
+        context: [
+          demand.area_atual_nome || 'Sem área',
+          demand.cargo_atual_nome,
+          humanize(demand.status),
+        ].filter(Boolean).join(' · '),
+        priority: upper(demand.prioridade || 'MEDIA'),
+        overdue: Boolean(demand.sla_resolucao_atrasado || demand.sla_resposta_atrasado),
+        nextAction: demandNextAction(demand),
+        createdAt: demand.criado_em || demand.atualizado_em,
+      })),
+      ...overview.validationQueue.map((action) => ({
+        id: action.id,
+        view: 'actions' as const,
+        category: 'Execução concluída',
+        title: action.titulo || 'Execução sem título',
+        context: [
+          action.ativo_tag || action.ativo_nome || action.ativo_id,
+          humanize(action.status),
+        ].filter(Boolean).join(' · '),
+        priority: upper(action.prioridade || 'NORMAL'),
+        overdue: false,
+        nextAction: 'Auditar evidências e aprovar',
+        createdAt: action.finalizado_em || action.atualizado_em || action.gerado_em,
+      })),
+      ...models.map(modelWorkItem),
+      ...overview.occurrences.map((occurrence) => ({
+        id: occurrence.id,
+        view: 'operations' as const,
+        category: 'Anormalidade',
+        title: occurrence.titulo || 'Ocorrência operacional',
+        context: occurrence.descricao || occurrence.ativo_id || 'Sem descrição',
+        priority: upper(occurrence.severidade || 'MEDIA'),
+        overdue: false,
+        nextAction: 'Criar análise técnica',
+        createdAt: occurrence.criado_em,
+      })),
+    ]
 
-  const criticalOccurrence = useMemo(() => {
-    const score: Record<string, number> = { CRITICA: 4, CRÍTICA: 4, ALTA: 3, MEDIA: 2, MÉDIA: 2, BAIXA: 1 }
-    return [...overview.occurrences].sort(
-      (left, right) =>
-        (score[String(right.severidade ?? '').toUpperCase()] ?? 0) -
-        (score[String(left.severidade ?? '').toUpperCase()] ?? 0),
-    )[0]
-  }, [overview.occurrences])
+    return items.sort((left, right) => {
+      if (left.overdue !== right.overdue) return left.overdue ? -1 : 1
+      const priorityDifference =
+        (PRIORITY_SCORE[right.priority] ?? 0) - (PRIORITY_SCORE[left.priority] ?? 0)
+      if (priorityDifference) return priorityDifference
+      return String(left.createdAt ?? '').localeCompare(String(right.createdAt ?? ''))
+    })
+  }, [demands, models, overview.occurrences, overview.validationQueue])
 
-  const metrics = [
+  const nextWork = workItems[0]
+  const overdueCount = demands.filter(
+    (demand) => demand.sla_resolucao_atrasado || demand.sla_resposta_atrasado,
+  ).length
+
+  const workGroups = [
     {
-      label: 'Execuções para validar',
-      value: overview.counts.awaitingValidation,
-      tone: 'attention',
+      view: 'demands' as const,
+      label: 'Solicitações técnicas',
+      description: 'Assumir, assinar, encaminhar ou decidir',
+      count: demands.length,
+      Icon: ValidationIcon,
     },
     {
-      label: 'Modelos técnicos',
-      value: modelValidationCount,
+      view: 'actions' as const,
+      label: 'Execuções concluídas',
+      description: 'Auditar checklist e evidências',
+      count: overview.validationQueue.length,
+      Icon: CheckIcon,
+    },
+    {
+      view: 'models' as const,
+      label: 'Checklists',
+      description: 'Revisar modelos antes da operação',
+      count: models.length,
+      Icon: ValidationIcon,
+    },
+    {
+      view: 'operations' as const,
+      label: 'Ocorrências',
+      description: 'Analisar anormalidades e paradas',
+      count: overview.occurrences.length,
+      Icon: AlertIcon,
+    },
+  ]
+
+  const summaryMetrics = [
+    {
+      label: 'Precisa de você',
+      value: workItems.length,
+      detail: 'itens aguardando tratamento',
+      tone: workItems.length ? 'attention' : 'good',
+    },
+    {
+      label: 'SLA em atraso',
+      value: overdueCount,
+      detail: overdueCount ? 'priorize imediatamente' : 'nenhum prazo vencido',
+      tone: overdueCount ? 'danger' : 'good',
+    },
+    {
+      label: 'Em execução',
+      value: overview.counts.executing,
+      detail: 'trabalhos no chão de fábrica',
       tone: 'active',
     },
     {
       label: 'Paradas abertas',
       value: overview.counts.openStops,
-      tone: 'danger',
+      detail: 'equipamentos indisponíveis',
+      tone: overview.counts.openStops ? 'danger' : 'neutral',
     },
-    {
-      label: 'Anormalidades',
-      value: overview.counts.awaitingOccurrences,
-      tone: 'neutral',
-    },
-  ] as const
+  ]
 
   return (
-    <>
-      <main className="content dashboard">
-        <section className="page-heading">
-          <div>
-            <span className="eyebrow">VISÃO GERAL</span>
-            <h1>Supervisão operacional</h1>
-            <p>Acompanhe decisões, paradas e pendências técnicas em uma única fila.</p>
-          </div>
+    <main className="content manager-dashboard">
+      <section className="page-heading manager-dashboard__heading">
+        <div>
+          <span className="eyebrow">PAINEL DO GESTOR</span>
+          <h1>Decisões e desempenho</h1>
+          <p>Comece pelo item mais urgente, conclua o filtro técnico e acompanhe o efeito na operação.</p>
+        </div>
+        <button
+          className="icon-text-button"
+          type="button"
+          disabled={loading || refreshing}
+          onClick={() => void load(undefined, true)}
+        >
+          <RefreshIcon />
+          {refreshing ? 'Atualizando…' : 'Atualizar painel'}
+        </button>
+      </section>
 
-          <button
-            className="icon-text-button"
-            type="button"
-            disabled={loading || refreshing}
-            onClick={() => void load(undefined, true)}
-          >
-            <RefreshIcon />
-            {refreshing ? 'Atualizando…' : 'Atualizar'}
-          </button>
-        </section>
-
-        {decisionNotice ? (
-          <div className="dashboard-notice" role="status">
-            <span>{decisionNotice}</span>
-            <button type="button" onClick={() => setDecisionNotice('')}>Fechar</button>
-          </div>
-        ) : null}
-
-        {error ? (
-          <div className="dashboard-error" role="alert">
-            <strong>Falha ao atualizar o painel.</strong>
-            <span>{error}</span>
-          </div>
-        ) : null}
-
-        {criticalOccurrence ? (
-          <button
-            className="critical-alert"
-            type="button"
-            onClick={() => onNavigate('validations')}
-          >
-            <span className="critical-alert__icon"><AlertIcon /></span>
-            <span className="critical-alert__copy">
-              <small>ANORMALIDADE {String(criticalOccurrence.severidade ?? 'EM ANÁLISE')}</small>
-              <strong>{criticalOccurrence.titulo || 'Condição operacional registrada'}</strong>
-              <span>{criticalOccurrence.descricao || criticalOccurrence.ativo_id || 'Abrir central técnica'}</span>
-            </span>
-            <span className="critical-alert__action">Analisar <ChevronRightIcon /></span>
-          </button>
-        ) : null}
-
-        <section className="metric-grid" aria-label="Indicadores operacionais">
-          {metrics.map((metric) => (
-            <article className={`metric-card metric-card--${metric.tone}`} key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{loading ? '—' : metric.value}</strong>
-            </article>
-          ))}
-        </section>
-
-        <section className="dashboard-layout">
-          <div className="section-stack">
-            <header className="section-heading">
-              <div>
-                <span className="eyebrow">MINHA FILA TÉCNICA</span>
-                <h2>Aguardando decisão</h2>
-              </div>
-              <button className="text-button" type="button" onClick={() => onNavigate('validations')}>
-                Ver tudo
-              </button>
-            </header>
-
-            {loading ? (
-              <p className="panel-state">Carregando fila de validação…</p>
-            ) : overview.validationQueue.length === 0 ? (
-              <p className="panel-state">Nenhuma execução aguarda validação.</p>
-            ) : (
-              <div className="technical-queue">
-                {overview.validationQueue.slice(0, 5).map((action) => (
-                  <article className="queue-card" key={action.id}>
-                    <div className="queue-card__icon"><ValidationIcon /></div>
-                    <div className="queue-card__body">
-                      <div className="queue-card__topline">
-                        <span className="status-pill">EXECUÇÃO</span>
-                        <span className="priority-chip">{action.prioridade || 'NORMAL'}</span>
-                      </div>
-                      <h3>{actionTitle(action)}</h3>
-                      <p>
-                        {action.ativo_tag || action.ativo_id || 'Ativo não informado'}
-                        {action.ativo_nome ? ` · ${action.ativo_nome}` : ''}
-                      </p>
-                      <footer>
-                        <span>{formatDate(action.finalizado_em || action.atualizado_em || action.gerado_em)}</span>
-                        <button type="button" onClick={() => setSelectedAction(action)}>Revisar</button>
-                      </footer>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <aside className="section-stack">
-            <header className="section-heading">
-              <div>
-                <span className="eyebrow">AÇÕES RÁPIDAS</span>
-                <h2>Supervisão técnica</h2>
-              </div>
-            </header>
-
-            <div className="quick-action-grid">
-              <button type="button" onClick={() => onNavigate('validations')}>
-                <ValidationIcon />
-                <span><strong>Validar filas</strong><small>Execuções e modelos técnicos.</small></span>
-              </button>
-              <button type="button" onClick={() => onNavigate('assets')}>
-                <AssetIcon />
-                <span><strong>Consultar ativos</strong><small>Equipamentos e componentes.</small></span>
-              </button>
-              <button type="button" onClick={() => onNavigate('validations')}>
-                <StopIcon />
-                <span><strong>Ver paradas</strong><small>{overview.counts.openStops} registro(s) em aberto.</small></span>
-              </button>
-            </div>
-
-            <div className="technical-kpi-grid">
-              <article className="kpi-card">
-                <div><span>Disponibilidade</span><strong>{formatOptionalPercent(overview.kpis.disponibilidade_pct)}</strong></div>
-                <small>{overview.kpis.ativos_considerados} ativo(s) no período</small>
-              </article>
-              <article className="kpi-card">
-                <div><span>MTTR</span><strong>{formatOptionalDuration(overview.kpis.mttr_segundos)}</strong></div>
-                <small>Tempo médio de reparo</small>
-              </article>
-              <article className="kpi-card">
-                <div><span>MTBF</span><strong>{formatOptionalDuration(overview.kpis.mtbf_segundos)}</strong></div>
-                <small>{overview.kpis.falhas_nao_planejadas} falha(s) não planejada(s)</small>
-              </article>
-              <article className="kpi-card">
-                <div><span>Lead time OS</span><strong>{formatOptionalDuration(overview.kpis.lead_time_os_segundos)}</strong></div>
-                <small>Da abertura à finalização</small>
-              </article>
-              <article className="kpi-card">
-                <div><span>SLA resolução</span><strong>{formatOptionalPercent(overview.kpis.sla_resolucao_pct)}</strong></div>
-                <small>{overview.kpis.sla_resolucao_amostra} demanda(s) elegível(is)</small>
-              </article>
-              <article className="kpi-card">
-                <div><span>OEE</span><strong>{overview.kpis.oee_disponivel ? formatOptionalPercent(overview.kpis.oee_pct) : 'Aguardando dados'}</strong></div>
-                <small>{overview.kpis.oee_disponivel ? 'Disponibilidade × performance × qualidade' : 'Cadastre apontamentos de produção'}</small>
-              </article>
-            </div>
-
-            <p className="last-update">
-              Última atualização: {updatedAt ? formatDate(updatedAt) : 'pendente'}
-            </p>
-          </aside>
-        </section>
-      </main>
-
-      {selectedAction ? (
-        <ActionReviewDialog
-          action={selectedAction}
-          onClose={() => setSelectedAction(null)}
-          onDecisionComplete={handleDecisionComplete}
-          onSessionExpired={onSessionExpired}
-        />
+      {error ? (
+        <div className="dashboard-error" role="alert">
+          <strong>Falha ao atualizar o painel.</strong>
+          <span>{error}</span>
+        </div>
       ) : null}
-    </>
+
+      <section className="manager-summary-grid" aria-label="Resumo do trabalho">
+        {summaryMetrics.map((metric) => (
+          <article className={`manager-summary-card is-${metric.tone}`} key={metric.label}>
+            <span>{metric.label}</span>
+            <strong>{loading ? '—' : metric.value}</strong>
+            <small>{metric.detail}</small>
+          </article>
+        ))}
+      </section>
+
+      <section className="manager-workspace">
+        <article className="manager-next-work">
+          <header>
+            <div>
+              <span className="eyebrow">PRÓXIMO PASSO</span>
+              <h2>{nextWork ? 'Trate primeiro este item' : 'Tudo sob controle'}</h2>
+            </div>
+            {nextWork?.overdue ? <span className="manager-overdue-chip">SLA vencido</span> : null}
+          </header>
+
+          {loading ? (
+            <p className="panel-state">Organizando suas prioridades…</p>
+          ) : nextWork ? (
+            <>
+              <div className="manager-next-work__identity">
+                <span className="manager-next-work__icon"><ValidationIcon /></span>
+                <span>
+                  <small>{nextWork.category} · {nextWork.priority}</small>
+                  <strong>{nextWork.title}</strong>
+                  <p>{nextWork.context}</p>
+                </span>
+              </div>
+              <ol className="manager-next-work__steps">
+                <li className="is-current"><b>1</b><span><strong>Abrir</strong><small>Leia o contexto e confirme o escopo.</small></span></li>
+                <li><b>2</b><span><strong>Analisar</strong><small>Confira risco, evidências e pendências.</small></span></li>
+                <li><b>3</b><span><strong>Decidir</strong><small>{nextWork.nextAction}.</small></span></li>
+              </ol>
+              <footer>
+                <span>Recebido em {formatDate(nextWork.createdAt)}</span>
+                <button type="button" onClick={() => onOpenWork(nextWork.view)}>
+                  {nextWork.nextAction} <ChevronRightIcon />
+                </button>
+              </footer>
+            </>
+          ) : (
+            <div className="manager-clear-state">
+              <CheckIcon />
+              <span>
+                <strong>Nenhuma decisão pendente</strong>
+                <small>Novas solicitações aparecerão aqui já ordenadas por SLA e prioridade.</small>
+              </span>
+            </div>
+          )}
+        </article>
+
+        <aside className="manager-work-groups">
+          <header>
+            <span className="eyebrow">CENTRAL DE TRABALHO</span>
+            <h2>Uma única entrada</h2>
+            <p>Tudo que exige sua intervenção fica organizado nestas quatro categorias.</p>
+          </header>
+          <div>
+            {workGroups.map(({ view, label, description, count, Icon }) => (
+              <button type="button" key={view} onClick={() => onOpenWork(view)}>
+                <Icon />
+                <span><strong>{label}</strong><small>{description}</small></span>
+                <b>{count}</b>
+                <ChevronRightIcon />
+              </button>
+            ))}
+          </div>
+        </aside>
+      </section>
+
+      <section className="manager-operation-strip">
+        <header>
+          <div>
+            <span className="eyebrow">SITUAÇÃO DA FÁBRICA</span>
+            <h2>Operação em tempo real</h2>
+          </div>
+          <button type="button" onClick={() => onNavigate('assets')}>
+            <AssetIcon /> Consultar ativos
+          </button>
+        </header>
+        <div>
+          <article>
+            <StopIcon />
+            <span><strong>{overview.counts.openStops}</strong><small>paradas abertas</small></span>
+          </article>
+          <article>
+            <AlertIcon />
+            <span><strong>{overview.counts.awaitingOccurrences}</strong><small>anormalidades sem análise</small></span>
+          </article>
+          <article>
+            <ValidationIcon />
+            <span><strong>{overview.counts.blocked}</strong><small>ações bloqueadas</small></span>
+          </article>
+          <article>
+            <CheckIcon />
+            <span><strong>{overview.counts.executing}</strong><small>execuções em andamento</small></span>
+          </article>
+        </div>
+      </section>
+
+      <GestorPerformancePanel onSessionExpired={onSessionExpired} />
+
+      <p className="manager-dashboard__updated">
+        Última consolidação: {updatedAt ? formatDate(updatedAt) : 'pendente'}
+      </p>
+    </main>
   )
 }
