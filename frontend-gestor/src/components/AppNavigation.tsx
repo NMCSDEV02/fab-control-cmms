@@ -1,7 +1,6 @@
 import {
   AssetIcon,
-  HomeIcon,
-  MoreIcon,
+  ChartIcon,
   UsersIcon,
   ValidationIcon,
 } from './Icons'
@@ -16,11 +15,11 @@ export interface AppNavigationProps {
 }
 
 const ITEMS = [
-  { id: 'home' as const, label: 'Início', Icon: HomeIcon },
-  { id: 'validations' as const, label: 'Trabalho', Icon: ValidationIcon },
+  { id: 'home' as const, label: 'Fila', Icon: ValidationIcon },
+  { id: 'validations' as const, label: 'Indicadores', Icon: ChartIcon },
   { id: 'assets' as const, label: 'Ativos', Icon: AssetIcon },
   { id: 'admin' as const, label: 'Admin', Icon: UsersIcon },
-  { id: 'more' as const, label: 'Mais', Icon: MoreIcon },
+  { id: 'more' as const, label: 'Conta', Icon: UsersIcon },
 ]
 
 export function AppNavigation({
@@ -42,7 +41,7 @@ export function AppNavigation({
         >
           <span className="app-navigation__icon">
             <Icon />
-            {id === 'validations' && validationCount > 0 ? (
+            {id === 'home' && validationCount > 0 ? (
               <span className="app-navigation__badge">
                 {validationCount > 99 ? '99+' : validationCount}
               </span>

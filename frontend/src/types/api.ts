@@ -321,6 +321,9 @@ export interface OperatorActionDetailData {
     ferramentas?: Array<{ tipo?: string; nome?: string }>
     nrs?: string[]
     etapas?: Array<{ ordem?: number; titulo?: string; descricao?: string }>
+    seguranca?: string[]
+    evidencias_requeridas?: string[]
+    criterio_aceite?: string
   }
 }
 

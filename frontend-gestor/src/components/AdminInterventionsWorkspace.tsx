@@ -14,7 +14,7 @@ interface AdminInterventionsWorkspaceProps {
 
 function emptyIntervention(): AdminInterventionInput {
   return {
-    ativo_id: '', componente_id: '', tipo: 'CORRETIVA', titulo: '', descricao: '', prioridade: 'MEDIA',
+    ativo_id: '', componente_id: '', plano_id: '', tipo: 'CORRETIVA', titulo: '', descricao: '', prioridade: 'MEDIA',
     planejada_para: '', modo_parada_manutencao: 'DECISAO_EXECUTOR',
   }
 }
@@ -35,10 +35,21 @@ function available(record: AdminEntityRecord, selectedId?: string): boolean {
   return String(record.status ?? '').trim().toUpperCase() !== 'INATIVO' || String(record.id) === String(selectedId ?? '')
 }
 
+function operationalPlan(record: AdminEntityRecord): boolean {
+  const status = String(record.status ?? '').trim().toUpperCase()
+  const workflow = String(record.workflow_status ?? '').trim().toUpperCase()
+  const validated = String(record.validado_gestao ?? '').trim().toUpperCase()
+  return status === 'ATIVO'
+    && ['VALIDADO', 'ATIVO'].includes(workflow)
+    && validated !== 'NAO'
+}
+
 export function AdminInterventionsWorkspace({ onSessionExpired }: AdminInterventionsWorkspaceProps) {
   const [interventions, setInterventions] = useState<AdminIntervention[]>([])
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
   const [components, setComponents] = useState<AdminEntityRecord[]>([])
+  const [plans, setPlans] = useState<AdminEntityRecord[]>([])
+  const [planItems, setPlanItems] = useState<AdminEntityRecord[]>([])
   const [areas, setAreas] = useState<TechnicalArea[]>([])
   const [roles, setRoles] = useState<TechnicalRole[]>([])
   const [search, setSearch] = useState('')
@@ -62,13 +73,16 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
   }, [onSessionExpired])
 
   const loadData = useCallback(async (signal?: AbortSignal) => {
-    const [nextInterventions, assetList, componentList, nextAreas, nextRoles] = await Promise.all([
+    const [nextInterventions, assetList, componentList, planList, planItemList, nextAreas, nextRoles] = await Promise.all([
       listAdminInterventions(signal), listAdminEntity('ativos', signal), listAdminEntity('componentes', signal),
+      listAdminEntity('planos', signal), listAdminEntity('plano_itens', signal),
       listTechnicalAreas(signal), listTechnicalRoles('', signal),
     ])
     setInterventions(nextInterventions)
     setAssets(assetList.rows)
     setComponents(componentList.rows)
+    setPlans(planList.rows)
+    setPlanItems(planItemList.rows)
     setAreas(nextAreas)
     setRoles(nextRoles)
   }, [])
@@ -101,6 +115,31 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
     )),
     [components, editor?.ativo_id, editor?.componente_id],
   )
+  const activePlanItemCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    planItems.forEach((item) => {
+      if (String(item.status ?? 'ATIVO').trim().toUpperCase() === 'INATIVO') return
+      const planId = String(item.plano_id ?? '')
+      counts.set(planId, (counts.get(planId) ?? 0) + 1)
+    })
+    return counts
+  }, [planItems])
+  const editorPlans = useMemo(
+    () => plans.filter((plan) => {
+      if (!operationalPlan(plan)) return false
+      if (!activePlanItemCounts.get(String(plan.id))) return false
+      if (String(plan.ativo_id) !== String(editor?.ativo_id)) return false
+      const planComponentId = String(plan.componente_id ?? '')
+      return !planComponentId
+        || planComponentId === String(editor?.componente_id ?? '')
+    }),
+    [
+      activePlanItemCounts,
+      editor?.ativo_id,
+      editor?.componente_id,
+      plans,
+    ],
+  )
   const routeRoles = useMemo(
     () => roles.filter((role) => role.area_id === routeDraft.area_atual_id),
     [roles, routeDraft.area_atual_id],
@@ -115,6 +154,7 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
   function openEditor(intervention?: AdminIntervention) {
     setEditor(intervention ? {
       id: intervention.id, ativo_id: intervention.ativo_id, componente_id: intervention.componente_id,
+      plano_id: intervention.plano_id || '',
       tipo: intervention.tipo, titulo: intervention.titulo, descricao: intervention.descricao,
       prioridade: intervention.prioridade, planejada_para: intervention.planejada_para,
       modo_parada_manutencao: intervention.modo_parada_manutencao || 'DECISAO_EXECUTOR',
@@ -131,8 +171,8 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
 
   async function save() {
     if (!editor) return
-    if (!editor.ativo_id || !editor.titulo.trim() || editor.descricao.trim().length < 5) {
-      setError('Selecione o ativo e informe título e descrição da intervenção.')
+    if (!editor.ativo_id || !editor.plano_id || !editor.titulo.trim() || editor.descricao.trim().length < 5) {
+      setError('Selecione o ativo, vincule um checklist validado e informe título e descrição da intervenção.')
       return
     }
     setSaving(true)
@@ -201,14 +241,15 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
         <div className="admin-intervention-filters"><label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, título ou equipamento" /></label><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos os status</option><option value="RASCUNHO">Rascunhos</option><option value="DEVOLVIDA_ADMIN">Devolvidas</option><option value="AGUARDANDO_VALIDACAO">Em validação</option><option value="ABERTA">Liberadas</option><option value="EM_EXECUCAO">Em execução</option><option value="FINALIZADA">Finalizadas</option></select></div>
         <div className="admin-intervention-table">
           <div><span>Intervenção</span><span>Equipamento</span><span>Prioridade</span><span>Filtro técnico</span><span>Status</span><span>Ações</span></div>
-          {visibleInterventions.map((item) => <article key={item.id}><span><b>{item.codigo}</b><strong>{item.titulo}</strong><small>{item.tipo}</small></span><span><strong>{item.ativo_tag || item.ativo_nome || item.ativo_id}</strong><small>{item.componente_nome || 'Ativo completo'}</small></span><i className={`is-${item.prioridade.toLowerCase()}`}>{item.prioridade}</i><span><strong>{item.demanda?.area_atual_nome || '—'}</strong><small>{item.demanda?.cargo_atual_nome || 'Sem cargo específico'}</small></span><em className={`is-${item.status.toLowerCase()}`}>{statusLabel(item.status)}</em><span className="admin-intervention-actions">{editable(item) ? <><button type="button" onClick={() => openEditor(item)}>Editar</button><button className="primary-button" type="button" onClick={() => openRouting(item)}>{item.status === 'DEVOLVIDA_ADMIN' ? 'Reenviar' : 'Enviar'}</button></> : <button type="button" onClick={() => setViewing(item)}>Acompanhar</button>}</span></article>)}
+          {visibleInterventions.map((item) => <article key={item.id}><span><b>{item.codigo}</b><strong>{item.titulo}</strong><small>{item.tipo} · {item.plano_nome ? `${item.plano_nome} · ${item.plano_itens_count || 0} etapas` : 'Checklist pendente'}</small></span><span><strong>{item.ativo_tag || item.ativo_nome || item.ativo_id}</strong><small>{item.componente_nome || 'Ativo completo'}</small></span><i className={`is-${item.prioridade.toLowerCase()}`}>{item.prioridade}</i><span><strong>{item.demanda?.area_atual_nome || '—'}</strong><small>{item.demanda?.cargo_atual_nome || 'Sem cargo específico'}</small></span><em className={`is-${item.status.toLowerCase()}`}>{statusLabel(item.status)}</em><span className="admin-intervention-actions">{editable(item) ? (item.plano_id ? <><button type="button" onClick={() => openEditor(item)}>Editar</button><button className="primary-button" type="button" onClick={() => openRouting(item)}>{item.status === 'DEVOLVIDA_ADMIN' ? 'Reenviar' : 'Enviar'}</button></> : <button className="primary-button" type="button" onClick={() => openEditor(item)}>Vincular checklist</button>) : <button type="button" onClick={() => setViewing(item)}>Acompanhar</button>}</span></article>)}
           {!visibleInterventions.length ? <div className="admin-empty-state admin-intervention-empty"><WrenchIcon /><strong>Nenhuma intervenção encontrada</strong><span>Depois do primeiro rascunho, a área Ações exibirá Editar e Enviar. Após a validação, exibirá Acompanhar sem permitir alterações no documento liberado.</span></div> : null}
         </div>
       </section>
 
       {editor ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditor(null) }}><section role="dialog" aria-modal="true" aria-labelledby="intervention-editor-title"><header><div><span className="eyebrow">PLANEJAMENTO ASSISTIDO</span><h2 id="intervention-editor-title">{editor.id ? 'Editar intervenção' : 'Nova intervenção'}</h2></div><button type="button" onClick={() => setEditor(null)}>×</button></header><div className="admin-catalog-form">
-        <label><span>Ativo *</span><select value={editor.ativo_id} onChange={(event) => setEditor((current) => current ? { ...current, ativo_id: event.target.value, componente_id: '' } : current)}><option value="">Selecione…</option>{assets.filter((asset) => available(asset, editor.ativo_id)).map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
-        <label><span>Componente</span><select value={editor.componente_id || ''} onChange={(event) => setEditor((current) => current ? { ...current, componente_id: event.target.value } : current)}><option value="">Ativo completo</option>{editorComponents.map((component) => <option value={component.id} key={component.id}>{String(component.tag || component.id)} · {String(component.nome)}</option>)}</select></label>
+        <label><span>Ativo *</span><select value={editor.ativo_id} onChange={(event) => setEditor((current) => current ? { ...current, ativo_id: event.target.value, componente_id: '', plano_id: '' } : current)}><option value="">Selecione…</option>{assets.filter((asset) => available(asset, editor.ativo_id)).map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
+        <label><span>Componente</span><select value={editor.componente_id || ''} onChange={(event) => setEditor((current) => current ? { ...current, componente_id: event.target.value, plano_id: '' } : current)}><option value="">Ativo completo</option>{editorComponents.map((component) => <option value={component.id} key={component.id}>{String(component.tag || component.id)} · {String(component.nome)}</option>)}</select></label>
+        <label className="is-wide"><span>Checklist de execução *</span><select value={editor.plano_id} onChange={(event) => setEditor((current) => current ? { ...current, plano_id: event.target.value } : current)}><option value="">{editor.ativo_id ? 'Selecione um checklist validado…' : 'Selecione primeiro o ativo…'}</option>{editorPlans.map((plan) => <option value={plan.id} key={plan.id}>{String(plan.nome)} · R{String(plan.revisao || 1)} · {activePlanItemCounts.get(String(plan.id))} etapas</option>)}</select><small>{editor.ativo_id && !editorPlans.length ? 'Nenhum checklist validado e executável está disponível para este escopo.' : 'Somente modelos aprovados pelo Gestor e com etapas podem ser vinculados.'}</small></label>
         <label><span>Tipo</span><select value={editor.tipo} onChange={(event) => setEditor((current) => current ? { ...current, tipo: event.target.value } : current)}><option value="CORRETIVA">Corretiva</option><option value="PREVENTIVA">Preventiva</option><option value="PREDITIVA">Preditiva</option><option value="INSPECAO">Inspeção</option><option value="QUALIDADE">Qualidade</option><option value="SEGURANCA">Segurança</option></select></label>
         <label><span>Prioridade</span><select value={editor.prioridade} onChange={(event) => setEditor((current) => current ? { ...current, prioridade: event.target.value } : current)}><option value="BAIXA">Baixa</option><option value="MEDIA">Média</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select></label>
         <label><span>Planejada para</span><input type="datetime-local" value={editor.planejada_para || ''} onChange={(event) => setEditor((current) => current ? { ...current, planejada_para: event.target.value } : current)} /></label>
@@ -232,6 +273,7 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
           <article><small>Status</small><strong>{statusLabel(viewing.status)}</strong></article>
           <article><small>Equipamento</small><strong>{viewing.ativo_tag || viewing.ativo_nome || viewing.ativo_id}</strong></article>
           <article><small>Componente</small><strong>{viewing.componente_nome || 'Ativo completo'}</strong></article>
+          <article><small>Checklist de execução</small><strong>{viewing.plano_nome ? `${viewing.plano_nome} · R${viewing.plano_revisao || 1} · ${viewing.plano_itens_count || 0} etapas` : 'Vínculo pendente'}</strong></article>
           <article><small>Prioridade</small><strong>{viewing.prioridade}</strong></article>
           <article><small>Área atual</small><strong>{viewing.demanda?.area_atual_nome || 'Fluxo operacional'}</strong></article>
           <article><small>Responsável técnico</small><strong>{viewing.demanda?.cargo_atual_nome || 'Sem cargo específico'}</strong></article>

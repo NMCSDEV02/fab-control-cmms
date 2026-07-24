@@ -76,15 +76,15 @@ const SH = {
 
   materiais: ["id", "sku", "nome", "unidade", "estoque_atual", "estoque_minimo", "status", "criado_em", "atualizado_em"],
 
-  planos_manutencao: ["id", "ativo_id", "componente_id", "nome", "tipo", "criticidade", "gatilho_tipo", "gatilho_valor", "unidade", "recorrencia_dias", "tempo_estimado_min", "requer_bloqueio", "requer_evidencia", "max_sessoes", "status", "ultimo_disparo_em", "criado_em", "atualizado_em", "workflow_status", "validado_gestao", "validado_por", "validado_em", "devolvido_por", "devolvido_em", "devolvido_motivo", "enviado_validacao_em", "revisao", "setor_id", "modelo_base_id", "revisao_origem_id", "substitui_plano_id", "substituido_por", "substituido_em", "modo_parada_manutencao"],
+  planos_manutencao: ["id", "ativo_id", "componente_id", "nome", "tipo", "criticidade", "gatilho_tipo", "gatilho_valor", "unidade", "recorrencia_dias", "tempo_estimado_min", "requer_bloqueio", "requer_evidencia", "max_sessoes", "status", "ultimo_disparo_em", "criado_em", "atualizado_em", "workflow_status", "validado_gestao", "validado_por", "validado_em", "devolvido_por", "devolvido_em", "devolvido_motivo", "enviado_validacao_em", "revisao", "setor_id", "modelo_base_id", "revisao_origem_id", "substitui_plano_id", "substituido_por", "substituido_em", "modo_parada_manutencao", "analise_tecnica_json"],
 
   plano_itens: ["id", "plano_id", "ordem", "titulo", "instrucao", "tipo_resposta", "obrigatorio", "evidencia_obrigatoria", "foto_referencia_url", "limite_min", "limite_max", "unidade", "criado_em", "atualizado_em", "parametro_nome", "valor_esperado", "opcoes_json", "bloqueia_finalizacao", "categoria", "peso", "status", "validacao_regra", "evidencia_min_fotos"],
 
   plano_controle: ["plano_id", "ativo_id", "componente_id", "gatilho_tipo", "gatilho_valor", "ultimo_valor_processado", "proximo_valor_gatilho", "ultima_acao_id", "ultima_acao_status", "atualizado_em"],
 
-  ordens_servico: ["id", "codigo", "ativo_id", "componente_id", "origem", "tipo", "titulo", "descricao", "prioridade", "status", "solicitante_id", "responsavel_id", "aberta_em", "planejada_para", "iniciada_em", "finalizada_em", "criado_em", "atualizado_em", "modo_parada_manutencao"],
+  ordens_servico: ["id", "codigo", "ativo_id", "componente_id", "plano_id", "origem", "tipo", "titulo", "descricao", "prioridade", "status", "solicitante_id", "responsavel_id", "aberta_em", "planejada_para", "iniciada_em", "finalizada_em", "criado_em", "atualizado_em", "modo_parada_manutencao", "analise_tecnica_json"],
 
-  os_acoes: ["id", "os_id", "ativo_id", "componente_id", "plano_id", "origem", "tipo", "titulo", "descricao", "prioridade", "status", "responsavel_id", "gerado_em", "iniciado_em", "finalizado_em", "atualizado_em", "modo_parada_manutencao"],
+  os_acoes: ["id", "os_id", "ativo_id", "componente_id", "plano_id", "origem", "tipo", "titulo", "descricao", "prioridade", "status", "responsavel_id", "gerado_em", "iniciado_em", "finalizado_em", "atualizado_em", "modo_parada_manutencao", "analise_tecnica_json"],
 
   execucoes: ["id", "acao_id", "os_id", "ativo_id", "componente_id", "operador_id", "resultado", "observacao", "duracao_segundos", "abriu_em", "iniciou_em", "finalizou_em", "status", "criado_em", "atualizado_em", "modo_execucao_manutencao"],
 
@@ -104,7 +104,7 @@ const SH = {
   demandas_tecnicas: ["id","tipo","entidade_tipo","entidade_id","origem_tipo","origem_id","titulo","descricao","prioridade","status","area_origem_id","area_atual_id","cargo_atual_id","responsavel_atual_id","criado_por","criado_perfil","exige_assinatura","assinaturas_necessarias","assinaturas_realizadas","exige_segregacao","prazo_primeira_resposta_em","prazo_resolucao_em","primeiro_atendimento_em","concluido_em","versao_entidade","payload_hash","criado_em","atualizado_em"],
   demanda_tramitacoes: ["id","demanda_id","sequencia","acao","de_area_id","de_cargo_id","de_usuario_id","para_area_id","para_cargo_id","para_usuario_id","decisao","parecer","motivo","payload_hash","criado_em"],
   assinaturas_tecnicas: ["id","demanda_id","entidade_tipo","entidade_id","versao_entidade","usuario_id","perfil","area_id","cargo_id","significado","declaracao","payload_hash","criado_em","revogado_em","motivo_revogacao"],
-  analises_tecnicas: ["id","demanda_id","ocorrencia_id","ativo_id","componente_id","autor_id","area_id","cargo_id","titulo","diagnostico","risco","causa_provavel","recomendacao","recomenda_checklist","recomenda_os","prioridade","status","enviado_admin_em","criado_em","atualizado_em"],
+  analises_tecnicas: ["id","demanda_id","ocorrencia_id","ativo_id","componente_id","autor_id","area_id","cargo_id","titulo","diagnostico","risco","causa_provavel","recomendacao","recomenda_checklist","recomenda_os","prioridade","status","enviado_admin_em","criado_em","atualizado_em","relatorio_tecnico_json"],
   notificacoes: ["id","usuario_id","perfil","area_id","tipo","titulo","mensagem","entidade_tipo","entidade_id","prioridade","status","lida_em","criado_em"],
   turnos: ["id","planta_id","setor_id","linha_id","nome","inicio_hora","fim_hora","dias_semana_json","timezone","status","criado_em","atualizado_em"],
   apontamentos_producao: ["id","turno_id","ativo_id","inicio_em","fim_em","tempo_planejado_segundos","tempo_operacao_segundos","ciclo_ideal_segundos","quantidade_total","quantidade_boas","quantidade_refugo","fonte","usuario_id","criado_em","atualizado_em"],

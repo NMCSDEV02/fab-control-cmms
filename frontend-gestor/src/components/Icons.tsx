@@ -116,6 +116,72 @@ export function ChevronRightIcon(props: IconProps) {
   )
 }
 
+export function PlusIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </IconBase>
+  )
+}
+
+export function ArrowUpIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m6 10 6-6 6 6M12 4v16" />
+    </IconBase>
+  )
+}
+
+export function ArrowDownIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m6 14 6 6 6-6M12 20V4" />
+    </IconBase>
+  )
+}
+
+export function CopyIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </IconBase>
+  )
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6" />
+    </IconBase>
+  )
+}
+
+export function CameraIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 8h3l2-3h6l2 3h3v11H4z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </IconBase>
+  )
+}
+
+export function NumberIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M9 3 7 21M17 3l-2 18M4 9h16M3 15h16" />
+    </IconBase>
+  )
+}
+
+export function TextIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 5h16M12 5v14M8 19h8" />
+    </IconBase>
+  )
+}
+
 export function SettingsIcon(props: IconProps) {
   return (
     <IconBase {...props}>

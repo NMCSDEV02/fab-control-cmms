@@ -124,6 +124,7 @@ function createOs_(ativo, plano){
     codigo:"OS-"+Utilities.formatDate(new Date(), FAB.TZ, "yyyyMMdd-HHmmss"),
     ativo_id:ativo.id,
     componente_id:plano.componente_id||"",
+    plano_id:plano.id,
     origem:"MOTOR",
     tipo:plano.tipo,
     titulo:plano.nome,

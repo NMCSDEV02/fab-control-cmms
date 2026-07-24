@@ -11,6 +11,8 @@ const TECH_DEMAND_STATUS = {
   CANCELADA:"CANCELADA"
 };
 
+const TECH_WORKFLOW_SCHEMA_VERSION = FAB.SCHEMA_VERSION + ".briefing.2";
+
 const TECH_FINAL_STATUSES = [
   TECH_DEMAND_STATUS.DEVOLVIDA_ADMIN,
   TECH_DEMAND_STATUS.APROVADA,
@@ -23,20 +25,21 @@ function technicalEnsureSchema_(){
   var ss = getSpreadsheet_();
   var marker = find_("config", "chave", "workflow.tecnico.schema.version");
   var textRepairMarker = find_("config", "chave", "workflow.tecnico.text.repair.version");
-  if(marker && clean_(marker.valor) === FAB.SCHEMA_VERSION && textRepairMarker && clean_(textRepairMarker.valor) === "1") return;
+  if(marker && clean_(marker.valor) === TECH_WORKFLOW_SCHEMA_VERSION && textRepairMarker && clean_(textRepairMarker.valor) === "1") return;
   var lock = LockService.getScriptLock();
   if(!lock.tryLock(20000)) err_("TECH_SCHEMA_BUSY", "A preparação do workflow técnico está em andamento. Tente novamente.", 409);
   try{
     marker = find_("config", "chave", "workflow.tecnico.schema.version");
-    if(!marker || clean_(marker.valor) !== FAB.SCHEMA_VERSION){
+    if(!marker || clean_(marker.valor) !== TECH_WORKFLOW_SCHEMA_VERSION){
       [
         "areas_tecnicas","cargos_tecnicos","demandas_tecnicas","demanda_tramitacoes",
         "assinaturas_tecnicas","analises_tecnicas","notificacoes","turnos",
-        "apontamentos_producao","sla_politicas","usuarios"
+        "apontamentos_producao","sla_politicas","usuarios","planos_manutencao",
+        "ordens_servico","os_acoes"
       ].forEach(function(name){ ensureSheet_(ss, name, SH[name]); });
       upsert_("config", "chave", {
         chave:"workflow.tecnico.schema.version",
-        valor:FAB.SCHEMA_VERSION,
+        valor:TECH_WORKFLOW_SCHEMA_VERSION,
         descricao:"Versão do roteamento, assinatura, análises e KPIs técnicos",
         atualizado_em:now_()
       });
@@ -63,14 +66,23 @@ function cmmsWorkflowTecnicoSchemaUpgrade_(p, auth){
   }
   technicalEnsureSchema_();
   var catalog = technicalSeedCatalog_(auth);
+  var interventionIntegrity = typeof adminIntervencaoQuarentenarAcoesInvalidas_ === "function"
+    ? adminIntervencaoQuarentenarAcoesInvalidas_(auth)
+    : {checked:0, quarantined:0, manual_review:0};
   upsert_("config", "chave", {
     chave:"workflow.tecnico.schema.version",
-    valor:FAB.SCHEMA_VERSION,
+    valor:TECH_WORKFLOW_SCHEMA_VERSION,
     descricao:"Versão do roteamento, assinatura, análises e KPIs técnicos",
     atualizado_em:now_()
   });
   invalidateRuntimeCache_();
-  return {upgraded:true, schema_version:FAB.SCHEMA_VERSION, sheets:Object.keys(SH).length, catalog:catalog};
+  return {
+    upgraded:true,
+    schema_version:FAB.SCHEMA_VERSION,
+    sheets:Object.keys(SH).length,
+    catalog:catalog,
+    intervention_integrity:interventionIntegrity
+  };
 }
 
 function technicalSeedCatalog_(auth){
@@ -185,6 +197,89 @@ function technicalJsonArray_(value){
 
 function technicalSerializeArray_(value){
   return JSON.stringify(technicalJsonArray_(value));
+}
+
+function technicalObject_(value){
+  if(value && typeof value === "object" && !Array.isArray(value)) return value;
+  if(!clean_(value)) return {};
+  try{
+    var parsed = JSON.parse(clean_(value));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch(e){
+    return {};
+  }
+}
+
+function technicalTextList_(value, fallback, limit){
+  var source = Array.isArray(value) ? value : (Array.isArray(fallback) ? fallback : []);
+  return source.map(function(item){ return clean_(item); }).filter(Boolean).slice(0, limit || 20);
+}
+
+function technicalNormalizeBrief_(value, fallback){
+  var data = technicalObject_(value);
+  var base = technicalObject_(fallback);
+  var situation = clean_(data.situacao || base.situacao || "Intervenção técnica registrada para execução.");
+  var cause = clean_(data.causa_provavel || base.causa_provavel || "A confirmar na inspeção inicial do equipamento.");
+  var expected = clean_(data.resultado_esperado || base.resultado_esperado || "Concluir a atividade em condição segura e operacional.");
+  var acceptance = clean_(data.criterio_aceite || base.criterio_aceite || "Condição segura confirmada e evidências registradas.");
+  var rawRisks = Array.isArray(data.riscos) ? data.riscos : (Array.isArray(base.riscos) ? base.riscos : []);
+  var risks = rawRisks.map(function(item){
+    var risk = technicalObject_(item);
+    return {
+      tipo:clean_(risk.tipo || "OPERACIONAL"),
+      titulo:clean_(risk.titulo || "Risco operacional"),
+      descricao:clean_(risk.descricao || "Interromper a atividade se a condição exceder o escopo autorizado.")
+    };
+  }).filter(function(item){ return item.titulo || item.descricao; }).slice(0, 12);
+  var rawTools = Array.isArray(data.ferramentas) ? data.ferramentas : (Array.isArray(base.ferramentas) ? base.ferramentas : []);
+  var tools = rawTools.map(function(item){
+    var tool = technicalObject_(item);
+    return {tipo:clean_(tool.tipo || "TECNICA"), nome:clean_(tool.nome)};
+  }).filter(function(item){ return item.nome; }).slice(0, 20);
+  var rawSteps = Array.isArray(data.etapas) ? data.etapas : (Array.isArray(base.etapas) ? base.etapas : []);
+  var steps = rawSteps.map(function(item, index){
+    var step = technicalObject_(item);
+    return {
+      ordem:index + 1,
+      titulo:clean_(step.titulo || "Etapa " + (index + 1)),
+      descricao:clean_(step.descricao || step.instrucao)
+    };
+  }).filter(function(item){ return item.titulo && item.descricao; }).slice(0, 40);
+  if(!steps.length){
+    steps = [
+      {ordem:1, titulo:"Preparar e isolar", descricao:"Confirmar o equipamento, a autorização e as medidas de segurança."},
+      {ordem:2, titulo:"Inspecionar", descricao:"Verificar a condição informada e registrar a evidência inicial."},
+      {ordem:3, titulo:"Executar", descricao:"Realizar somente o serviço aprovado e comunicar qualquer desvio."},
+      {ordem:4, titulo:"Testar e liberar", descricao:"Validar o resultado e registrar a condição operacional final."}
+    ];
+  }
+  return {
+    situacao:situation,
+    causa_provavel:cause,
+    resultado_esperado:expected,
+    riscos:risks.length ? risks : [{
+      tipo:"OPERACIONAL",
+      titulo:"Risco operacional",
+      descricao:"Interromper a atividade se a condição exceder o escopo autorizado."
+    }],
+    seguranca:technicalTextList_(data.seguranca, base.seguranca && base.seguranca.length ? base.seguranca : [
+      "Confirmar autorização, identificação do ativo e condição segura da área.",
+      "Isolar as fontes de energia aplicáveis antes de acessar a zona de risco.",
+      "Registrar e comunicar qualquer desvio do escopo aprovado."
+    ], 20),
+    nrs:technicalTextList_(data.nrs, base.nrs && base.nrs.length ? base.nrs : ["NR-12"], 12),
+    ferramentas:tools,
+    etapas:steps,
+    evidencias_requeridas:technicalTextList_(data.evidencias_requeridas, base.evidencias_requeridas && base.evidencias_requeridas.length ? base.evidencias_requeridas : [
+      "Condição encontrada",
+      "Teste ou condição final"
+    ], 20),
+    criterio_aceite:acceptance
+  };
+}
+
+function technicalSerializeBrief_(value, fallback){
+  return JSON.stringify(technicalNormalizeBrief_(value, fallback));
 }
 
 function technicalActiveArea_(id){
@@ -452,6 +547,7 @@ function technicalListDemands_(p, auth, adminOnly){
   var statuses = clean_(p.status).split(",").map(upper_).filter(Boolean);
   var demands = rows_("demandas_tecnicas", true).filter(function(demand){
     if(!adminOnly && !technicalDemandAccessible_(demand, identity)) return false;
+    if(!adminOnly && !statuses.length && TECH_FINAL_STATUSES.indexOf(upper_(demand.status)) >= 0) return false;
     if(statuses.length && statuses.indexOf(upper_(demand.status)) < 0) return false;
     if(clean_(p.tipo) && upper_(demand.tipo) !== upper_(p.tipo)) return false;
     return true;
@@ -600,6 +696,24 @@ function technicalApplyReturnedEntity_(demand, identity){
   }
 }
 
+function technicalAttachBriefToDemandEntity_(demand, brief, opinion){
+  var type = upper_(demand.entidade_tipo);
+  if(type !== "ORDEM_SERVICO_RASCUNHO") return null;
+  var order = find_("ordens_servico", "id", demand.entidade_id);
+  if(!order) err_("INTERVENTION_NOT_FOUND", "A intervenção vinculada à demanda não existe.", 404);
+  var normalized = technicalNormalizeBrief_(brief, {
+    situacao:clean_(demand.descricao || order.descricao || order.titulo),
+    causa_provavel:"A confirmar na inspeção inicial do equipamento.",
+    resultado_esperado:"Concluir " + clean_(order.titulo || "a intervenção") + " em condição segura e operacional.",
+    criterio_aceite:clean_(opinion) || "Serviço concluído, condição segura confirmada e evidências registradas."
+  });
+  update_("ordens_servico", order.__rowIndex, {
+    analise_tecnica_json:JSON.stringify(normalized),
+    atualizado_em:now_()
+  });
+  return normalized;
+}
+
 function gestorDemandaDecidir_(p, auth){
   technicalRequireManager_(auth);
   technicalEnsureSchema_();
@@ -625,13 +739,16 @@ function gestorDemandaDecidir_(p, auth){
     status:status, primeiro_atendimento_em:clean_(demand.primeiro_atendimento_em) || now_(),
     concluido_em:now_(), atualizado_em:now_()
   };
+  var technicalBrief = decision === "LIBERAR_OPERACAO"
+    ? technicalAttachBriefToDemandEntity_(demand, p.relatorio_tecnico, p.parecer)
+    : null;
   if(decision !== "DEVOLVER_ADMIN") technicalApplyApprovedEntity_(demand, identity);
   update_("demandas_tecnicas", demand.__rowIndex, patch);
   technicalAppendTransition_(Object.assign({}, demand, patch), "DECIDIDA", identity, {}, decision, p.parecer, p.motivo);
   if(decision === "DEVOLVER_ADMIN") technicalApplyReturnedEntity_(demand, identity);
   technicalNotify_({perfil:ROLE.ADMIN}, "DECISAO_TECNICA", demand.titulo, "Decisão: " + decision + ". Parecer: " + clean_(p.parecer), "demandas_tecnicas", demand.id, demand.prioridade);
-  audit_(auth, "TECH_DEMAND_DECIDED", "demandas_tecnicas", demand.id, strip_(demand), Object.assign({}, strip_(demand), patch), clean_(p.user_agent));
-  return {decided:true, decisao:decision, demanda:technicalDemandPublic_(Object.assign({}, demand, patch))};
+  audit_(auth, "TECH_DEMAND_DECIDED", "demandas_tecnicas", demand.id, strip_(demand), Object.assign({}, strip_(demand), patch, {relatorio_tecnico:technicalBrief}), clean_(p.user_agent));
+  return {decided:true, decisao:decision, demanda:technicalDemandPublic_(Object.assign({}, demand, patch)), relatorio_tecnico:technicalBrief};
 }
 
 function gestorAnaliseSalvar_(p, auth){
@@ -657,7 +774,13 @@ function gestorAnaliseSalvar_(p, auth){
     recomenda_checklist:bool_(data.recomenda_checklist) ? "SIM" : "NAO",
     recomenda_os:bool_(data.recomenda_os) ? "SIM" : "NAO",
     prioridade:upper_(data.prioridade || occurrence.severidade || "MEDIA"), status:ST.RASCUNHO,
-    enviado_admin_em:"", criado_em:old ? old.criado_em : now_(), atualizado_em:now_()
+    enviado_admin_em:"", criado_em:old ? old.criado_em : now_(), atualizado_em:now_(),
+    relatorio_tecnico_json:technicalSerializeBrief_(data.relatorio_tecnico, {
+      situacao:clean_(data.diagnostico || occurrence.descricao || occurrence.titulo),
+      causa_provavel:clean_(data.causa_provavel),
+      resultado_esperado:clean_(data.recomendacao),
+      riscos:[{tipo:upper_(data.prioridade || occurrence.severidade || "OPERACIONAL"), titulo:"Risco operacional", descricao:clean_(data.risco)}]
+    })
   }));
   if(old) update_("analises_tecnicas", old.__rowIndex, saved); else append_("analises_tecnicas", saved);
   update_("ocorrencias_operacionais", occurrence.__rowIndex, {status:"EM_ANALISE_TECNICA", atualizado_em:now_()});
@@ -706,6 +829,7 @@ function adminAnaliseConverterChecklist_(p, auth){
   plan.ativo_id = clean_(plan.ativo_id || analysis.ativo_id);
   plan.componente_id = clean_(plan.componente_id || analysis.componente_id);
   plan.nome = clean_(plan.nome || analysis.titulo);
+  plan.analise_tecnica_json = clean_(analysis.relatorio_tecnico_json);
   var saved = adminSalvarModeloChecklist_({plano:plan, itens:p.itens, __auth:auth});
   update_("analises_tecnicas", analysis.__rowIndex, {status:"CONVERTIDA_CHECKLIST", atualizado_em:now_()});
   audit_(auth, "TECH_ANALYSIS_CONVERTED_CHECKLIST", "analises_tecnicas", analysis.id, strip_(analysis), {status:"CONVERTIDA_CHECKLIST", plano_id:saved.plano.id}, clean_(p.user_agent));

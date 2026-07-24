@@ -59,7 +59,8 @@ vm.runInContext(
         demandas_tecnicas: [], demanda_tramitacoes: [], assinaturas_tecnicas: [],
         analises_tecnicas: [], notificacoes: [], audit_log: [],
         ocorrencias_operacionais: [{id:'OCR-1',ativo_id:'ATV-1',componente_id:'CMP-1',titulo:'Vibracao',descricao:'Vibracao elevada',severidade:'ALTA',status:'AGUARDANDO_ANALISE',__rowIndex:2}],
-        planos_manutencao: [{id:'PLN-1',nome:'Inspecao critica',status:'INATIVO',workflow_status:'EM_VALIDACAO_GESTAO',__rowIndex:2}],
+        planos_manutencao: [{id:'PLN-1',ativo_id:'ATV-1',componente_id:'CMP-1',nome:'Inspecao critica',status:'INATIVO',workflow_status:'EM_VALIDACAO_GESTAO',__rowIndex:2}],
+        plano_itens: [{id:'ITEM-1',plano_id:'PLN-1',ordem:1,titulo:'Inspecionar acoplamento',tipo_resposta:'CONFORME',status:'ATIVO',__rowIndex:2}],
         ativos: [{id:'ATV-1',tag:'EQ-01',nome:'Prensa 01',status:'OPERANDO',__rowIndex:2}],
         componentes: [{id:'CMP-1',ativo_id:'ATV-1',tag:'MOTOR',nome:'Motor principal',status:'ATIVO',__rowIndex:2}],
         ordens_servico: [], os_acoes: [], historico: []
@@ -76,6 +77,7 @@ vm.runInContext(
       function ensureSheet_(){}
       function adminRequireIdentityAdmin_(auth){ if(upper_(auth && auth.perfil) !== ROLE.ADMIN) err_('FORBIDDEN_ADMIN_REQUIRED','Somente ADMIN.',403); }
       function normalizaModoParadaManutencao115_(value){ var mode=upper_(value||'DECISAO_EXECUTOR'); return ['OBRIGATORIA','SEM_PARADA','DECISAO_EXECUTOR'].indexOf(mode)>=0?mode:'DECISAO_EXECUTOR'; }
+      function isPlanoOperacional_(plan){ return !!plan && upper_(plan.status) === 'ATIVO' && ['VALIDADO','ATIVO'].indexOf(upper_(plan.workflow_status || 'VALIDADO')) >= 0; }
       function hist_(data){ append_('historico', fit_('historico', Object.assign({id:uuid_('HIS'),criado_em:now_()},data))); }
     `,
   ].join('\n'),
@@ -105,12 +107,24 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
   var analysis = gestorAnaliseSalvar_({analise:{
     ocorrencia_id:'OCR-1',titulo:'Analise de vibracao',diagnostico:'Desalinhamento provavel',
     risco:'Falha de rolamento',causa_provavel:'Acoplamento',recomendacao:'Criar checklist de alinhamento',
-    recomenda_checklist:true,recomenda_os:true,prioridade:'ALTA'
+    recomenda_checklist:true,recomenda_os:true,prioridade:'ALTA',
+    relatorio_tecnico:{
+      situacao:'Vibracao elevada no motor principal',
+      causa_provavel:'Desalinhamento do acoplamento',
+      resultado_esperado:'Vibracao dentro da faixa',
+      etapas:[{ordem:1,titulo:'Medir vibracao',descricao:'Registrar os tres eixos.'}],
+      seguranca:['Bloquear o equipamento.'],
+      nrs:['NR-12'],
+      ferramentas:[{tipo:'MEDICAO',nome:'Vibrometro'}],
+      riscos:[{tipo:'MECANICO',titulo:'Partes moveis',descricao:'Bloquear antes de medir.'}],
+      evidencias_requeridas:['Leitura final'],
+      criterio_aceite:'Vibracao dentro da faixa aprovada.'
+    }
   }}, quality);
   gestorAnaliseEnviarAdmin_({analise_id:analysis.analise.id}, quality);
 
   var interventionSaved = adminIntervencaoSalvar_({dados:{
-    ativo_id:'ATV-1',componente_id:'CMP-1',tipo:'CORRETIVA',titulo:'Corrigir vibracao',
+    ativo_id:'ATV-1',componente_id:'CMP-1',plano_id:'PLN-1',tipo:'CORRETIVA',titulo:'Corrigir vibracao',
     descricao:'Inspecionar acoplamento e corrigir desalinhamento.',prioridade:'ALTA',
     modo_parada_manutencao:'OBRIGATORIA'
   }}, admin);
@@ -122,7 +136,23 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
   }, admin);
   var interventionDecision = gestorDemandaDecidir_({
     demanda_id:interventionSent.demanda.id,decisao:'LIBERAR_OPERACAO',
-    parecer:'Intervencao segura e liberada para o operador.'
+    parecer:'Intervencao segura e liberada para o operador.',
+    relatorio_tecnico:{
+      situacao:'Vibracao elevada no acoplamento',
+      causa_provavel:'Desalinhamento',
+      resultado_esperado:'Conjunto alinhado e testado',
+      etapas:[
+        {ordem:1,titulo:'Bloquear',descricao:'Aplicar bloqueio mecanico e eletrico.'},
+        {ordem:2,titulo:'Alinhar',descricao:'Medir e corrigir o acoplamento.'},
+        {ordem:3,titulo:'Testar',descricao:'Medir vibracao apos a partida.'}
+      ],
+      seguranca:['Aplicar LOTO.'],
+      nrs:['NR-10','NR-12'],
+      ferramentas:[{tipo:'MEDICAO',nome:'Alinhador a laser'}],
+      riscos:[{tipo:'MECANICO',titulo:'Partes moveis',descricao:'Manter protecoes instaladas.'}],
+      evidencias_requeridas:['Medicao antes e depois'],
+      criterio_aceite:'Vibracao dentro do limite tecnico.'
+    }
   }, maintenance);
   var interventionOrder = find_('ordens_servico','id',interventionSaved.intervencao.id);
   var interventionAction = rows_('os_acoes').find(function(item){ return String(item.os_id) === String(interventionOrder.id); });
@@ -156,13 +186,17 @@ assert(result.transitions.length === 5, 'trilha deveria conter envio, aceite, as
 assert(result.demand.status === 'LIBERADA_OPERACAO', 'demanda não foi liberada ao operador')
 assert(result.plan.status === 'ATIVO' && result.plan.workflow_status === 'VALIDADO', 'plano não foi ativado após aprovação')
 assert(result.analysis.status === 'ENVIADA_ADMIN', 'análise de ocorrência não chegou ao administrador')
+assert(JSON.parse(result.analysis.relatorio_tecnico_json).etapas.length === 1, 'análise estruturada não foi persistida')
 assert(result.occurrence.status === 'ANALISADA_TECNICAMENTE', 'ocorrência não foi encerrada pela análise')
 assert(result.adminNotifications.length >= 2, 'administrador não recebeu decisão e análise')
 assert(result.actionsBeforeRelease === 0, 'rascunho administrativo apareceu ao Operador antes da validação')
 assert(result.interventionDecision.demanda.status === 'LIBERADA_OPERACAO', 'intervenção não recebeu liberação técnica')
 assert(result.interventionOrder.status === 'ABERTA', 'OS não foi aberta depois da liberação')
 assert(result.interventionAction.status === 'PENDENTE', 'ação não chegou ao Operador depois da liberação')
+assert(result.interventionAction.plano_id === 'PLN-1', 'ação foi liberada sem checklist executável')
 assert(result.interventionAction.modo_parada_manutencao === 'OBRIGATORIA', 'modo de parada não foi preservado')
+assert(JSON.parse(result.interventionOrder.analise_tecnica_json).etapas.length === 3, 'briefing não foi vinculado à OS')
+assert(result.interventionAction.analise_tecnica_json === result.interventionOrder.analise_tecnica_json, 'briefing não chegou à ação do Operador')
 
 console.log('FLUXO TÉCNICO E2E EM MEMÓRIA APROVADO')
 console.log('ADMIN → QUALIDADE (assinatura) → MANUTENÇÃO (liberação) → OPERADOR')

@@ -4,20 +4,28 @@ import {
   type GestorSection,
 } from '../components/AppNavigation'
 import { AdminWorkspace } from '../components/AdminWorkspace'
+import { BellIcon } from '../components/Icons'
+import { NotificationCenter } from '../components/NotificationCenter'
 import { PlatformMotorWorkspace } from '../components/PlatformMotorWorkspace'
 import { WorkspaceStartupGate } from '../components/WorkspaceStartupGate'
 import { AssetsPage } from '../pages/AssetsPage'
 import type { AdminModule } from '../pages/AdminPage'
-import { DashboardPage } from '../pages/DashboardPage'
+import { GestorAnalyticsWorkspace } from '../pages/GestorAnalyticsWorkspace'
+import {
+  GestorDecisionWorkspace,
+  type GestorDecisionFocus,
+} from '../pages/GestorDecisionWorkspace'
 import { LoginPage } from '../pages/LoginPage'
 import { MaintenanceAccessPage } from '../pages/MaintenanceAccessPage'
 import { MorePage } from '../pages/MorePage'
-import { ValidationsPage } from '../pages/ValidationsPage'
-import { APP_RELEASE_VERSION } from '../release'
 import {
   revokeGestorSession,
   type GestorSession,
 } from '../services/api/auth'
+import {
+  getUnreadNotificationCount,
+  isGestorAuthenticationError,
+} from '../services/api/gestor'
 import {
   clearGestorSession,
   hasCompletedStartup,
@@ -26,7 +34,10 @@ import {
   readGestorSession,
   saveGestorSession,
 } from '../services/auth/session'
-import type { GestorWorkView } from '../types/gestor'
+import type {
+  GestorNotification,
+  GestorWorkView,
+} from '../types/gestor'
 
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
@@ -34,9 +45,14 @@ export function App() {
     () => new URLSearchParams(window.location.search).get('maintenance') === '1',
   )
   const [section, setSection] = useState<GestorSection>('home')
-  const [validationView, setValidationView] = useState<GestorWorkView>('demands')
+  const [decisionView, setDecisionView] = useState<GestorWorkView>('demands')
+  const [decisionFocus, setDecisionFocus] = useState<GestorDecisionFocus | null>(null)
+  const [analyticsFocusAsset, setAnalyticsFocusAsset] = useState('')
+  const [analyticsFocusOccurrence, setAnalyticsFocusOccurrence] = useState('')
   const [adminModule, setAdminModule] = useState<AdminModule>('overview')
   const [validationCount, setValidationCount] = useState(0)
+  const [notificationCount, setNotificationCount] = useState(0)
+  const [notificationOpen, setNotificationOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [workspaceReady, setWorkspaceReady] = useState(hasCompletedStartup)
   const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
@@ -46,8 +62,32 @@ export function App() {
     markExpiredGestorSession()
     setSession(null)
     setSection('home')
+    setNotificationOpen(false)
+    setNotificationCount(0)
     setWorkspaceReady(false)
   }, [])
+
+  useEffect(() => {
+    if (!session || isAdmin || isSystem || !workspaceReady) return
+    const controller = new AbortController()
+
+    async function refreshNotifications() {
+      try {
+        const count = await getUnreadNotificationCount(controller.signal)
+        setNotificationCount(count)
+      } catch (cause) {
+        if (controller.signal.aborted) return
+        if (isGestorAuthenticationError(cause)) expireSession()
+      }
+    }
+
+    void refreshNotifications()
+    const timer = window.setInterval(() => void refreshNotifications(), 60_000)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [expireSession, isAdmin, isSystem, session, workspaceReady])
 
   useEffect(() => {
     if (!session) return
@@ -74,6 +114,11 @@ export function App() {
     setSession(nextSession)
     setSection('home')
     setAdminModule('overview')
+    setDecisionView('demands')
+    setDecisionFocus(null)
+    setAnalyticsFocusAsset('')
+    setAnalyticsFocusOccurrence('')
+    setNotificationCount(0)
     setWorkspaceReady(false)
   }
 
@@ -83,15 +128,52 @@ export function App() {
   }, [])
 
   function handleNavigate(nextSection: GestorSection) {
-    if (nextSection === 'validations') setValidationView('demands')
+    if (nextSection === 'home') setDecisionFocus(null)
     setSection(nextSection)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }
 
-  function handleOpenWork(view: GestorWorkView = 'demands') {
-    setValidationView(view)
+  function handleOpenDecision(
+    view: GestorWorkView = 'demands',
+    focus: GestorDecisionFocus | null = null,
+  ) {
+    setDecisionView(view)
+    setDecisionFocus(focus)
+    setSection('home')
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
+
+  function handleOpenAnalytics(assetId = '', occurrenceId = '') {
+    setAnalyticsFocusAsset(assetId)
+    setAnalyticsFocusOccurrence(occurrenceId)
     setSection('validations')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
+
+  function handleOpenNotification(notification: GestorNotification) {
+    const entityType = String(notification.entidade_tipo ?? '').trim().toUpperCase()
+    const entityId = String(notification.entidade_id ?? '').trim()
+    if (entityType === 'OCORRENCIAS_OPERACIONAIS') {
+      handleOpenAnalytics('', entityId)
+      return
+    }
+    if (entityType === 'ATIVOS') {
+      handleOpenAnalytics(entityId)
+      return
+    }
+    if (entityType === 'DEMANDAS_TECNICAS') {
+      handleOpenDecision('demands', { kind: 'demand', id: entityId })
+      return
+    }
+    if (entityType === 'OS_ACOES') {
+      handleOpenDecision('actions', { kind: 'action', id: entityId })
+      return
+    }
+    if (entityType === 'PLANOS_MANUTENCAO') {
+      handleOpenDecision('models', { kind: 'model', id: entityId })
+      return
+    }
+    handleOpenDecision('demands')
   }
 
   async function handleLogout() {
@@ -107,6 +189,8 @@ export function App() {
       clearGestorSession()
       setSession(null)
       setSection('home')
+      setNotificationOpen(false)
+      setNotificationCount(0)
       setWorkspaceReady(false)
       if (systemSession) leaveMaintenanceEntry()
       setLoggingOut(false)
@@ -167,7 +251,7 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">FC</span>
           <div>
             <strong>Fab Control</strong>
-            <span>Visão do gestor</span>
+            <span>Workspace do gestor</span>
           </div>
         </div>
 
@@ -182,7 +266,21 @@ export function App() {
             <span>{session.user.perfil}</span>
           </div>
 
-          <span className="release">v{APP_RELEASE_VERSION}</span>
+          <button
+            className="manager-notification-trigger"
+            type="button"
+            onClick={() => setNotificationOpen(true)}
+            aria-label={
+              notificationCount
+                ? `Abrir ${notificationCount} notificações não lidas`
+                : 'Abrir notificações'
+            }
+          >
+            <BellIcon />
+            {notificationCount > 0 ? (
+              <span>{notificationCount > 99 ? '99+' : notificationCount}</span>
+            ) : null}
+          </button>
 
           <button
             className="logout-button"
@@ -197,17 +295,29 @@ export function App() {
 
       <div className="app-content">
         {section === 'home' ? (
-          <DashboardPage
-            onNavigate={handleNavigate}
-            onOpenWork={handleOpenWork}
+          <GestorDecisionWorkspace
+            initialView={decisionView}
+            focus={decisionFocus}
             onQueueCountChange={setValidationCount}
+            onOpenAnalytics={(assetId) => handleOpenAnalytics(assetId)}
             onSessionExpired={expireSession}
           />
         ) : null}
         {section === 'validations' ? (
-          <ValidationsPage
-            initialView={validationView}
-            onQueueCountChange={setValidationCount}
+          <GestorAnalyticsWorkspace
+            focusAssetId={analyticsFocusAsset}
+            focusOccurrenceId={analyticsFocusOccurrence}
+            onOpenDecision={(kind, id) => {
+              const view: GestorWorkView =
+                kind === 'action'
+                  ? 'actions'
+                  : kind === 'model'
+                    ? 'models'
+                    : kind === 'occurrence'
+                      ? 'operations'
+                      : 'demands'
+              handleOpenDecision(view, { kind, id })
+            }}
             onSessionExpired={expireSession}
           />
         ) : null}
@@ -215,7 +325,7 @@ export function App() {
           <AssetsPage onSessionExpired={expireSession} />
         ) : null}
         {section === 'more' ? (
-          <MorePage session={session} onNavigate={handleNavigate} />
+          <MorePage session={session} />
         ) : null}
       </div>
 
@@ -224,6 +334,14 @@ export function App() {
         validationCount={validationCount}
         showAdmin={false}
         onNavigate={handleNavigate}
+      />
+
+      <NotificationCenter
+        open={notificationOpen}
+        onClose={() => setNotificationOpen(false)}
+        onOpenNotification={handleOpenNotification}
+        onUnreadChange={setNotificationCount}
+        onSessionExpired={expireSession}
       />
     </div>
   )

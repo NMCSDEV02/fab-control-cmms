@@ -1155,7 +1155,7 @@ p {
 
 .technical-identification {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 9px;
   margin-top: 16px;
 }
@@ -1331,6 +1331,29 @@ p {
   line-height: 1.5;
 }
 
+.technical-requirements-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.technical-requirements-grid .technical-section-card {
+  min-width: 0;
+}
+
+.technical-acceptance-title {
+  display: block;
+  margin-top: 12px;
+  font-size: 0.84rem;
+}
+
+.technical-acceptance-copy {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
 .nr-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -1345,6 +1368,12 @@ p {
   background: #172234;
   font-size: 0.72rem;
   font-weight: 950;
+}
+
+@media (max-width: 680px) {
+  .technical-requirements-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .technical-data-grid {

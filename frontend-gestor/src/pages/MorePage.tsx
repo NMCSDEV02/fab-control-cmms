@@ -1,12 +1,9 @@
-import type { GestorSection } from '../components/AppNavigation'
 import { ApiConnectionPanel } from '../components/ApiConnectionPanel'
-import { AssetIcon, SettingsIcon, UsersIcon, ValidationIcon } from '../components/Icons'
 import { API_COMPATIBLE_RELEASE, APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 
 export interface MorePageProps {
   session: GestorSession
-  onNavigate: (section: GestorSection) => void
 }
 
 function formatDate(value: string): string {
@@ -18,37 +15,15 @@ function formatDate(value: string): string {
   }).format(date)
 }
 
-export function MorePage({ session, onNavigate }: MorePageProps) {
-  const isAdmin = session.user.perfil.trim().toUpperCase() === 'ADMIN'
+export function MorePage({ session }: MorePageProps) {
   return (
     <main className="content more-page">
       <section className="page-heading">
         <div>
-          <span className="eyebrow">GESTÃO E CONFIGURAÇÃO</span>
-          <h1>Mais recursos</h1>
-          <p>Conexão, identidade da sessão e atalhos do ambiente do gestor.</p>
+          <span className="eyebrow">CONTA E SESSÃO</span>
+          <h1>Minha conta</h1>
+          <p>Identidade autenticada, validade da sessão e conexão do aplicativo.</p>
         </div>
-      </section>
-
-      <section className="more-grid">
-        <button className="more-card" type="button" onClick={() => onNavigate('validations')}>
-          <span className="more-card__icon"><ValidationIcon /></span>
-          <span><strong>Central de trabalho</strong><small>Solicitações, execuções, checklists, ocorrências e paradas em uma única entrada.</small></span>
-        </button>
-        <button className="more-card" type="button" onClick={() => onNavigate('assets')}>
-          <span className="more-card__icon"><AssetIcon /></span>
-          <span><strong>Biblioteca de ativos</strong><small>Consulta segura de equipamentos e componentes.</small></span>
-        </button>
-        {isAdmin ? (
-          <button className="more-card" type="button" onClick={() => onNavigate('admin')}>
-            <span className="more-card__icon"><UsersIcon /></span>
-            <span><strong>Usuários e permissões</strong><small>Perfis, sessões, recuperação de acesso e matriz de capacidades.</small></span>
-          </button>
-        ) : null}
-        <article className="more-card more-card--static">
-          <span className="more-card__icon"><SettingsIcon /></span>
-          <span><strong>Governança técnica</strong><small>Roteamento por área e cargo, assinatura interna, SLA, análise de ocorrências e OEE baseado em apontamentos reais.</small></span>
-        </article>
       </section>
 
       <section className="more-layout">

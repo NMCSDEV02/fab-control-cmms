@@ -9,6 +9,7 @@ export interface GestorAction {
   componente_nome?: string
   plano_id?: string
   gerado_em?: string
+  iniciado_em?: string
   finalizado_em?: string
   atualizado_em?: string
   locks_ativos?: number
@@ -156,6 +157,49 @@ export interface GestorTechnicalAnalysisInput {
   recomenda_checklist: boolean
   recomenda_os: boolean
   prioridade: string
+  relatorio_tecnico: GestorTechnicalBrief
+}
+
+export interface GestorTechnicalStep {
+  ordem: number
+  titulo: string
+  descricao: string
+}
+
+export interface GestorTechnicalBrief {
+  situacao: string
+  causa_provavel: string
+  resultado_esperado: string
+  riscos: Array<{
+    tipo: string
+    titulo: string
+    descricao: string
+  }>
+  seguranca: string[]
+  nrs: string[]
+  ferramentas: Array<{
+    tipo: string
+    nome: string
+  }>
+  etapas: GestorTechnicalStep[]
+  evidencias_requeridas: string[]
+  criterio_aceite: string
+}
+
+export interface GestorNotification {
+  id: string
+  usuario_id?: string
+  perfil?: string
+  area_id?: string
+  tipo: string
+  titulo: string
+  mensagem?: string
+  entidade_tipo?: string
+  entidade_id?: string
+  prioridade?: string
+  status: string
+  lida_em?: string
+  criado_em?: string
 }
 
 export interface GestorExecution {
@@ -387,4 +431,64 @@ export interface GestorComponent {
 export interface GestorAssetCatalog {
   assets: GestorAsset[]
   components: GestorComponent[]
+}
+
+export interface GestorAssetParameter {
+  id: string
+  ativo_id?: string
+  componente_id?: string
+  parametro?: string
+  valor?: number | string
+  unidade?: string
+  origem?: string
+  registrado_por?: string
+  registrado_em?: string
+  criado_em?: string
+}
+
+export interface GestorAssetParameterRule {
+  id: string
+  plano_id?: string
+  plano_nome?: string
+  componente_id?: string
+  parametro_nome?: string
+  unidade?: string
+  limite_min?: number | string
+  limite_max?: number | string
+  valor_esperado?: string
+}
+
+export interface GestorAssetHistory {
+  id: string
+  ativo_id?: string
+  componente_id?: string
+  os_id?: string
+  acao_id?: string
+  execucao_id?: string
+  evento?: string
+  descricao?: string
+  usuario_id?: string
+  perfil?: string
+  criado_em?: string
+}
+
+export interface GestorAssetJourney {
+  found: boolean
+  tipo_contexto: string
+  ativo: GestorAsset | null
+  componente: GestorComponent | null
+  componentes: GestorComponent[]
+  acoes_pendentes: GestorAction[]
+  historico_recente: GestorAssetHistory[]
+  parametros_recentes: GestorAssetParameter[]
+  parametros_atuais: GestorAssetParameter[]
+  regras_parametros: GestorAssetParameterRule[]
+  parada_ativa: GestorStop | null
+  ocorrencias_abertas: GestorOccurrence[]
+  saude: {
+    pct?: number
+    status?: string
+    acoes_abertas?: number
+    os_abertas?: number
+  } | null
 }

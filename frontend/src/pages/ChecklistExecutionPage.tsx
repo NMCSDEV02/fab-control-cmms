@@ -668,6 +668,7 @@ export function ChecklistExecutionPage({
 
   const currentType = typeOf(current)
   const options = optionsOf(current)
+  const choice = ['OK_NOK', 'CONFIRMACAO', 'SELECAO'].includes(currentType)
   const numeric = ['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(currentType)
   const evidenceOnly = currentType === 'EVIDENCIA'
   const instruction = currentType === 'INSTRUCAO'
@@ -684,6 +685,7 @@ export function ChecklistExecutionPage({
   const evidenceCount = current.evidencias_count ?? 0
   const evidenceRemaining = Math.max(0, evidenceMax - evidenceCount)
   const currentJustificationRequired = justificationRequired(current, currentDraft)
+  const currentItemTitleId = `checklist-item-title-${String(current.id || index + 1)}`
 
   return (
     <section className="screen checklist-screen">
@@ -737,20 +739,22 @@ export function ChecklistExecutionPage({
         <div className="checklist-alert">{error || message}</div>
       )}
 
-      <article className="checklist-item-card">
+      <article className="checklist-item-card" aria-labelledby={currentItemTitleId}>
         <div className="checklist-item-card__top">
           <span>Checklist dinâmico</span>
           <em>{current.obrigatorio === false ? 'Opcional' : 'Obrigatório'}</em>
         </div>
-        <h2>{current.titulo}</h2>
+        <h2 id={currentItemTitleId}>{current.titulo}</h2>
         <p>{current.instrucao || 'Registre a condição observada.'}</p>
 
         {numeric && (
           <div className="numeric-answer">
             <input
               type="number"
+              inputMode="decimal"
               step={hourMeter ? '0.1' : 'any'}
               min={hourMeter ? currentHourMeter : undefined}
+              aria-label={`Valor de ${current.titulo}`}
               readOnly={hourMeter && Boolean(detail.horimetro?.automatico)}
               value={currentDraft.answer}
               onChange={(event) => updateDraft({ answer: event.target.value })}
@@ -786,8 +790,8 @@ export function ChecklistExecutionPage({
           </div>
         )}
 
-        {!numeric && !evidenceOnly && !instruction && options.length > 0 && (
-          <div className="answer-options">
+        {choice && options.length > 0 && (
+          <div className="answer-options" role="group" aria-label={`Resposta para ${current.titulo}`}>
             {options.map((option) => (
               <button
                 type="button"
@@ -797,6 +801,7 @@ export function ChecklistExecutionPage({
                     : 'answer-option'
                 }
                 key={option}
+                aria-pressed={currentDraft.answer === option}
                 onClick={() => updateDraft({ answer: option })}
               >
                 {option}
@@ -805,9 +810,16 @@ export function ChecklistExecutionPage({
           </div>
         )}
 
-        {!numeric && !evidenceOnly && !instruction && options.length === 0 && (
+        {choice && options.length === 0 && (
+          <div className="checklist-alert" role="alert">
+            Este item não possui opções configuradas. Solicite a correção do modelo ao responsável.
+          </div>
+        )}
+
+        {!numeric && !evidenceOnly && !instruction && !choice && (
           <textarea
             className="text-answer"
+            aria-label={`Resposta para ${current.titulo}`}
             value={currentDraft.answer}
             onChange={(event) => updateDraft({ answer: event.target.value })}
             placeholder={current.input?.placeholder || 'Digite a resposta'}
@@ -822,6 +834,7 @@ export function ChecklistExecutionPage({
                 ? 'instruction-check instruction-check--done'
                 : 'instruction-check'
             }
+            aria-pressed={Boolean(currentDraft.answer)}
             onClick={() =>
               updateDraft({ answer: currentDraft.answer ? '' : 'LIDO' })
             }
@@ -844,6 +857,7 @@ export function ChecklistExecutionPage({
               {currentEvidenceMode === 'required' ? 'Evidência obrigatória' : 'Evidência opcional'}
             </span>
             <div
+              aria-live="polite"
               className={
                 currentEvidenceMode === 'required'
                   ? evidenceCount >= evidenceMin

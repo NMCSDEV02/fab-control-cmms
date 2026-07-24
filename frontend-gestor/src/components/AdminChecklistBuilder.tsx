@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listTechnicalAreas, listTechnicalRoles } from '../services/api/admin'
 import { actionAdminEntity, listAdminEntity } from '../services/api/catalog'
 import {
@@ -12,7 +12,24 @@ import { isGestorAuthenticationError } from '../services/api/gestor'
 import type { TechnicalArea, TechnicalRole } from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminChecklistItem, AdminChecklistPlan, ChecklistResponseType } from '../types/checklists'
-import { AssetIcon, CheckIcon, RefreshIcon, SearchIcon, ShieldIcon } from './Icons'
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CameraIcon,
+  ChartIcon,
+  CheckIcon,
+  ChecklistIcon,
+  CopyIcon,
+  DocumentIcon,
+  NumberIcon,
+  PlusIcon,
+  RefreshIcon,
+  SearchIcon,
+  ShieldIcon,
+  TextIcon,
+  TrashIcon,
+  WrenchIcon,
+} from './Icons'
 
 interface AdminChecklistBuilderProps {
   onSessionExpired: () => void
@@ -28,6 +45,23 @@ const RESPONSE_TYPES: Array<{ value: ChecklistResponseType; label: string }> = [
   { value: 'EVIDENCIA', label: 'Evidência obrigatória' },
   { value: 'LEITURA_OPERACIONAL', label: 'Leitura operacional' },
   { value: 'INSTRUCAO', label: 'Somente instrução' },
+]
+
+const QUICK_ITEM_TYPES: Array<{
+  value: ChecklistResponseType
+  label: string
+  detail: string
+  Icon: typeof CheckIcon
+}> = [
+  { value: 'OK_NOK', label: 'Conforme', detail: 'OK ou não conforme', Icon: CheckIcon },
+  { value: 'CONFIRMACAO', label: 'Confirmação', detail: 'Aceite em um toque', Icon: ShieldIcon },
+  { value: 'EVIDENCIA', label: 'Foto', detail: 'Evidência obrigatória', Icon: CameraIcon },
+  { value: 'PARAMETRO', label: 'Parâmetro', detail: 'Valor e limites', Icon: WrenchIcon },
+  { value: 'NUMERO', label: 'Número', detail: 'Medição simples', Icon: NumberIcon },
+  { value: 'SELECAO', label: 'Lista', detail: 'Opções prontas', Icon: ChecklistIcon },
+  { value: 'TEXTO', label: 'Texto', detail: 'Resposta livre', Icon: TextIcon },
+  { value: 'LEITURA_OPERACIONAL', label: 'Leitura', detail: 'Valor do equipamento', Icon: ChartIcon },
+  { value: 'INSTRUCAO', label: 'Instrução', detail: 'Confirmar leitura', Icon: DocumentIcon },
 ]
 
 const YES_NO = [
@@ -61,13 +95,32 @@ function emptyPlan(): AdminChecklistPlan {
   }
 }
 
-function emptyItem(order: number): AdminChecklistItem {
-  return {
+function emptyItem(
+  order: number,
+  type: ChecklistResponseType = 'OK_NOK',
+): AdminChecklistItem {
+  const item: AdminChecklistItem = {
     id: '', ordem: order, titulo: '', instrucao: '', tipo_resposta: 'OK_NOK', obrigatorio: 'SIM',
     evidencia_obrigatoria: 'NAO', limite_min: '', limite_max: '', unidade: '', parametro_nome: '',
     valor_esperado: '', opcoes_json: '', opcoes_texto: '', bloqueia_finalizacao: 'NAO',
     categoria: 'OPERACIONAL', peso: 1, evidencia_min_fotos: 0, status: 'ATIVO',
   }
+  item.tipo_resposta = type
+  if (type === 'EVIDENCIA') {
+    item.evidencia_obrigatoria = 'SIM'
+    item.evidencia_min_fotos = 1
+    item.bloqueia_finalizacao = 'SIM'
+  }
+  if (type === 'NUMERO') item.unidade = 'un'
+  if (type === 'LEITURA_OPERACIONAL') {
+    item.unidade = 'un'
+    item.parametro_nome = 'LEITURA'
+  }
+  if (type === 'SELECAO') {
+    item.opcoes_texto = 'Normal | Atenção | Crítico'
+    item.opcoes_json = JSON.stringify(['Normal', 'Atenção', 'Crítico'])
+  }
+  return item
 }
 
 function parseOptions(value?: string): string {
@@ -102,6 +155,7 @@ function isAvailable(record: AdminEntityRecord): boolean {
 }
 
 export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilderProps) {
+  const workspaceRef = useRef<HTMLElement | null>(null)
   const [models, setModels] = useState<AdminChecklistPlan[]>([])
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
   const [components, setComponents] = useState<AdminEntityRecord[]>([])
@@ -109,6 +163,7 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
   const [roles, setRoles] = useState<TechnicalRole[]>([])
   const [plan, setPlan] = useState<AdminChecklistPlan>(emptyPlan)
   const [items, setItems] = useState<AdminChecklistItem[]>([emptyItem(1)])
+  const [activeItemIndex, setActiveItemIndex] = useState(0)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -176,9 +231,19 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
   const canEdit = ['RASCUNHO', 'DEVOLVIDO_CORRECAO', ''].includes(String(plan.workflow_status ?? '').toUpperCase())
   const canCreateRevision = normalizedWorkflow(plan.workflow_status) === 'VALIDADO'
 
+  useEffect(() => {
+    const input = workspaceRef.current?.querySelector<HTMLInputElement>(
+      `[data-checklist-index="${activeItemIndex}"] input[data-step-title]`,
+    )
+    if (!input) return
+    input.focus({ preventScroll: true })
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [activeItemIndex, items.length])
+
   function newModel() {
     setPlan(emptyPlan())
     setItems([emptyItem(1)])
+    setActiveItemIndex(0)
     setRoutingOpen(false)
     setError('')
     setNotice('Novo modelo iniciado. Preencha os campos e os itens abaixo.')
@@ -194,6 +259,7 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
       setItems(detail.itens.map((item, index) => ({
         ...item, ordem: Number(item.ordem || index + 1), opcoes_texto: parseOptions(item.opcoes_json),
       })))
+      setActiveItemIndex(0)
       setRoutingOpen(false)
     } catch (cause) {
       handleFailure(cause, 'Não foi possível abrir o checklist.')
@@ -221,9 +287,22 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
       if (patch.tipo_resposta === 'EVIDENCIA') {
         next.evidencia_obrigatoria = 'SIM'
         next.evidencia_min_fotos = Math.max(1, Number(next.evidencia_min_fotos || 1))
+        next.bloqueia_finalizacao = 'SIM'
+      }
+      if (patch.tipo_resposta === 'LEITURA_OPERACIONAL' && !next.parametro_nome) {
+        next.parametro_nome = 'LEITURA'
+        next.unidade = next.unidade || 'un'
       }
       return next
     }))
+  }
+
+  function addItem(type: ChecklistResponseType = 'OK_NOK') {
+    setItems((current) => {
+      const nextIndex = current.length
+      setActiveItemIndex(nextIndex)
+      return [...current, emptyItem(nextIndex + 1, type)]
+    })
   }
 
   function moveItem(index: number, direction: -1 | 1) {
@@ -234,6 +313,7 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
       ;[next[index], next[target]] = [next[target], next[index]]
       return next.map((item, itemIndex) => ({ ...item, ordem: itemIndex + 1 }))
     })
+    setActiveItemIndex(target)
   }
 
   function duplicateItem(index: number) {
@@ -249,6 +329,18 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
       const next = [...current.slice(0, index + 1), copy, ...current.slice(index + 1)]
       return next.map((item, itemIndex) => ({ ...item, ordem: itemIndex + 1 }))
     })
+    setActiveItemIndex(index + 1)
+  }
+
+  function removeItem(index: number) {
+    setItems((current) =>
+      current
+        .filter((_, itemIndex) => itemIndex !== index)
+        .map((item, itemIndex) => ({ ...item, ordem: itemIndex + 1 })),
+    )
+    setActiveItemIndex((current) =>
+      Math.max(0, Math.min(current > index ? current - 1 : current, items.length - 2)),
+    )
   }
 
   function validateDraft(): string {
@@ -258,9 +350,12 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
     if (!items.length) return 'Inclua pelo menos um item.'
     for (const [index, item] of items.entries()) {
       if (!item.titulo.trim()) return `Informe o título do item ${index + 1}.`
-      if (['NUMERO', 'PARAMETRO'].includes(item.tipo_resposta) && !item.unidade) return `Selecione a unidade do item ${index + 1}.`
-      if (item.tipo_resposta === 'PARAMETRO' && !item.parametro_nome?.trim()) return `Informe o parâmetro do item ${index + 1}.`
-      if (item.tipo_resposta === 'SELECAO' && !cleanOptions(item.opcoes_texto)) return `Informe as opções do item ${index + 1}.`
+      if (['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(item.tipo_resposta) && !item.unidade) return `Selecione a unidade do item ${index + 1}.`
+      if (['PARAMETRO', 'LEITURA_OPERACIONAL'].includes(item.tipo_resposta) && !item.parametro_nome?.trim()) return `Informe o parâmetro do item ${index + 1}.`
+      if (item.tipo_resposta === 'SELECAO') {
+        const optionCount = String(item.opcoes_texto ?? '').split(/[|\n]/).map((option) => option.trim()).filter(Boolean).length
+        if (optionCount < 2) return `Informe pelo menos duas opções no item ${index + 1}.`
+      }
     }
     return ''
   }
@@ -392,7 +487,7 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
   if (loading) return <div className="dashboard-loading">Carregando construtor de checklist…</div>
 
   return (
-    <section className="admin-checklist-workspace">
+    <section className="admin-checklist-workspace" ref={workspaceRef}>
       {error ? <div className="dashboard-error" role="alert"><strong>Ação não concluída.</strong><span>{error}</span></div> : null}
       {notice ? <div className="dashboard-notice" role="status">{notice}</div> : null}
 
@@ -405,13 +500,16 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
             {filteredModels.map((model) => (
               <article key={model.id} className={plan.id === model.id ? 'is-active' : ''}>
                 <button className="admin-checklist-model-open" type="button" onClick={() => void openModel(model.id)}>
-                  <span><strong>{model.nome}</strong><small>{model.ativo_tag || model.ativo_nome}{model.componente_nome ? ` · ${model.componente_nome}` : ''}</small></span>
-                  <i className={`admin-workflow-chip admin-workflow-chip--${String(model.workflow_status || 'rascunho').toLowerCase()}`}>{workflowLabel(model.workflow_status)}</i>
-                  <b>{model.itens_count ?? 0} itens · revisão {model.revisao || 1}</b>
+                  <span className="admin-checklist-model-heading">
+                    <strong>{model.nome}</strong>
+                    <i className={`admin-workflow-chip admin-workflow-chip--${String(model.workflow_status || 'rascunho').toLowerCase()}`}>{workflowLabel(model.workflow_status)}</i>
+                  </span>
+                  <small className="admin-checklist-model-asset">{model.ativo_tag || model.ativo_nome}{model.componente_nome ? ` · ${model.componente_nome}` : ''}</small>
+                  <b className="admin-checklist-model-meta">{model.itens_count ?? 0} itens <span>•</span> R{model.revisao || 1}</b>
                 </button>
                 <div className="admin-checklist-model-actions">
-                  {normalizedWorkflow(model.workflow_status) === 'VALIDADO' ? <button type="button" disabled={libraryBusy} onClick={() => void createRevision(model.id)}>Nova revisão</button> : null}
-                  {normalizedWorkflow(model.workflow_status) === 'RASCUNHO' && !model.revisao_origem_id && !model.substitui_plano_id ? <button className="is-danger" type="button" disabled={libraryBusy} onClick={() => setModelToDelete(model)}>Excluir</button> : null}
+                  {normalizedWorkflow(model.workflow_status) === 'VALIDADO' ? <button type="button" title="Nova revisão" aria-label={`Criar nova revisão de ${model.nome}`} disabled={libraryBusy} onClick={() => void createRevision(model.id)}><CopyIcon /></button> : null}
+                  {normalizedWorkflow(model.workflow_status) === 'RASCUNHO' && !model.revisao_origem_id && !model.substitui_plano_id ? <button className="is-danger" type="button" title="Excluir rascunho" aria-label={`Excluir rascunho ${model.nome}`} disabled={libraryBusy} onClick={() => setModelToDelete(model)}><TrashIcon /></button> : null}
                 </div>
               </article>
             ))}
@@ -428,6 +526,33 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
           {detailLoading ? <div className="dashboard-loading">Abrindo modelo…</div> : (
             <>
               {!canEdit ? <div className="admin-checklist-lock"><ShieldIcon /><span><strong>Versão protegida</strong><small>Este modelo está em validação ou já foi validado. Ele não pode ser alterado diretamente.</small></span></div> : null}
+              {canEdit ? (
+                <section className="admin-checklist-quick-start" aria-label="Criação rápida de etapas">
+                  <header>
+                    <div>
+                      <span className="eyebrow">CRIAÇÃO RÁPIDA</span>
+                      <h3>Qual etapa deseja adicionar?</h3>
+                    </div>
+                    <button
+                      className="admin-checklist-add-main"
+                      type="button"
+                      onClick={() => addItem()}
+                    >
+                      <PlusIcon />
+                      Etapa padrão
+                    </button>
+                  </header>
+                  <div className="admin-checklist-quick-types" aria-label="Adicionar etapa rápida">
+                    {QUICK_ITEM_TYPES.map(({ value, label, detail, Icon }) => (
+                      <button type="button" key={value} onClick={() => addItem(value)}>
+                        <Icon />
+                        <span><strong>{label}</strong><small>{detail}</small></span>
+                        <PlusIcon />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <fieldset disabled={!canEdit || saving || sending} className="admin-checklist-plan-form">
                 <legend>Programação e contexto</legend>
                 <label><span>Ativo *</span><select value={plan.ativo_id} onChange={(event) => updatePlan('ativo_id', event.target.value)}><option value="">Selecione o equipamento…</option>{assets.filter((asset) => isAvailable(asset) || String(asset.id) === String(plan.ativo_id)).map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
@@ -444,17 +569,40 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
               </fieldset>
 
               <section className="admin-checklist-items">
-                <header><div><span className="eyebrow">ETAPAS</span><h3>Itens do checklist</h3><p>Escolha o tipo de resposta e o sistema exibe somente as regras necessárias.</p></div>{canEdit ? <button type="button" onClick={() => setItems((current) => [...current, emptyItem(current.length + 1)])}>+ Adicionar item</button> : null}</header>
+                <header>
+                  <div>
+                    <span className="eyebrow">ETAPAS</span>
+                    <h3>Etapas do checklist</h3>
+                    <p>{items.length} {items.length === 1 ? 'etapa configurada' : 'etapas configuradas'}. Selecione uma etapa para editar.</p>
+                  </div>
+                </header>
                 {items.map((item, index) => (
-                  <fieldset className="admin-checklist-item" disabled={!canEdit || saving || sending} key={`${item.id || 'new'}-${index}`}>
-                    <header><b>{String(index + 1).padStart(2, '0')}</b><span><strong>{item.titulo || 'Nova etapa'}</strong><small>{RESPONSE_TYPES.find((type) => type.value === item.tipo_resposta)?.label}</small></span><div><button type="button" disabled={index === 0} onClick={() => moveItem(index, -1)} aria-label="Mover para cima">↑</button><button type="button" disabled={index === items.length - 1} onClick={() => moveItem(index, 1)} aria-label="Mover para baixo">↓</button><button type="button" onClick={() => duplicateItem(index)} aria-label="Duplicar item">⧉</button><button type="button" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index).map((currentItem, itemIndex) => ({ ...currentItem, ordem: itemIndex + 1 })))} aria-label="Remover item">×</button></div></header>
+                  <fieldset
+                    className={`admin-checklist-item ${activeItemIndex === index ? 'is-active' : ''}`}
+                    data-checklist-index={index}
+                    disabled={!canEdit || saving || sending}
+                    key={`${item.id || 'new'}-${index}`}
+                  >
+                    <header onClick={() => setActiveItemIndex(index)}>
+                      <b>{String(index + 1).padStart(2, '0')}</b>
+                      <span>
+                        <strong>{item.titulo || 'Nova etapa'}</strong>
+                        <small>{RESPONSE_TYPES.find((type) => type.value === item.tipo_resposta)?.label}</small>
+                      </span>
+                      <div>
+                        <button type="button" disabled={index === 0} onClick={() => moveItem(index, -1)} aria-label="Mover para cima" title="Mover para cima"><ArrowUpIcon /></button>
+                        <button type="button" disabled={index === items.length - 1} onClick={() => moveItem(index, 1)} aria-label="Mover para baixo" title="Mover para baixo"><ArrowDownIcon /></button>
+                        <button type="button" onClick={() => duplicateItem(index)} aria-label="Duplicar etapa" title="Duplicar etapa"><CopyIcon /></button>
+                        <button className="is-danger" type="button" disabled={items.length === 1} onClick={() => removeItem(index)} aria-label="Remover etapa" title="Remover etapa"><TrashIcon /></button>
+                      </div>
+                    </header>
                     <div className="admin-checklist-item-form">
-                      <label className="is-wide"><span>Título da etapa *</span><input value={item.titulo} onChange={(event) => updateItem(index, { titulo: event.target.value })} /></label>
+                      <label className="is-wide"><span>Título da etapa *</span><input data-step-title value={item.titulo} onChange={(event) => updateItem(index, { titulo: event.target.value })} placeholder="O que o Operador deve verificar?" /></label>
                       <label><span>Tipo de resposta</span><select value={item.tipo_resposta} onChange={(event) => updateItem(index, { tipo_resposta: event.target.value as ChecklistResponseType })}>{RESPONSE_TYPES.map((type) => <option value={type.value} key={type.value}>{type.label}</option>)}</select></label>
                       <label><span>Categoria</span><select value={item.categoria || 'OPERACIONAL'} onChange={(event) => updateItem(index, { categoria: event.target.value })}><option value="OPERACIONAL">Operacional</option><option value="MANUTENCAO">Manutenção</option><option value="QUALIDADE">Qualidade</option><option value="SEGURANCA">Segurança</option><option value="MEIO_AMBIENTE">Meio ambiente</option></select></label>
                       <label className="is-wide"><span>Instrução ao executor</span><textarea rows={2} value={item.instrucao || ''} onChange={(event) => updateItem(index, { instrucao: event.target.value })} /></label>
                       {['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(item.tipo_resposta) ? <><label><span>Unidade *</span><select value={item.unidade || ''} onChange={(event) => updateItem(index, { unidade: event.target.value })}>{UNIT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label><label><span>Limite mínimo</span><input type="number" value={item.limite_min ?? ''} onChange={(event) => updateItem(index, { limite_min: event.target.value })} /></label><label><span>Limite máximo</span><input type="number" value={item.limite_max ?? ''} onChange={(event) => updateItem(index, { limite_max: event.target.value })} /></label></> : null}
-                      {item.tipo_resposta === 'PARAMETRO' ? <label><span>Parâmetro *</span><select value={item.parametro_nome || ''} onChange={(event) => updateItem(index, { parametro_nome: event.target.value })}><option value="">Selecione…</option><option value="TEMPERATURA">Temperatura</option><option value="PRESSAO">Pressão</option><option value="VIBRACAO">Vibração</option><option value="CORRENTE">Corrente</option><option value="TENSAO">Tensão</option><option value="ROTACAO">Rotação</option><option value="NIVEL">Nível</option></select></label> : null}
+                      {['PARAMETRO', 'LEITURA_OPERACIONAL'].includes(item.tipo_resposta) ? <label><span>{item.tipo_resposta === 'LEITURA_OPERACIONAL' ? 'Tipo de leitura *' : 'Parâmetro *'}</span><select value={item.parametro_nome || ''} onChange={(event) => updateItem(index, { parametro_nome: event.target.value })}><option value="">Selecione…</option><option value="TEMPERATURA">Temperatura</option><option value="PRESSAO">Pressão</option><option value="VIBRACAO">Vibração</option><option value="CORRENTE">Corrente</option><option value="TENSAO">Tensão</option><option value="ROTACAO">Rotação</option><option value="NIVEL">Nível</option><option value="HORIMETRO">Horímetro</option><option value="LEITURA">Outra leitura</option></select></label> : null}
                       {item.tipo_resposta === 'SELECAO' ? <label className="is-wide"><span>Opções *</span><input value={item.opcoes_texto || ''} onChange={(event) => updateItem(index, { opcoes_texto: event.target.value })} placeholder="Normal | Atenção | Crítico" /><small>Separe as opções com |.</small></label> : null}
                       <label><span>Resposta obrigatória</span><select value={item.obrigatorio} onChange={(event) => updateItem(index, { obrigatorio: event.target.value })}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
                       <label><span>Exigir evidência</span><select value={item.evidencia_obrigatoria} disabled={item.tipo_resposta === 'EVIDENCIA'} onChange={(event) => updateItem(index, { evidencia_obrigatoria: event.target.value })}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
@@ -464,26 +612,53 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
                 ))}
               </section>
 
-              {routingOpen && canEdit ? <section className="admin-checklist-routing">
-                <header><ShieldIcon /><span><strong>Definir filtro técnico</strong><small>O checklist irá primeiro para esta área. O Gestor poderá assumir, assinar ou encaminhar.</small></span></header>
-                <div>
-                  <label><span>Área responsável *</span><select value={routing.area_atual_id} onChange={(event) => setRouting((current) => ({ ...current, area_atual_id: event.target.value, cargo_atual_id: '' }))}><option value="">Selecione a área…</option>{areas.map((area) => <option value={area.id} key={area.id}>{area.codigo} · {area.nome}</option>)}</select></label>
-                  <label><span>Cargo técnico</span><select value={routing.cargo_atual_id} onChange={(event) => setRouting((current) => ({ ...current, cargo_atual_id: event.target.value }))}><option value="">Qualquer gestor da área</option>{availableRoles.map((role) => <option value={role.id} key={role.id}>{role.nome}{String(role.pode_assinar).toUpperCase() === 'SIM' ? ' · pode assinar' : ''}</option>)}</select></label>
-                  <label><span>Exigir assinatura</span><select value={routing.exige_assinatura} onChange={(event) => setRouting((current) => ({ ...current, exige_assinatura: event.target.value }))}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-                  <label><span>Quantidade de assinaturas</span><select disabled={routing.exige_assinatura !== 'SIM'} value={routing.assinaturas_necessarias} onChange={(event) => setRouting((current) => ({ ...current, assinaturas_necessarias: Number(event.target.value) }))}><option value="1">1 assinatura</option><option value="2">2 assinaturas</option><option value="3">3 assinaturas</option></select></label>
-                  <label><span>Segregação criador/aprovador</span><select value={routing.exige_segregacao} onChange={(event) => setRouting((current) => ({ ...current, exige_segregacao: event.target.value }))}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-                  <label className="is-wide"><span>Orientação ao Gestor *</span><textarea rows={3} value={routing.comentario} onChange={(event) => setRouting((current) => ({ ...current, comentario: event.target.value }))} placeholder="Explique o risco, objetivo e pontos que precisam ser validados." /></label>
-                </div>
-              </section> : null}
-
               <footer className="admin-checklist-actions">
                 <span><CheckIcon /><small>Salvar mantém o modelo em rascunho inativo. Somente a aprovação do Gestor libera ao Operador.</small></span>
-                {canEdit ? <div><button type="button" disabled={saving || sending} onClick={() => void saveModel()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button>{routingOpen ? <button className="primary-button" type="button" disabled={saving || sending} onClick={() => void sendForValidation()}>{sending ? 'Enviando…' : 'Confirmar e enviar'}</button> : <button className="primary-button" type="button" disabled={saving || sending} onClick={() => setRoutingOpen(true)}>Enviar para validação</button>}</div> : canCreateRevision ? <div><button className="primary-button" type="button" disabled={libraryBusy} onClick={() => void createRevision(plan.id)}>{libraryBusy ? 'Criando revisão…' : 'Criar nova revisão'}</button></div> : null}
+                {canEdit ? <div><button type="button" disabled={saving || sending} onClick={() => void saveModel()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button><button className="primary-button" type="button" disabled={saving || sending} onClick={() => { setError(''); setRoutingOpen(true) }}>Enviar para validação</button></div> : canCreateRevision ? <div><button className="primary-button" type="button" disabled={libraryBusy} onClick={() => void createRevision(plan.id)}>{libraryBusy ? 'Criando revisão…' : 'Criar nova revisão'}</button></div> : null}
               </footer>
             </>
           )}
         </section>
       </div>
+
+      {routingOpen && canEdit ? (
+        <div
+          className="admin-catalog-dialog admin-checklist-routing-dialog"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !sending) setRoutingOpen(false)
+          }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="checklist-routing-title">
+            <header>
+              <div>
+                <span className="eyebrow">ENVIO PARA VALIDAÇÃO</span>
+                <h2 id="checklist-routing-title">Definir filtro técnico</h2>
+              </div>
+              <button type="button" disabled={sending} aria-label="Fechar" onClick={() => setRoutingOpen(false)}>×</button>
+            </header>
+            <div className="admin-checklist-routing">
+              <header><ShieldIcon /><span><strong>Quem deve validar primeiro?</strong><small>O Gestor da área poderá assumir, assinar ou encaminhar a solicitação.</small></span></header>
+              {error ? <div className="dashboard-error" role="alert"><strong>Revise o envio.</strong><span>{error}</span></div> : null}
+              <div>
+                <label><span>Área responsável *</span><select value={routing.area_atual_id} onChange={(event) => setRouting((current) => ({ ...current, area_atual_id: event.target.value, cargo_atual_id: '' }))}><option value="">Selecione a área…</option>{areas.map((area) => <option value={area.id} key={area.id}>{area.codigo} · {area.nome}</option>)}</select></label>
+                <label><span>Cargo técnico</span><select value={routing.cargo_atual_id} onChange={(event) => setRouting((current) => ({ ...current, cargo_atual_id: event.target.value }))}><option value="">Qualquer gestor da área</option>{availableRoles.map((role) => <option value={role.id} key={role.id}>{role.nome}{String(role.pode_assinar).toUpperCase() === 'SIM' ? ' · pode assinar' : ''}</option>)}</select></label>
+                <label><span>Exigir assinatura</span><select value={routing.exige_assinatura} onChange={(event) => setRouting((current) => ({ ...current, exige_assinatura: event.target.value }))}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+                <label><span>Quantidade de assinaturas</span><select disabled={routing.exige_assinatura !== 'SIM'} value={routing.assinaturas_necessarias} onChange={(event) => setRouting((current) => ({ ...current, assinaturas_necessarias: Number(event.target.value) }))}><option value="1">1 assinatura</option><option value="2">2 assinaturas</option><option value="3">3 assinaturas</option></select></label>
+                <label><span>Separar criador e aprovador</span><select value={routing.exige_segregacao} onChange={(event) => setRouting((current) => ({ ...current, exige_segregacao: event.target.value }))}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+                <label className="is-wide"><span>Orientação ao Gestor *</span><textarea rows={3} value={routing.comentario} onChange={(event) => setRouting((current) => ({ ...current, comentario: event.target.value }))} placeholder="Explique o risco, o objetivo e os pontos que precisam ser validados." /></label>
+              </div>
+            </div>
+            <footer>
+              <span>O checklist permanece inativo até a decisão técnica do Gestor.</span>
+              <div>
+                <button type="button" disabled={sending} onClick={() => setRoutingOpen(false)}>Cancelar</button>
+                <button className="primary-button" type="button" disabled={saving || sending} onClick={() => void sendForValidation()}>{sending ? 'Enviando…' : 'Confirmar e enviar'}</button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
 
       {modelToDelete ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !libraryBusy) setModelToDelete(null) }}><section role="dialog" aria-modal="true" aria-labelledby="delete-checklist-title">
         <header><div><span className="eyebrow">EXCLUSÃO PROTEGIDA</span><h2 id="delete-checklist-title">Excluir rascunho</h2></div><button type="button" disabled={libraryBusy} onClick={() => setModelToDelete(null)}>×</button></header>

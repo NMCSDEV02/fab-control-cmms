@@ -4,6 +4,9 @@ import type {
   GestorActionDetail,
   GestorAsset,
   GestorAssetCatalog,
+  GestorAssetHistory,
+  GestorAssetJourney,
+  GestorAssetParameterRule,
   GestorChecklistModel,
   GestorChecklistModelDecision,
   GestorChecklistModelDecisionResult,
@@ -12,6 +15,8 @@ import type {
   GestorDecision,
   GestorDecisionResult,
   GestorKpiBase,
+  GestorNotification,
+  GestorTechnicalBrief,
   GestorTechnicalAnalysisInput,
   GestorTechnicalContext,
   GestorTechnicalDemand,
@@ -55,6 +60,7 @@ interface TechnicalDemandListData {
 
 interface NotificationListData {
   total: number
+  notificacoes?: GestorNotification[]
 }
 
 interface AdminListData<T> {
@@ -63,11 +69,35 @@ interface AdminListData<T> {
   rows: T[]
 }
 
+interface AssetHistoryListData {
+  items: GestorAssetHistory[]
+}
+
 const OPEN_STOP_STATUSES = new Set([
   'PARADA_ABERTA',
   'MANUTENCAO_EM_EXECUCAO',
   'AGUARDANDO_RETORNO_OPERACIONAL',
 ])
+
+const OPEN_TECHNICAL_DEMAND_STATUSES = [
+  'ABERTA',
+  'EM_TRIAGEM',
+  'EM_VALIDACAO_TECNICA',
+  'AGUARDANDO_ASSINATURA',
+  'ENCAMINHADA',
+] as const
+
+const FINAL_TECHNICAL_DEMAND_STATUSES = new Set([
+  'DEVOLVIDA_ADMIN',
+  'APROVADA_TECNICAMENTE',
+  'LIBERADA_OPERACAO',
+  'CONCLUIDA',
+  'CANCELADA',
+])
+
+function normalizedStatus(value: unknown): string {
+  return String(value ?? '').trim().toLocaleUpperCase('pt-BR')
+}
 
 function gestorToken(): string {
   const token = getGestorToken()
@@ -190,6 +220,30 @@ export async function getUnreadNotificationCount(
   return Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : 0
 }
 
+export async function getGestorNotifications(
+  signal?: AbortSignal,
+): Promise<GestorNotification[]> {
+  const data = await readGestorData<NotificationListData>(
+    'gestor.notificacoes.listar',
+    { limite: 200 },
+    signal,
+  )
+
+  return Array.isArray(data.notificacoes) ? data.notificacoes : []
+}
+
+export function markGestorNotificationRead(
+  notificationId: string,
+): Promise<{
+  read: boolean
+  already_read?: boolean
+  notificacao_id: string
+}> {
+  return writeGestorData('gestor.notificacoes.marcar_lida', {
+    notificacao_id: notificationId,
+  })
+}
+
 export async function getGestorOverview(
   signal?: AbortSignal,
 ): Promise<GestorOverview> {
@@ -269,10 +323,20 @@ export async function getGestorTechnicalDemands(
 ): Promise<GestorTechnicalDemand[]> {
   const data = await readGestorData<TechnicalDemandListData>(
     'gestor.demandas.listar',
-    { limite: 300 },
+    {
+      status: OPEN_TECHNICAL_DEMAND_STATUSES.join(','),
+      limite: 300,
+    },
     signal,
   )
-  return Array.isArray(data.demandas) ? data.demandas : []
+  return Array.isArray(data.demandas)
+    ? data.demandas.filter(
+        (demand) =>
+          !FINAL_TECHNICAL_DEMAND_STATUSES.has(
+            normalizedStatus(demand.status),
+          ),
+      )
+    : []
 }
 
 export function assumeGestorTechnicalDemand(
@@ -309,11 +373,13 @@ export function decideGestorTechnicalDemand(
   demandId: string,
   decision: 'APROVAR' | 'DEVOLVER_ADMIN' | 'LIBERAR_OPERACAO',
   opinion: string,
+  technicalBrief?: GestorTechnicalBrief,
 ): Promise<{ decided: boolean; demanda: GestorTechnicalDemand }> {
   return writeGestorData('gestor.demandas.decidir', {
     demanda_id: demandId,
     decisao: decision,
     parecer: opinion,
+    relatorio_tecnico: technicalBrief,
   })
 }
 
@@ -386,6 +452,86 @@ export async function getGestorAssetCatalog(
   return {
     assets: Array.isArray(assetData.rows) ? assetData.rows : [],
     components: Array.isArray(componentData.rows) ? componentData.rows : [],
+  }
+}
+
+export async function getGestorAssetJourney(
+  assetId: string,
+  signal?: AbortSignal,
+): Promise<GestorAssetJourney> {
+  const [context, history, planData, itemData] = await Promise.all([
+    readGestorData<GestorAssetJourney>(
+      'operador.contexto_qr',
+      { qr_payload: assetId, motor: false },
+      signal,
+    ),
+    readGestorData<AssetHistoryListData>(
+      'operador.historico_qr',
+      { ativo_id: assetId, limite: 100 },
+      signal,
+    ),
+    readGestorData<AdminListData<Record<string, unknown>>>(
+      'admin.listar',
+      { entidade: 'planos', limite: 500 },
+      signal,
+    ),
+    readGestorData<AdminListData<Record<string, unknown>>>(
+      'admin.listar',
+      { entidade: 'plano_itens', limite: 1000 },
+      signal,
+    ),
+  ])
+
+  const plans = Array.isArray(planData.rows)
+    ? planData.rows.filter((plan) => String(plan.ativo_id ?? '') === assetId)
+    : []
+  const planNames = new Map(
+    plans.map((plan) => [
+      String(plan.id ?? ''),
+      String(plan.nome ?? plan.titulo ?? 'Plano técnico'),
+    ]),
+  )
+  const regras_parametros: GestorAssetParameterRule[] =
+    Array.isArray(itemData.rows)
+      ? itemData.rows
+        .filter((item) => {
+          const planId = String(item.plano_id ?? '')
+          return planNames.has(planId) && Boolean(String(item.parametro_nome ?? '').trim())
+        })
+        .map((item) => ({
+          id: String(item.id ?? ''),
+          plano_id: String(item.plano_id ?? ''),
+          plano_nome: planNames.get(String(item.plano_id ?? '')),
+          componente_id: String(item.componente_id ?? ''),
+          parametro_nome: String(item.parametro_nome ?? ''),
+          unidade: String(item.unidade ?? ''),
+          limite_min: item.limite_min as number | string | undefined,
+          limite_max: item.limite_max as number | string | undefined,
+          valor_esperado: String(item.valor_esperado ?? ''),
+        }))
+      : []
+
+  return {
+    ...context,
+    componentes: Array.isArray(context.componentes) ? context.componentes : [],
+    acoes_pendentes: Array.isArray(context.acoes_pendentes)
+      ? context.acoes_pendentes
+      : [],
+    historico_recente: Array.isArray(history.items)
+      ? history.items
+      : Array.isArray(context.historico_recente)
+        ? context.historico_recente
+        : [],
+    parametros_recentes: Array.isArray(context.parametros_recentes)
+      ? context.parametros_recentes
+      : [],
+    parametros_atuais: Array.isArray(context.parametros_atuais)
+      ? context.parametros_atuais
+      : [],
+    ocorrencias_abertas: Array.isArray(context.ocorrencias_abertas)
+      ? context.ocorrencias_abertas
+      : [],
+    regras_parametros,
   }
 }
 
