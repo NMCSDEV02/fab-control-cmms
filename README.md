@@ -13,12 +13,17 @@ Sistema CMMS industrial para operação, manutenção, PCM e gestão.
 
 ```text
 frontend/   Aplicação web responsiva do operador
+frontend-gestor/ Aplicação web responsiva do gestor, supervisor técnico e administrador
 backend/    API, regras de negócio e integração com o banco
 docs/       Arquitetura, padrões e contratos
 mockups/    Referências visuais aprovadas
 scripts/    Scripts de apoio
 ```
 
-A referência visual oficial é `mockups/FAB-Control-Mockup-17-DEFINITIVO.html`.
+Referências visuais oficiais:
+
+- `mockups/FAB-Control-Mockup operador.html`
+- `mockups/FAB-Control-Mockup gestor.html`
+- `mockups/FAB-Control-Mockup admin.html`
 
 Não versionar tokens, credenciais, URLs privadas ou dados reais de produção.

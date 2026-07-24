@@ -1,16 +1,20 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import crypto from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 
 const root = path.resolve(import.meta.dirname, '..')
 const releasePath = path.join(root, 'release', 'fab-control.release.json')
-const backend = path.join(root, 'backend', 'apps-script')
-const frontendPackage = path.join(root, 'frontend', 'package.json')
+const environmentPath = path.join(root, 'release', 'fab-control.environment.local.json')
+const backendPath = path.join(root, 'backend', 'apps-script')
 
 function fail(message) {
-  console.error('ERRO: ' + message)
+  console.error(`ERRO: ${message}`)
   process.exit(1)
+}
+
+function assert(condition, message) {
+  if (!condition) fail(message)
 }
 
 function read(file) {
@@ -21,43 +25,49 @@ function read(file) {
     .replace(/\r/g, '\n')
 }
 
+function readJson(file) {
+  return JSON.parse(read(file))
+}
+
 function gitCheckIgnore(relativePath) {
-  const result = spawnSync(
-    'git',
-    ['check-ignore', '-q', '--', relativePath],
-    { cwd: root, stdio: 'ignore' },
-  )
-  return result.status === 0
+  return spawnSync('git', ['check-ignore', '-q', '--', relativePath], {
+    cwd: root,
+    stdio: 'ignore',
+  }).status === 0
 }
 
 function gitIsTracked(relativePath) {
-  const result = spawnSync(
-    'git',
-    ['ls-files', '--error-unmatch', '--', relativePath],
-    { cwd: root, stdio: 'ignore' },
-  )
-  return result.status === 0
+  return spawnSync('git', ['ls-files', '--error-unmatch', '--', relativePath], {
+    cwd: root,
+    stdio: 'ignore',
+  }).status === 0
 }
 
-const manifest = JSON.parse(read(releasePath))
-const expected = manifest.release
-
-for (const [name, version] of Object.entries(manifest.components)) {
-  if (version !== expected) {
-    fail(name + ' = ' + version + '; esperado ' + expected)
+function requireChecks(checks, names, expected = 'approved') {
+  for (const name of names) {
+    assert(checks?.[name] === expected, `evidência ${name} deve ser ${expected}`)
   }
 }
 
-const packageJson = JSON.parse(read(frontendPackage))
-if (packageJson.version !== expected) {
-  fail('frontend/package.json = ' + packageJson.version)
+const manifest = readJson(releasePath)
+const environment = readJson(environmentPath)
+const expectedRelease = manifest.release
+
+assert(manifest.manifestVersion === 2, 'manifestVersion deve ser 2')
+assert(/^\d+\.\d+\.\d+$/.test(expectedRelease), 'release semântica inválida')
+
+for (const [name, version] of Object.entries(manifest.components || {})) {
+  assert(version === expectedRelease, `${name} = ${version}; esperado ${expectedRelease}`)
 }
 
-const config = read(path.join(backend, '00_Config.js'))
-const releaseMatch = config.match(/const FAB_RELEASE_VERSION = "([^"]+)";/)
-if (!releaseMatch || releaseMatch[1] !== expected) {
-  fail('FAB_RELEASE_VERSION divergente')
+for (const packagePath of ['frontend/package.json', 'frontend-gestor/package.json']) {
+  const packageJson = readJson(path.join(root, packagePath))
+  assert(packageJson.version === expectedRelease, `${packagePath} fora da release`)
 }
+
+const config = read(path.join(backendPath, '00_Config.js'))
+const releaseMatch = config.match(/const FAB_RELEASE_VERSION = "([^"]+)";/)
+assert(releaseMatch?.[1] === expectedRelease, 'FAB_RELEASE_VERSION divergente')
 
 for (const field of [
   'RELEASE_VERSION',
@@ -66,12 +76,13 @@ for (const field of [
   'CONTRACT_VERSION',
   'FRONTEND_VERSION',
 ]) {
-  if (!config.includes(field + ': FAB_RELEASE_VERSION')) {
-    fail('campo central ausente em 00_Config.js: ' + field)
-  }
+  assert(
+    config.includes(`${field}: FAB_RELEASE_VERSION`),
+    `campo central ausente em 00_Config.js: ${field}`,
+  )
 }
 
-const db = read(path.join(backend, '02_Db.js'))
+const db = read(path.join(backendPath, '02_Db.js'))
 for (const key of [
   'release.version',
   'app.version',
@@ -80,60 +91,27 @@ for (const key of [
   'contract.version',
   'frontend.version',
 ]) {
-  if (!db.includes('chave:"' + key + '"')) {
-    fail('chave ausente em 02_Db.js: ' + key)
-  }
-}
-
-const http = read(path.join(backend, '03_Http_Auth.js'))
-for (const key of [
-  'release_version',
-  'api_version',
-  'schema_version',
-  'contract_version',
-  'frontend_version',
-]) {
-  if (!db.includes(key) && !http.includes(key)) {
-    fail('campo de versão ausente: ' + key)
-  }
-}
-
-const contract = read(path.join(backend, '18_Contrato_Frontend_UI.js'))
-if (contract.includes('"1.1.1"')) {
-  fail('contrato legado 1.1.1 ainda ativo')
-}
-if (!contract.includes('FAB.CONTRACT_VERSION')) {
-  fail('contrato central não utilizado')
-}
-
-const visual = read(path.join(backend, '19_Tela_Operador_Visual_Final.js'))
-if (visual.includes('"1.1.2b"')) {
-  fail('contrato legado 1.1.2b ainda ativo')
-}
-if (!visual.includes('CMMS112B_CONTRACT_VERSION = FAB.CONTRACT_VERSION')) {
-  fail('contrato visual não centralizado')
+  assert(db.includes(`chave:"${key}"`), `chave ausente em 02_Db.js: ${key}`)
 }
 
 const sourceFiles = fs
-  .readdirSync(backend)
+  .readdirSync(backendPath)
   .filter((name) => name.endsWith('.js') || name === 'appsscript.json')
   .sort()
 
-if (sourceFiles.length !== 26) {
-  fail('quantidade de fontes backend = ' + sourceFiles.length + '; esperado 26')
-}
-
-if (fs.readdirSync(backend).some((name) => name.endsWith('.gs'))) {
-  fail('arquivo .gs ativo encontrado')
-}
+assert(sourceFiles.length === 34, `quantidade de fontes backend = ${sourceFiles.length}; esperado 34`)
+assert(
+  !fs.readdirSync(backendPath).some((name) => name.endsWith('.gs')),
+  'arquivo .gs ativo encontrado',
+)
 
 for (const name of sourceFiles.filter((name) => name.endsWith('.js'))) {
-  execFileSync(process.execPath, ['--check', path.join(backend, name)], {
+  execFileSync(process.execPath, ['--check', path.join(backendPath, name)], {
     stdio: 'pipe',
   })
 }
 
-JSON.parse(read(path.join(backend, 'appsscript.json')))
+JSON.parse(read(path.join(backendPath, 'appsscript.json')))
 execFileSync('git', ['diff', '--check'], { cwd: root, stdio: 'pipe' })
 
 const material = sourceFiles
@@ -141,18 +119,16 @@ const material = sourceFiles
     const canonical =
       name === 'appsscript.json'
         ? name
-        : path.basename(name, path.extname(name)) + '.script'
-
+        : `${path.basename(name, path.extname(name))}.script`
     const hash = crypto
       .createHash('sha256')
-      .update(read(path.join(backend, name)), 'utf8')
+      .update(read(path.join(backendPath, name)), 'utf8')
       .digest('hex')
       .toUpperCase()
-
     return { canonical, hash }
   })
   .sort((a, b) => a.canonical.localeCompare(b.canonical))
-  .map((item) => item.canonical + '\n' + item.hash + '\n')
+  .map(({ canonical, hash }) => `${canonical}\n${hash}\n`)
   .join('')
 
 const aggregate = crypto
@@ -161,199 +137,176 @@ const aggregate = crypto
   .digest('hex')
   .toUpperCase()
 
-const expectedHash = manifest.target?.backendSourceSha256
-if (!expectedHash) {
-  fail('target.backendSourceSha256 ausente no manifesto')
-}
-if (aggregate !== expectedHash) {
-  fail(
-    'SHA256 agregado divergente. Manifesto=' +
-      expectedHash +
-      '; calculado=' +
-      aggregate,
-  )
-}
-
-const claspRelative = 'backend/apps-script/.clasp.json'
-if (!gitCheckIgnore(claspRelative)) {
-  fail('.clasp.json não está protegido pelo .gitignore')
-}
-if (gitIsTracked(claspRelative)) {
-  fail('.clasp.json está rastreado pelo Git')
-}
-
-const environmentRelative = 'release/fab-control.environment.local.json'
-if (!gitCheckIgnore(environmentRelative)) {
-  fail('arquivo local de ambiente não está protegido pelo .gitignore')
-}
-if (gitIsTracked(environmentRelative)) {
-  fail('arquivo local de ambiente está rastreado pelo Git')
-}
-
-const environmentPath = path.join(root, environmentRelative)
-if (!fs.existsSync(environmentPath)) {
-  fail('arquivo local de ambiente ausente: ' + environmentRelative)
-}
-
-const environment = JSON.parse(read(environmentPath))
 const target = manifest.target || {}
-const authFeature = manifest.features?.operatorAuthentication || {}
-const bootstrapFeature = manifest.features?.productionBootstrap || {}
-const canaryEvidence = manifest.canaryEvidence || {}
+assert(target.backendSourceSha256 === aggregate, 'SHA256 agregado do backend divergente')
+assert(target.environment === 'homologation', 'destino não identificado como homologação')
+assert(
+  Number.isInteger(target.immutableAppsScriptVersion) && target.immutableAppsScriptVersion > 0,
+  'versão imutável do Apps Script inválida',
+)
+assert(target.deploymentId && target.deploymentId !== 'HEAD', 'deployment imutável ausente')
+assert(/^[0-9a-f]{7,40}$/i.test(target.sourceGitCommit || ''), 'commit-fonte inválido')
+assert(target.spreadsheetId, 'planilha canária ausente')
 
-if (
-  !Number.isInteger(target.immutableAppsScriptVersion) ||
-  target.immutableAppsScriptVersion < 1
-) {
-  fail('target.immutableAppsScriptVersion inválido')
-}
-if (!target.deploymentId || String(target.deploymentId).toUpperCase() === 'HEAD') {
-  fail('target.deploymentId imutável ausente')
-}
-if (!target.gitCommit || !/^[0-9a-f]{7,40}$/i.test(target.gitCommit)) {
-  fail('target.gitCommit inválido')
-}
-if (authFeature.remoteValidation !== 'approved') {
-  fail('homologação remota da autenticação não está aprovada')
-}
-if (authFeature.status !== 'homologated') {
-  fail('status da autenticação não está homologated')
-}
-if (bootstrapFeature.remoteValidation !== 'approved') {
-  fail('homologação remota do bootstrap não está aprovada')
-}
-if (bootstrapFeature.status !== 'canary-homologated') {
-  fail('status do bootstrap não está canary-homologated')
+const production = manifest.productionBaseline || {}
+assert(production.release === '1.3.1', 'baseline de produção deve permanecer em 1.3.1')
+assert(production.health === 'approved-unchanged', 'saúde da produção não confirmada')
+assert(production.deploymentId !== target.deploymentId, 'canário reutiliza deployment de produção')
+assert(production.spreadsheetId !== target.spreadsheetId, 'canário reutiliza planilha de produção')
+
+for (const relativePath of [
+  'backend/apps-script/.clasp.json',
+  'backend/apps-script/.clasp.canary.json',
+  'release/fab-control.environment.local.json',
+]) {
+  assert(gitCheckIgnore(relativePath), `${relativePath} não está protegido pelo .gitignore`)
+  assert(!gitIsTracked(relativePath), `${relativePath} está rastreado pelo Git`)
 }
 
-if (environment.environment !== 'homologation') {
-  fail('ambiente local não está identificado como homologation')
-}
-if (environment.release !== expected) {
-  fail('release do ambiente local divergente')
-}
-if (environment.immutableAppsScriptVersion !== target.immutableAppsScriptVersion) {
-  fail('versão imutável local divergente do manifesto')
-}
-if (environment.deploymentId !== target.deploymentId) {
-  fail('deployment local divergente do manifesto')
-}
-if (environment.gitCommit !== target.gitCommit) {
-  fail('commit homologado local divergente do manifesto')
-}
-if (environment.backendSourceSha256 !== aggregate) {
-  fail('hash homologado local divergente do backend')
-}
-if (environment.isolatedFromProduction !== true) {
-  fail('isolamento da planilha de homologação não confirmado')
-}
-if (
-  !environment.webAppUrl ||
-  !environment.webAppUrl.includes('/s/' + target.deploymentId + '/exec')
-) {
-  fail('URL imutável de homologação inválida')
-}
+assert(environment.environment === 'homologation', 'ambiente local divergente')
+assert(environment.release === expectedRelease, 'release do ambiente local divergente')
+assert(environment.isolatedFromProduction === true, 'isolamento local não confirmado')
+assert(environment.immutableAppsScriptVersion === target.immutableAppsScriptVersion, 'versão local divergente')
+assert(environment.deploymentId === target.deploymentId, 'deployment local divergente')
+assert(environment.sourceGitCommit === target.sourceGitCommit, 'commit local divergente')
+assert(environment.backendSourceSha256 === aggregate, 'hash local divergente')
+assert(environment.spreadsheetId === target.spreadsheetId, 'planilha local divergente')
+assert(
+  environment.webAppUrl?.includes(`/s/${target.deploymentId}/exec`),
+  'URL canária local inválida',
+)
+assert(
+  environment.production?.deploymentId === production.deploymentId &&
+    environment.production?.spreadsheetId === production.spreadsheetId,
+  'referência local de produção divergente',
+)
 
-for (const check of [
+const publicChecks = [
   'health',
   'bootstrap',
+  'userAdminEndpointDeclared',
+  'permissionsEndpointDeclared',
+  'companyProfileEndpointsDeclared',
+  'companyProfileRequiresAuthentication',
+  'configurationEngineEndpointDeclared',
+  'configurationEngineRequiresAuthentication',
+  'commercialAccessEndpointDeclared',
+  'commercialAccessRequiresAuthentication',
+  'maintenanceExchangeClosedByDefault',
+  'maintenanceAccessEndpointHiddenFromBootstrap',
+  'internalCatalogRequiresAuthentication',
+  'internalCatalogHiddenFromBootstrap',
+  'internalCatalogEditorRequiresAuthentication',
+  'internalCatalogEditorHiddenFromBootstrap',
+  'adminImportEndpointDeclared',
+  'adminImportRequiresAuthentication',
+  'entityActionEndpointDeclared',
+  'entityActionRequiresAuthentication',
+  'governanceEndpointsDeclared',
+  'governanceEndpointsRequireAuthentication',
+  'restoreEndpointsDeclared',
+  'restoreEndpointsRequireAuthentication',
+  'unknownLoginRejected',
+  'recoveryNonEnumeration',
+  'usersRequiresAuthentication',
+  'invalidPermissionTokenRejected',
+]
+requireChecks(environment.checks, publicChecks)
+requireChecks(environment.checks, ['operatorFrontendBuild', 'managerFrontendBuild'])
+
+const internalAuthenticatedChecks = [
+  'internalCatalogAuthenticatedRead',
+  'internalCatalogAuthenticatedDraftSave',
+  'internalCatalogAuthenticatedValidation',
+  'internalCatalogAuthenticatedPublish',
+  'internalCatalogAuthenticatedRollback',
+  'maintenanceWindowClosedAfterValidation',
+  'maintenanceSessionRejectedAfterWindowClose',
+]
+requireChecks(environment.checks, internalAuthenticatedChecks)
+
+const canary = manifest.canaryEvidence || {}
+assert(canary.environment === 'isolated', 'manifesto não confirma isolamento do canário')
+assert(canary.release === expectedRelease, 'release da evidência canária divergente')
+assert(canary.backendSourceSha256 === aggregate, 'hash da evidência canária divergente')
+assert(canary.immutableAppsScriptVersion === target.immutableAppsScriptVersion, 'versão da evidência divergente')
+assert(canary.sourceGitCommit === target.sourceGitCommit, 'commit da evidência divergente')
+assert(canary.deploymentId === target.deploymentId, 'deployment da evidência divergente')
+assert(canary.spreadsheetId === target.spreadsheetId, 'planilha da evidência divergente')
+requireChecks(canary.checks, publicChecks)
+requireChecks(canary.checks, internalAuthenticatedChecks)
+assert(canary.checks?.declaredSheets === 48, 'quantidade de abas declaradas divergente')
+assert(canary.checks?.productionDeploymentUnchanged === 'approved', 'produção não foi reconfirmada')
+
+const authenticatedChecks = [
   'permanentAdminLogin',
   'authenticatedAdminRead',
+  'authenticatedPermissionMatrixRead',
+  'authenticatedConfigurationStateRead',
+  'configurationSchemaSeeded',
+  'authenticatedImportCatalogRead',
+  'importSchemaSeeded',
   'remoteLogout',
   'revokedTokenRejected',
-  'readinessAfterRevokedSessions',
-  'frontendBuild',
-]) {
-  if (environment.checks?.[check] !== 'approved') {
-    fail('evidência de homologação ausente: ' + check)
-  }
+]
+
+if (manifest.status === 'canary-published-authenticated-validation-pending') {
+  assert(manifest.promotionEligible === false, 'candidato pendente não pode ser promovível')
+  requireChecks(environment.checks, authenticatedChecks, 'pending')
+  requireChecks(canary.checks, authenticatedChecks, 'pending')
+} else if (manifest.status === 'canary-homologated') {
+  assert(manifest.promotionEligible === true, 'canário homologado deve ser promovível')
+  requireChecks(environment.checks, authenticatedChecks)
+  requireChecks(canary.checks, authenticatedChecks)
+} else {
+  fail(`status de release não reconhecido: ${manifest.status}`)
 }
 
-const bootstrapPhase = environment.bootstrapPhase || {}
-if (bootstrapPhase.immutableAppsScriptVersion !== 2) {
-  fail('fase local de bootstrap não está vinculada ao Apps Script @2')
-}
-if (bootstrapPhase.gitCommit !== 'a30a7ea') {
-  fail('commit local da fase de bootstrap divergente')
-}
-if (bootstrapPhase.deploymentId !== 'AKfycbyU6MBRAmtSrmBcZ1H1UruWquMCJoy95jgz_9SF9rJGDWmebb68HHF5DWl1dL2H4dtF') {
-  fail('deployment local da fase de bootstrap divergente')
-}
-for (const check of [
-  'productionSchema',
-  'initialAdminBootstrap',
-  'temporaryPasswordCleared',
-  'firstAccess',
-]) {
-  if (bootstrapPhase.checks?.[check] !== 'approved') {
-    fail('evidência local da fase de bootstrap ausente: ' + check)
-  }
-}
-
-if (canaryEvidence.environment !== 'isolated') {
-  fail('manifesto não confirma isolamento do canário')
-}
-if (canaryEvidence.release !== expected) {
-  fail('release da evidência canária divergente')
-}
-if (canaryEvidence.backendSourceSha256 !== aggregate) {
-  fail('hash da evidência canária divergente')
-}
-
-const manifestBootstrapPhase =
-  canaryEvidence.phases?.bootstrapAndFirstAccess || {}
-if (manifestBootstrapPhase.immutableAppsScriptVersion !== 2) {
-  fail('manifesto não vincula o bootstrap à versão @2')
-}
-if (manifestBootstrapPhase.sourceGitCommit !== 'a30a7ea') {
-  fail('manifesto possui commit incorreto para a fase de bootstrap')
-}
-if (manifestBootstrapPhase.deploymentId !== 'AKfycbyU6MBRAmtSrmBcZ1H1UruWquMCJoy95jgz_9SF9rJGDWmebb68HHF5DWl1dL2H4dtF') {
-  fail('manifesto possui deployment incorreto para a fase de bootstrap')
-}
-
-const manifestFinalPhase = canaryEvidence.phases?.finalCandidate || {}
-if (
-  manifestFinalPhase.immutableAppsScriptVersion !==
-  target.immutableAppsScriptVersion
-) {
-  fail('fase final do manifesto diverge da versão-alvo')
-}
-if (manifestFinalPhase.sourceGitCommit !== target.gitCommit) {
-  fail('fase final do manifesto diverge do commit-alvo')
-}
-if (manifestFinalPhase.deploymentId !== target.deploymentId) {
-  fail('fase final do manifesto diverge do deployment-alvo')
-}
-
-const legacyEvidence = manifest.homologationEvidence || {}
-if (legacyEvidence.appliesToRelease !== '1.3.0') {
-  fail('evidência legada não está vinculada à release 1.3.0')
-}
-for (const check of [
-  'health',
-  'bootstrap',
-  'authenticationApi',
-  'frontendIntegration',
-  'sessionStorageOnly',
-  'recoveryNonEnumeration',
-  'temporaryLock',
-]) {
-  if (legacyEvidence[check] !== 'approved') {
-    fail('evidência legada ausente: ' + check)
-  }
-}
-
-console.log('VALIDAÇÃO LOCAL DA RELEASE APROVADA — VALIDADOR V1.6')
-console.log('Release única: ' + expected)
-console.log('Componentes: frontend, backend API, contrato e schema')
-console.log('Arquivos backend: ' + sourceFiles.length)
-console.log('SHA256 agregado do backend: ' + aggregate)
-console.log('Hash conferido com release/fab-control.release.json')
-console.log('Metadados locais sensíveis: ignorados e não rastreados')
-console.log(
-  'Gate remoto de homologação: APROVADO — Apps Script @' +
-    target.immutableAppsScriptVersion,
+const candidate = manifest.candidateEvidence || {}
+assert(candidate.environment === 'isolated', 'candidato não está isolado')
+assert(candidate.release === expectedRelease, 'release do candidato divergente')
+requireChecks(candidate, [
+  'javascriptSyntax',
+  'authenticationContract',
+  'adminIdentityContract',
+  'configurationEngineContract',
+  'configurationEngineE2E',
+  'motorCommercialAccessContract',
+  'motorCommercialAccessE2E',
+  'motorInternalMaintenanceAccessE2E',
+  'motorInternalCatalogContract',
+  'motorInternalCatalogVersioningE2E',
+  'adminImportContract',
+  'adminImportE2E',
+  'productionBootstrapContract',
+  'operatorFrontendBuild',
+  'managerFrontendBuild',
+])
+assert(
+  candidate.motorInternalAccessGenerator?.startsWith('approved-'),
+  'gerador assinado do motor sem evidência aprovada',
 )
-console.log('Deployment imutável e planilha isolada: conferidos')
-console.log('Gate de publicação: pendente de tag limpa e promoção controlada para produção')
+assert(
+  candidate.motorInternalCatalogAuthenticatedE2E?.startsWith('approved-'),
+  'catálogo interno sem evidência autenticada aprovada',
+)
+assert(
+  candidate.motorInternalMaintenanceRevocation?.startsWith('approved-'),
+  'revogação da manutenção interna sem evidência aprovada',
+)
+assert(
+  candidate.remoteCanary === (manifest.promotionEligible ? 'approved' : 'public-contract-approved'),
+  'evidência remota do canário divergente',
+)
+
+console.log('VALIDAÇÃO LOCAL DO CANÁRIO APROVADA — VALIDADOR V2.0')
+console.log(`Release: ${expectedRelease}`)
+console.log(`Apps Script imutável: @${target.immutableAppsScriptVersion}`)
+console.log(`SHA256 agregado do backend: ${aggregate}`)
+console.log('Isolamento entre produção e homologação: aprovado')
+console.log('Contrato público, proteção de acesso e builds: aprovados')
+if (!manifest.promotionEligible) {
+  console.log('Promoção para produção: bloqueada até concluir o login administrativo remoto')
+} else {
+  console.log('Promoção para produção: elegível, mas não executada')
+}
