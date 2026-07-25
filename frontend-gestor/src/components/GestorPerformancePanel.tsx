@@ -26,7 +26,7 @@ interface MetricDefinition {
   description: string
   value: number | null
   previous: number | null
-  format: 'percent' | 'duration'
+  format: 'percent' | 'duration' | 'integer'
   direction: MetricDirection
   target?: number | null
   sample: string
@@ -221,17 +221,14 @@ export function GestorPerformancePanel({
           : 'Ordens encerradas no período',
       },
       {
-        key: 'oee',
-        label: 'OEE',
-        description: 'Disponibilidade × performance × qualidade',
-        value: current.oee_disponivel ? current.oee_pct : null,
-        previous: previous?.oee_disponivel ? previous.oee_pct : null,
-        format: 'percent',
-        direction: 'higher',
-        target: current.metas?.oee_pct ?? 75,
-        sample: current.oee_disponivel
-          ? `${current.producao_amostra} apontamento(s) de produção`
-          : 'Aguardando apontamentos de produção',
+        key: 'failures',
+        label: 'Falhas não planejadas',
+        description: 'Ocorrências corretivas registradas no período',
+        value: current.falhas_nao_planejadas,
+        previous: previous?.falhas_nao_planejadas ?? null,
+        format: 'integer',
+        direction: 'lower',
+        sample: `${current.ativos_considerados} ativo(s) observado(s)`,
       },
     ]
   }, [current, previous])
@@ -244,7 +241,6 @@ export function GestorPerformancePanel({
       detail: string
     }> = []
     const availabilityTarget = current.metas?.disponibilidade_pct ?? 90
-    const oeeTarget = current.metas?.oee_pct ?? 75
 
     if (
       current.disponibilidade_pct != null &&
@@ -260,34 +256,6 @@ export function GestorPerformancePanel({
         tone: 'good',
         title: 'Disponibilidade dentro da meta',
         detail: 'Mantenha o acompanhamento das paradas e dos ativos críticos.',
-      })
-    }
-
-    if (!current.oee_disponivel) {
-      messages.push({
-        tone: 'info',
-        title: 'OEE ainda sem amostra confiável',
-        detail: 'Registre tempo planejado, produção total, peças boas e ciclo ideal para liberar o cálculo.',
-      })
-    } else if (current.oee_pct != null && current.oee_pct < oeeTarget) {
-      const factors: Array<{ label: string; value: number | null }> = [
-        { label: 'disponibilidade', value: current.oee_disponibilidade_pct },
-        { label: 'performance', value: current.oee_performance_pct },
-        { label: 'qualidade', value: current.oee_qualidade_pct },
-      ]
-      const weakest = factors
-        .filter((entry) => entry.value != null)
-        .sort(
-          (left, right) =>
-            (left.value ?? Number.POSITIVE_INFINITY) -
-            (right.value ?? Number.POSITIVE_INFINITY),
-        )[0]
-      messages.push({
-        tone: 'attention',
-        title: 'OEE abaixo da meta',
-        detail: weakest
-          ? `A maior oportunidade está em ${weakest.label} (${formatPercent(weakest.value)}).`
-          : 'Revise disponibilidade, performance e qualidade.',
       })
     }
 
@@ -389,7 +357,9 @@ export function GestorPerformancePanel({
           )
           const formattedValue = metric.format === 'percent'
             ? formatPercent(metric.value)
-            : formatDuration(metric.value)
+            : metric.format === 'integer'
+              ? String(metric.value ?? 0)
+              : formatDuration(metric.value)
           const targetMet = metric.target == null || metric.value == null
             ? null
             : metric.value >= metric.target
@@ -429,27 +399,20 @@ export function GestorPerformancePanel({
 
       {current ? (
         <div className="manager-performance__detail-grid">
-          <article className="manager-oee-panel">
+          <article className="manager-oee-panel manager-reliability-panel">
             <header>
               <div>
-                <span className="eyebrow">COMPOSIÇÃO DO OEE</span>
-                <h3>{current.oee_disponivel ? formatPercent(current.oee_pct) : 'Amostra pendente'}</h3>
+                <span className="eyebrow">CONFIABILIDADE</span>
+                <h3>Comportamento da manutenção</h3>
               </div>
               <ChartIcon />
             </header>
-            {[
-              ['Disponibilidade', current.oee_disponibilidade_pct],
-              ['Performance', current.oee_performance_pct],
-              ['Qualidade', current.oee_qualidade_pct],
-            ].map(([label, value]) => (
-              <div className="manager-oee-factor" key={String(label)}>
-                <span><strong>{label}</strong><b>{formatPercent(value as number | null)}</b></span>
-                <i><b style={{ width: `${progressValue(value as number | null)}%` }} /></i>
-              </div>
-            ))}
-            {!current.oee_disponivel ? (
-              <p>OEE não é tratado como zero: ele permanece indisponível até existir uma amostra de produção válida.</p>
-            ) : null}
+            <dl>
+              <div><dt>Falhas não planejadas</dt><dd>{current.falhas_nao_planejadas}</dd></div>
+              <div><dt>Tempo médio entre falhas</dt><dd>{formatDuration(current.mtbf_segundos)}</dd></div>
+              <div><dt>Tempo médio para reparar</dt><dd>{formatDuration(current.mttr_segundos)}</dd></div>
+              <div><dt>SLA de resposta</dt><dd>{formatPercent(current.sla_resposta_pct)}</dd></div>
+            </dl>
           </article>
 
           <article className="manager-time-panel">

@@ -159,8 +159,8 @@ export async function getOperatorActions(signal?: AbortSignal): Promise<Operator
     'operador.minhas_acoes',
     {
       token,
-      status: 'PENDENTE,EM_EXECUCAO,AGUARDANDO_VALIDACAO,CONCLUIDA',
-      incluir_concluidas: true,
+      status: 'PENDENTE,EM_EXECUCAO',
+      incluir_concluidas: false,
       limite: 200,
     },
     signal,
@@ -173,7 +173,12 @@ export async function getOperatorActions(signal?: AbortSignal): Promise<Operator
     response.data?.acoes ??
     []
 
-  return cards.map(mapOperatorCard).filter((action) => Boolean(action.id))
+  return cards
+    .map(mapOperatorCard)
+    .filter((action) => (
+      Boolean(action.id) &&
+      (action.status === 'PENDENTE' || action.status === 'EM_EXECUCAO')
+    ))
 }
 
 

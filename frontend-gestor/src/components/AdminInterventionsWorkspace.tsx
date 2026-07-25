@@ -1,15 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { listTechnicalAreas, listTechnicalRoles } from '../services/api/admin'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  listAdminTechnicalAnalyses,
+  listTechnicalAreas,
+  listTechnicalRoles,
+} from '../services/api/admin'
 import { listAdminEntity } from '../services/api/catalog'
 import { listAdminInterventions, saveAdminIntervention, sendAdminInterventionForValidation } from '../services/api/interventions'
 import { isGestorAuthenticationError } from '../services/api/gestor'
-import type { TechnicalArea, TechnicalRole } from '../types/admin'
+import type {
+  AdminNotificationTarget,
+  AdminTechnicalAnalysis,
+  TechnicalArea,
+  TechnicalRole,
+} from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminIntervention, AdminInterventionInput } from '../types/interventions'
 import { AssetIcon, CheckIcon, RefreshIcon, SearchIcon, ShieldIcon, WrenchIcon } from './Icons'
+import { AdminCatalogWorkspace } from './AdminCatalogWorkspace'
 
 interface AdminInterventionsWorkspaceProps {
   onSessionExpired: () => void
+  focusTarget?: AdminNotificationTarget | null
+  onOpenChecklists: () => void
+  onOpenImports: () => void
 }
 
 function emptyIntervention(): AdminInterventionInput {
@@ -26,7 +39,8 @@ function editable(intervention: AdminIntervention): boolean {
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     RASCUNHO: 'Rascunho', AGUARDANDO_VALIDACAO: 'Aguardando validação', DEVOLVIDA_ADMIN: 'Devolvida ao Admin',
-    ABERTA: 'Liberada ao Operador', EM_EXECUCAO: 'Em execução', FINALIZADA: 'Finalizada', CANCELADA: 'Cancelada',
+    ABERTA: 'Liberada ao Operador', EM_EXECUCAO: 'Em execução', FINALIZADA: 'Finalizada',
+    CONCLUIDA: 'Concluída', CANCELADA: 'Cancelada',
   }
   return labels[status] ?? status
 }
@@ -44,8 +58,33 @@ function operationalPlan(record: AdminEntityRecord): boolean {
     && validated !== 'NAO'
 }
 
-export function AdminInterventionsWorkspace({ onSessionExpired }: AdminInterventionsWorkspaceProps) {
+function formatDate(value?: string): string {
+  if (!value) return 'Sem data registrada'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('pt-BR')
+}
+
+function analysisStatusLabel(value: string): string {
+  const labels: Record<string, string> = {
+    RASCUNHO: 'Rascunho',
+    ENVIADA_ADMIN: 'Aguardando tratamento',
+    EM_TRATAMENTO_ADMIN: 'Em tratamento',
+    CONVERTIDA_CHECKLIST: 'Checklist criado',
+    CONVERTIDA_OS: 'Intervenção criada',
+    CONCLUIDA: 'Concluída',
+  }
+  return labels[String(value ?? '').toUpperCase()] ?? value
+}
+
+export function AdminInterventionsWorkspace({
+  onSessionExpired,
+  focusTarget,
+  onOpenChecklists,
+  onOpenImports,
+}: AdminInterventionsWorkspaceProps) {
+  const handledFocusRef = useRef(0)
   const [interventions, setInterventions] = useState<AdminIntervention[]>([])
+  const [analyses, setAnalyses] = useState<AdminTechnicalAnalysis[]>([])
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
   const [components, setComponents] = useState<AdminEntityRecord[]>([])
   const [plans, setPlans] = useState<AdminEntityRecord[]>([])
@@ -54,9 +93,13 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
   const [roles, setRoles] = useState<TechnicalRole[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [scheduleFilter, setScheduleFilter] = useState('')
+  const [activeArea, setActiveArea] =
+    useState<'planning' | 'interventions' | 'analyses'>('interventions')
   const [editor, setEditor] = useState<AdminInterventionInput | null>(null)
   const [routing, setRouting] = useState<AdminIntervention | null>(null)
   const [viewing, setViewing] = useState<AdminIntervention | null>(null)
+  const [viewingAnalysis, setViewingAnalysis] = useState<AdminTechnicalAnalysis | null>(null)
   const [routeDraft, setRouteDraft] = useState({ area_atual_id: '', cargo_atual_id: '', comentario: '', exige_assinatura: 'SIM', assinaturas_necessarias: 1, exige_segregacao: 'SIM' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -73,12 +116,27 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
   }, [onSessionExpired])
 
   const loadData = useCallback(async (signal?: AbortSignal) => {
-    const [nextInterventions, assetList, componentList, planList, planItemList, nextAreas, nextRoles] = await Promise.all([
-      listAdminInterventions(signal), listAdminEntity('ativos', signal), listAdminEntity('componentes', signal),
-      listAdminEntity('planos', signal), listAdminEntity('plano_itens', signal),
-      listTechnicalAreas(signal), listTechnicalRoles('', signal),
+    const [
+      nextInterventions,
+      nextAnalyses,
+      assetList,
+      componentList,
+      planList,
+      planItemList,
+      nextAreas,
+      nextRoles,
+    ] = await Promise.all([
+      listAdminInterventions(signal),
+      listAdminTechnicalAnalyses(signal),
+      listAdminEntity('ativos', signal),
+      listAdminEntity('componentes', signal),
+      listAdminEntity('planos', signal),
+      listAdminEntity('plano_itens', signal),
+      listTechnicalAreas(signal),
+      listTechnicalRoles('', signal),
     ])
     setInterventions(nextInterventions)
+    setAnalyses(nextAnalyses)
     setAssets(assetList.rows)
     setComponents(componentList.rows)
     setPlans(planList.rows)
@@ -103,10 +161,29 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
     const term = search.trim().toLowerCase()
     return interventions.filter((item) => {
       if (statusFilter && item.status !== statusFilter) return false
+      const planned = Boolean(item.planejada_para)
+        || ['PREVENTIVA', 'PREDITIVA', 'INSPECAO'].includes(String(item.tipo).toUpperCase())
+      if (scheduleFilter === 'PLANEJADA' && !planned) return false
+      if (scheduleFilter === 'NAO_PLANEJADA' && planned) return false
       return !term || [item.codigo, item.titulo, item.ativo_tag, item.ativo_nome, item.componente_nome, item.status]
         .some((value) => String(value ?? '').toLowerCase().includes(term))
     })
-  }, [interventions, search, statusFilter])
+  }, [interventions, scheduleFilter, search, statusFilter])
+  const visibleAnalyses = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return analyses.filter((item) => {
+      if (statusFilter && item.status !== statusFilter) return false
+      return !term || [
+        item.id,
+        item.titulo,
+        item.diagnostico,
+        item.causa_provavel,
+        item.recomendacao,
+        item.ativo_id,
+        item.status,
+      ].some((value) => String(value ?? '').toLowerCase().includes(term))
+    })
+  }, [analyses, search, statusFilter])
 
   const editorComponents = useMemo(
     () => components.filter((component) => (
@@ -148,8 +225,62 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
     drafts: interventions.filter((item) => item.status === 'RASCUNHO' || item.status === 'DEVOLVIDA_ADMIN').length,
     validation: interventions.filter((item) => item.status === 'AGUARDANDO_VALIDACAO').length,
     released: interventions.filter((item) => item.status === 'ABERTA' || item.status === 'EM_EXECUCAO').length,
-    completed: interventions.filter((item) => item.status === 'FINALIZADA').length,
-  }), [interventions])
+    completed: interventions.filter((item) => ['FINALIZADA', 'CONCLUIDA'].includes(item.status)).length,
+    analyses: analyses.filter((item) => (
+      ['ENVIADA_ADMIN', 'EM_TRATAMENTO_ADMIN'].includes(String(item.status).toUpperCase())
+    )).length,
+  }), [analyses, interventions])
+
+  useEffect(() => {
+    if (
+      loading ||
+      !focusTarget?.entityId ||
+      handledFocusRef.current === focusTarget.nonce
+    ) {
+      return
+    }
+
+    const entityType = String(focusTarget.entityType).toUpperCase()
+    if (entityType === 'ANALISES_TECNICAS') {
+      const analysis = analyses.find((item) => String(item.id) === focusTarget.entityId)
+      handledFocusRef.current = focusTarget.nonce
+      setActiveArea('analyses')
+      setSearch('')
+      setStatusFilter('')
+      if (analysis) {
+        setViewingAnalysis(analysis)
+        setError('')
+      } else {
+        setError('A análise vinculada à notificação não foi encontrada. Ela pode ter sido removida ou migrada.')
+      }
+      return
+    }
+
+    if (['ORDEM_SERVICO_RASCUNHO', 'ORDENS_SERVICO', 'OS_ACOES'].includes(entityType)) {
+      const intervention = interventions.find((item) => (
+        String(item.id) === focusTarget.entityId ||
+        String(item.acao_id ?? '') === focusTarget.entityId ||
+        String(item.demanda?.id ?? '') === focusTarget.entityId
+      ))
+      handledFocusRef.current = focusTarget.nonce
+      setActiveArea('interventions')
+      setSearch('')
+      setStatusFilter('')
+      if (intervention) {
+        setViewing(intervention)
+        setError('')
+      } else {
+        setError('A intervenção vinculada à notificação não foi encontrada no histórico administrativo.')
+      }
+    }
+  }, [
+    analyses,
+    focusTarget?.entityId,
+    focusTarget?.entityType,
+    focusTarget?.nonce,
+    interventions,
+    loading,
+  ])
 
   function openEditor(intervention?: AdminIntervention) {
     setEditor(intervention ? {
@@ -161,6 +292,28 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
     } : emptyIntervention())
     setError('')
     setNotice('')
+  }
+
+  function createInterventionFromAnalysis(analysis: AdminTechnicalAnalysis) {
+    setEditor({
+      ativo_id: analysis.ativo_id || '',
+      componente_id: analysis.componente_id || '',
+      plano_id: '',
+      tipo: 'CORRETIVA',
+      titulo: analysis.titulo || 'Intervenção originada por análise técnica',
+      descricao: [
+        analysis.diagnostico,
+        analysis.causa_provavel ? `Causa provável: ${analysis.causa_provavel}` : '',
+        analysis.recomendacao ? `Recomendação: ${analysis.recomendacao}` : '',
+      ].filter(Boolean).join('\n\n'),
+      prioridade: String(analysis.prioridade || 'MEDIA').toUpperCase(),
+      planejada_para: '',
+      modo_parada_manutencao: 'DECISAO_EXECUTOR',
+    })
+    setViewingAnalysis(null)
+    setActiveArea('interventions')
+    setError('')
+    setNotice('Rascunho preenchido com a análise técnica. Vincule um checklist validado antes de salvar.')
   }
 
   function openRouting(intervention: AdminIntervention) {
@@ -235,14 +388,114 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
         <article><ShieldIcon /><span><strong>{metrics.validation}</strong><small>no filtro técnico</small></span></article>
         <article><WrenchIcon /><span><strong>{metrics.released}</strong><small>liberadas ou em execução</small></span></article>
         <article><CheckIcon /><span><strong>{metrics.completed}</strong><small>intervenções finalizadas</small></span></article>
+        <article className={metrics.analyses ? 'is-attention' : ''}><ShieldIcon /><span><strong>{metrics.analyses}</strong><small>análises para tratar</small></span></article>
       </section>
-      <section className="admin-intervention-panel">
-        <header><div><span className="eyebrow">ORDEM CONTROLADA</span><h2>Intervenções administrativas</h2><p>Crie a demanda, escolha o filtro técnico e acompanhe até a liberação ao chão de fábrica.</p></div><div><button type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={() => openEditor()}>Nova intervenção</button></div></header>
-        <div className="admin-intervention-filters"><label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, título ou equipamento" /></label><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos os status</option><option value="RASCUNHO">Rascunhos</option><option value="DEVOLVIDA_ADMIN">Devolvidas</option><option value="AGUARDANDO_VALIDACAO">Em validação</option><option value="ABERTA">Liberadas</option><option value="EM_EXECUCAO">Em execução</option><option value="FINALIZADA">Finalizadas</option></select></div>
+      <nav className="admin-operation-tabs" aria-label="Áreas do fluxo técnico">
+        <button
+          type="button"
+          className={activeArea === 'planning' ? 'is-active' : ''}
+          onClick={() => {
+            setActiveArea('planning')
+            setSearch('')
+            setStatusFilter('')
+            setScheduleFilter('')
+          }}
+        >
+          <AssetIcon />
+          <span><strong>Programação</strong><small>Planos, gatilhos e recorrências</small></span>
+          <b>{plans.length}</b>
+        </button>
+        <button
+          type="button"
+          className={activeArea === 'interventions' ? 'is-active' : ''}
+          onClick={() => {
+            setActiveArea('interventions')
+            setSearch('')
+            setStatusFilter('')
+            setScheduleFilter('')
+          }}
+        >
+          <WrenchIcon />
+          <span><strong>Intervenções e OS</strong><small>Planejadas e não planejadas</small></span>
+          <b>{interventions.length}</b>
+        </button>
+        <button
+          type="button"
+          className={activeArea === 'analyses' ? 'is-active' : ''}
+          onClick={() => {
+            setActiveArea('analyses')
+            setSearch('')
+            setStatusFilter('')
+            setScheduleFilter('')
+          }}
+        >
+          <ShieldIcon />
+          <span><strong>Análises recebidas</strong><small>Diagnósticos enviados pelo Gestor</small></span>
+          <b>{metrics.analyses}</b>
+        </button>
+      </nav>
+      <section hidden={activeArea !== 'planning'}>
+        <AdminCatalogWorkspace
+          scope="maintenance"
+          onSessionExpired={onSessionExpired}
+          onOpenImports={onOpenImports}
+        />
+      </section>
+      <section className="admin-intervention-panel" hidden={activeArea !== 'interventions'}>
+        <header><div><span className="eyebrow">ORDEM CONTROLADA</span><h2>Intervenções administrativas</h2><p>Crie, classifique e acompanhe intervenções planejadas ou não planejadas até a liberação ao chão de fábrica.</p></div><div><button type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={() => openEditor()}>Nova intervenção</button></div></header>
+        <div className="admin-intervention-filters"><label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, título ou equipamento" /></label><select value={scheduleFilter} onChange={(event) => setScheduleFilter(event.target.value)}><option value="">Planejadas e não planejadas</option><option value="PLANEJADA">Somente planejadas</option><option value="NAO_PLANEJADA">Somente não planejadas</option></select><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos os status</option><option value="RASCUNHO">Rascunhos</option><option value="DEVOLVIDA_ADMIN">Devolvidas</option><option value="AGUARDANDO_VALIDACAO">Em validação</option><option value="ABERTA">Liberadas</option><option value="EM_EXECUCAO">Em execução</option><option value="FINALIZADA">Finalizadas</option><option value="CONCLUIDA">Concluídas</option></select></div>
         <div className="admin-intervention-table">
           <div><span>Intervenção</span><span>Equipamento</span><span>Prioridade</span><span>Filtro técnico</span><span>Status</span><span>Ações</span></div>
           {visibleInterventions.map((item) => <article key={item.id}><span><b>{item.codigo}</b><strong>{item.titulo}</strong><small>{item.tipo} · {item.plano_nome ? `${item.plano_nome} · ${item.plano_itens_count || 0} etapas` : 'Checklist pendente'}</small></span><span><strong>{item.ativo_tag || item.ativo_nome || item.ativo_id}</strong><small>{item.componente_nome || 'Ativo completo'}</small></span><i className={`is-${item.prioridade.toLowerCase()}`}>{item.prioridade}</i><span><strong>{item.demanda?.area_atual_nome || '—'}</strong><small>{item.demanda?.cargo_atual_nome || 'Sem cargo específico'}</small></span><em className={`is-${item.status.toLowerCase()}`}>{statusLabel(item.status)}</em><span className="admin-intervention-actions">{editable(item) ? (item.plano_id ? <><button type="button" onClick={() => openEditor(item)}>Editar</button><button className="primary-button" type="button" onClick={() => openRouting(item)}>{item.status === 'DEVOLVIDA_ADMIN' ? 'Reenviar' : 'Enviar'}</button></> : <button className="primary-button" type="button" onClick={() => openEditor(item)}>Vincular checklist</button>) : <button type="button" onClick={() => setViewing(item)}>Acompanhar</button>}</span></article>)}
           {!visibleInterventions.length ? <div className="admin-empty-state admin-intervention-empty"><WrenchIcon /><strong>Nenhuma intervenção encontrada</strong><span>Depois do primeiro rascunho, a área Ações exibirá Editar e Enviar. Após a validação, exibirá Acompanhar sem permitir alterações no documento liberado.</span></div> : null}
+        </div>
+      </section>
+      <section className="admin-intervention-panel admin-analysis-inbox" hidden={activeArea !== 'analyses'}>
+        <header>
+          <div>
+            <span className="eyebrow">ENTRADA TÉCNICA</span>
+            <h2>Análises recebidas do Gestor</h2>
+            <p>Abra o diagnóstico exato, confira a recomendação e transforme-o em uma intervenção ou checklist.</p>
+          </div>
+          <div><button type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button></div>
+        </header>
+        <div className="admin-intervention-filters">
+          <label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar análise, ativo, causa ou recomendação" /></label>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">Todos os status</option>
+            <option value="ENVIADA_ADMIN">Aguardando tratamento</option>
+            <option value="EM_TRATAMENTO_ADMIN">Em tratamento</option>
+            <option value="CONVERTIDA_CHECKLIST">Checklist criado</option>
+            <option value="CONVERTIDA_OS">Intervenção criada</option>
+            <option value="CONCLUIDA">Concluídas</option>
+          </select>
+        </div>
+        <div className="admin-analysis-list">
+          {visibleAnalyses.map((analysis) => (
+            <article key={analysis.id}>
+              <header>
+                <span className={`is-${String(analysis.prioridade || 'media').toLowerCase()}`}>
+                  {String(analysis.prioridade || 'MÉDIA').replaceAll('_', ' ')}
+                </span>
+                <em>{analysisStatusLabel(analysis.status)}</em>
+              </header>
+              <strong>{analysis.titulo}</strong>
+              <p>{analysis.diagnostico || 'Diagnóstico técnico não registrado.'}</p>
+              <div>
+                <span><small>Ativo</small><b>{analysis.ativo_id || 'Escopo geral'}</b></span>
+                <span><small>Recebida em</small><b>{formatDate(analysis.enviado_admin_em || analysis.atualizado_em)}</b></span>
+                <span><small>Recomendação</small><b>{analysis.recomenda_checklist === 'SIM' ? 'Checklist' : analysis.recomenda_os === 'SIM' ? 'Intervenção' : 'Avaliação administrativa'}</b></span>
+              </div>
+              <button type="button" onClick={() => setViewingAnalysis(analysis)}>Abrir análise completa</button>
+            </article>
+          ))}
+          {!visibleAnalyses.length ? (
+            <div className="admin-empty-state admin-intervention-empty">
+              <ShieldIcon />
+              <strong>Nenhuma análise encontrada</strong>
+              <span>As análises enviadas pelo Gestor aparecerão aqui com diagnóstico, risco e recomendação.</span>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -266,6 +519,64 @@ export function AdminInterventionsWorkspace({ onSessionExpired }: AdminIntervent
         <label><span>Segregar criador e aprovador</span><select value={routeDraft.exige_segregacao} onChange={(event) => setRouteDraft((current) => ({ ...current, exige_segregacao: event.target.value }))}><option value="SIM">Sim</option><option value="NAO">Não</option></select></label>
         <label style={{ gridColumn: '1 / -1' }}><span>Orientação ao Gestor *</span><textarea rows={4} value={routeDraft.comentario} onChange={(event) => setRouteDraft((current) => ({ ...current, comentario: event.target.value }))} /></label>
       </div><footer><span>A ação operacional só será criada depois da decisão técnica.</span><div><button type="button" disabled={sending} onClick={() => setRouting(null)}>Cancelar</button><button className="primary-button" type="button" disabled={sending} onClick={() => void send()}>{sending ? 'Enviando…' : 'Enviar ao Gestor'}</button></div></footer></section></div> : null}
+
+      {viewingAnalysis ? (
+        <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setViewingAnalysis(null)
+        }}>
+          <section className="admin-analysis-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-view-title">
+            <header>
+              <div>
+                <span className="eyebrow">ANÁLISE TÉCNICA · {viewingAnalysis.id}</span>
+                <h2 id="analysis-view-title">{viewingAnalysis.titulo}</h2>
+              </div>
+              <button type="button" aria-label="Fechar análise" onClick={() => setViewingAnalysis(null)}>×</button>
+            </header>
+            <div className="admin-analysis-detail">
+              <section className="admin-analysis-detail__summary">
+                <article><small>Status</small><strong>{analysisStatusLabel(viewingAnalysis.status)}</strong></article>
+                <article><small>Prioridade</small><strong>{viewingAnalysis.prioridade || 'MÉDIA'}</strong></article>
+                <article><small>Ativo</small><strong>{viewingAnalysis.ativo_id || 'Escopo geral'}</strong></article>
+                <article><small>Ocorrência de origem</small><strong>{viewingAnalysis.ocorrencia_id}</strong></article>
+              </section>
+              <section>
+                <span>DIAGNÓSTICO CONFIRMADO</span>
+                <p>{viewingAnalysis.diagnostico || 'Sem diagnóstico registrado.'}</p>
+              </section>
+              <div className="admin-analysis-detail__grid">
+                <section>
+                  <span>CAUSA PROVÁVEL</span>
+                  <p>{viewingAnalysis.causa_provavel || 'A confirmar durante a inspeção.'}</p>
+                </section>
+                <section>
+                  <span>RISCO TÉCNICO</span>
+                  <p>{viewingAnalysis.risco || 'Nenhum risco adicional registrado.'}</p>
+                </section>
+              </div>
+              <section className="is-recommendation">
+                <span>RECOMENDAÇÃO DO GESTOR</span>
+                <p>{viewingAnalysis.recomendacao || 'Avaliação administrativa necessária.'}</p>
+                <div>
+                  {viewingAnalysis.recomenda_checklist === 'SIM' ? <b>Recomenda criar checklist</b> : null}
+                  {viewingAnalysis.recomenda_os === 'SIM' ? <b>Recomenda criar intervenção</b> : null}
+                </div>
+              </section>
+              <small>Recebida em {formatDate(viewingAnalysis.enviado_admin_em || viewingAnalysis.atualizado_em)}</small>
+            </div>
+            <footer>
+              <span>O registro original permanece preservado para auditoria.</span>
+              <div>
+                <button type="button" onClick={() => setViewingAnalysis(null)}>Fechar</button>
+                <button type="button" onClick={() => {
+                  setViewingAnalysis(null)
+                  onOpenChecklists()
+                }}>Abrir construtor</button>
+                <button className="primary-button" type="button" onClick={() => createInterventionFromAnalysis(viewingAnalysis)}>Preparar intervenção</button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
 
       {viewing ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setViewing(null) }}><section role="dialog" aria-modal="true" aria-labelledby="intervention-view-title">
         <header><div><span className="eyebrow">ACOMPANHAMENTO</span><h2 id="intervention-view-title">{viewing.codigo} · {viewing.titulo}</h2></div><button type="button" onClick={() => setViewing(null)}>×</button></header>

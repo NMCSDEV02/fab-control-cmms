@@ -35,6 +35,7 @@ export interface GestorOccurrence {
   titulo?: string
   descricao?: string
   ativo_id?: string
+  parada_id?: string
   criado_em?: string
   [key: string]: unknown
 }
@@ -303,10 +304,12 @@ export interface GestorDecisionResult {
 
 export interface GestorOverview {
   actions: GestorAction[]
+  completedActions: GestorAction[]
   validationQueue: GestorAction[]
   stops: GestorStop[]
   openStops: GestorStop[]
   occurrences: GestorOccurrence[]
+  occurrenceHistory: GestorOccurrence[]
   kpis: GestorTechnicalKpis
   counts: {
     pending: number

@@ -11,7 +11,7 @@ const TECH_DEMAND_STATUS = {
   CANCELADA:"CANCELADA"
 };
 
-const TECH_WORKFLOW_SCHEMA_VERSION = FAB.SCHEMA_VERSION + ".briefing.2";
+const TECH_WORKFLOW_SCHEMA_VERSION = FAB.SCHEMA_VERSION + ".briefing.3";
 
 const TECH_FINAL_STATUSES = [
   TECH_DEMAND_STATUS.DEVOLVIDA_ADMIN,
@@ -35,7 +35,7 @@ function technicalEnsureSchema_(){
         "areas_tecnicas","cargos_tecnicos","demandas_tecnicas","demanda_tramitacoes",
         "assinaturas_tecnicas","analises_tecnicas","notificacoes","turnos",
         "apontamentos_producao","sla_politicas","usuarios","planos_manutencao",
-        "ordens_servico","os_acoes"
+        "ordens_servico","os_acoes","ocorrencias_operacionais"
       ].forEach(function(name){ ensureSheet_(ss, name, SH[name]); });
       upsert_("config", "chave", {
         chave:"workflow.tecnico.schema.version",
@@ -746,7 +746,15 @@ function gestorDemandaDecidir_(p, auth){
   update_("demandas_tecnicas", demand.__rowIndex, patch);
   technicalAppendTransition_(Object.assign({}, demand, patch), "DECIDIDA", identity, {}, decision, p.parecer, p.motivo);
   if(decision === "DEVOLVER_ADMIN") technicalApplyReturnedEntity_(demand, identity);
-  technicalNotify_({perfil:ROLE.ADMIN}, "DECISAO_TECNICA", demand.titulo, "Decisão: " + decision + ". Parecer: " + clean_(p.parecer), "demandas_tecnicas", demand.id, demand.prioridade);
+  technicalNotify_(
+    {perfil:ROLE.ADMIN},
+    "DECISAO_TECNICA",
+    demand.titulo,
+    "Decisão: " + decision + ". Parecer: " + clean_(p.parecer),
+    demand.entidade_tipo,
+    demand.entidade_id,
+    demand.prioridade
+  );
   audit_(auth, "TECH_DEMAND_DECIDED", "demandas_tecnicas", demand.id, strip_(demand), Object.assign({}, strip_(demand), patch, {relatorio_tecnico:technicalBrief}), clean_(p.user_agent));
   return {decided:true, decisao:decision, demanda:technicalDemandPublic_(Object.assign({}, demand, patch)), relatorio_tecnico:technicalBrief};
 }
@@ -786,6 +794,80 @@ function gestorAnaliseSalvar_(p, auth){
   update_("ocorrencias_operacionais", occurrence.__rowIndex, {status:"EM_ANALISE_TECNICA", atualizado_em:now_()});
   audit_(auth, old ? "TECH_ANALYSIS_UPDATED" : "TECH_ANALYSIS_CREATED", "analises_tecnicas", saved.id, old && strip_(old), saved, clean_(p.user_agent));
   return {saved:true, analise:saved};
+}
+
+function gestorParadaCriarTratamento_(p, auth){
+  req_(p, ["parada_id"]);
+  auth = auth || p.__auth || {};
+  if([ROLE.GESTOR, ROLE.ADMIN].indexOf(upper_(auth.perfil)) < 0){
+    err_("FORBIDDEN", "Somente Gestor ou Administrador pode criar tratamento para parada.", 403);
+  }
+  technicalEnsureSchema_();
+
+  var stop = find_("paradas_equipamento", "id", p.parada_id);
+  if(!stop) err_("STOP_NOT_FOUND", "Parada técnica não encontrada.", 404);
+
+  var openStatuses = [
+    "PARADA_ABERTA",
+    "MANUTENCAO_EM_EXECUCAO",
+    "AGUARDANDO_RETORNO_OPERACIONAL"
+  ];
+  if(openStatuses.indexOf(upper_(stop.status)) < 0){
+    err_("STOP_ALREADY_CLOSED", "A parada já foi encerrada e não aceita novo tratamento.", 409);
+  }
+
+  var existing = rows_("ocorrencias_operacionais").filter(function(occurrence){
+    return String(occurrence.parada_id) === String(stop.id) &&
+      upper_(occurrence.status) === ST.AGUARDANDO_ANALISE;
+  }).sort(sortByDateDesc_("criado_em"))[0];
+  if(existing){
+    return {
+      created:false,
+      already_exists:true,
+      parada_id:stop.id,
+      occurrence:strip_(existing)
+    };
+  }
+
+  var asset = find_("ativos", "id", stop.ativo_id);
+  var assetLabel = asset ? clean_(asset.tag || asset.nome || asset.id) : clean_(stop.ativo_id);
+  var createdAt = now_();
+  var row = fit_("ocorrencias_operacionais", {
+    id:uuid_("OCR"),
+    ativo_id:clean_(stop.ativo_id),
+    componente_id:clean_(stop.componente_id),
+    tipo:"PARADA_TECNICA",
+    titulo:"Tratar parada técnica - "+(assetLabel || "equipamento"),
+    descricao:clean_(stop.motivo_parada || "Equipamento indisponível aguardando diagnóstico técnico."),
+    severidade:"ALTA",
+    status:ST.AGUARDANDO_ANALISE,
+    usuario_id:clean_(auth.usuario_id),
+    perfil:upper_(auth.perfil),
+    os_id:clean_(stop.os_id),
+    acao_id:clean_(stop.acao_id),
+    parada_id:clean_(stop.id),
+    criado_em:createdAt,
+    atualizado_em:createdAt
+  });
+  row = append_("ocorrencias_operacionais", row);
+
+  hist_({
+    ativo_id:row.ativo_id,
+    componente_id:row.componente_id,
+    os_id:row.os_id,
+    acao_id:row.acao_id,
+    evento:"TRATAMENTO_PARADA_CRIADO",
+    descricao:"Parada "+stop.id+" encaminhada para análise técnica.",
+    usuario_id:auth.usuario_id || "",
+    perfil:auth.perfil || ROLE.GESTOR
+  });
+
+  return {
+    created:true,
+    already_exists:false,
+    parada_id:stop.id,
+    occurrence:strip_(row)
+  };
 }
 
 function gestorAnaliseEnviarAdmin_(p, auth){

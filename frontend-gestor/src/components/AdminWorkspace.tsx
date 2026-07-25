@@ -8,16 +8,27 @@ import {
 } from 'react'
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
-import { getAdminCommercialAccess, getAdminCompanyProfile, saveAdminCompanyProfile } from '../services/api/admin'
+import {
+  getAdminCommercialAccess,
+  getAdminCompanyProfile,
+  listAdminTechnicalDemands,
+  saveAdminCompanyProfile,
+} from '../services/api/admin'
 import { getUnreadNotificationCount, isGestorAuthenticationError } from '../services/api/gestor'
-import type { AdminCommercialAccess, AdminCommercialFeatureCode, AdminCompanyProfile } from '../types/admin'
+import type {
+  AdminCommercialAccess,
+  AdminCommercialFeatureCode,
+  AdminCompanyProfile,
+  AdminNotificationTarget,
+} from '../types/admin'
+import type { GestorNotification } from '../types/gestor'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
 import { AdminCompanyDialog } from './AdminCompanyDialog'
+import { NotificationCenter } from './NotificationCenter'
 import {
   AssetIcon,
   AuditIcon,
   BellIcon,
-  CalendarIcon,
   ChartIcon,
   ChecklistIcon,
   DashboardIcon,
@@ -96,11 +107,10 @@ const MODULES: WorkspaceModule[] = [
   { id: 'structure', code: 'EF', label: 'Estrutura fabril', description: 'Plantas, setores e linhas', Icon: FactoryIcon, feature: 'CADASTROS' },
   { id: 'assets', code: 'AT', label: 'Cadastro técnico', description: 'Ativos e componentes', Icon: AssetIcon, feature: 'CADASTROS' },
   { id: 'checklists', code: 'CK', label: 'Checklists', description: 'Construtor e roteamento', Icon: ChecklistIcon, feature: 'CHECKLISTS' },
-  { id: 'maintenance', code: 'PM', label: 'Programação', description: 'Planos e recorrências', Icon: CalendarIcon, feature: 'GESTAO_TECNICA' },
   { id: 'inventory', code: 'MP', label: 'Materiais e peças', description: 'Estoque técnico', Icon: PackageIcon, feature: 'CADASTROS' },
   { id: 'workforce', code: 'EQ', label: 'Equipes técnicas', description: 'Áreas, cargos e assinatura', Icon: UsersIcon, feature: 'GESTAO_TECNICA' },
-  { id: 'operations', code: 'OS', label: 'Intervenções e OS', description: 'Planejar, validar e liberar', Icon: WrenchIcon, feature: 'GESTAO_TECNICA' },
-  { id: 'analytics', code: 'BI', label: 'Indicadores', description: 'OEE, horas, custos e SLA', Icon: ChartIcon, feature: 'INDICADORES' },
+  { id: 'operations', code: 'OS', label: 'Programação, intervenções e OS', description: 'Planejar, validar e liberar', Icon: WrenchIcon, feature: 'GESTAO_TECNICA' },
+  { id: 'analytics', code: 'BI', label: 'Indicadores', description: 'Confiabilidade, tempos e SLA', Icon: ChartIcon, feature: 'INDICADORES' },
   { id: 'documents', code: 'DT', label: 'Documentos', description: 'Arquivos e revisões', Icon: DocumentIcon, feature: 'DOCUMENTOS' },
   { id: 'imports', code: 'IM', label: 'Importar planilhas', description: 'Modelos e implantação', Icon: UploadIcon, feature: 'IMPORTACOES' },
   { id: 'configuration', code: 'MC', label: 'Motor', description: 'Configurações operacionais', Icon: SettingsIcon, feature: 'MOTOR_LIMITADO' },
@@ -177,13 +187,13 @@ const MODULE_HEADINGS: Record<AdminModule, { eyebrow: string; title: string; sub
   },
   operations: {
     eyebrow: 'PLANEJAMENTO OPERACIONAL',
-    title: 'Intervenções e ordens de serviço',
-    subtitle: 'Planeje, encaminhe ao filtro técnico e libere a execução ao Operador.',
+    title: 'Programação, intervenções e ordens de serviço',
+    subtitle: 'Organize planos, demandas planejadas e não planejadas, encaminhe e acompanhe a execução.',
   },
   analytics: {
     eyebrow: 'INTELIGÊNCIA OPERACIONAL',
     title: 'Indicadores e relatórios',
-    subtitle: 'OEE, MTTR, MTBF, horas, atendimentos, custos, lead time e SLA.',
+    subtitle: 'Disponibilidade, falhas, MTTR, MTBF, atendimentos, lead time e SLA.',
   },
   documents: {
     eyebrow: 'GESTÃO DOCUMENTAL',
@@ -347,6 +357,8 @@ export function AdminWorkspace({
   const [commercialAccessError, setCommercialAccessError] = useState('')
   const [commercialAccessNotice, setCommercialAccessNotice] = useState('')
   const [notificationCount, setNotificationCount] = useState<number | null>(null)
+  const [notificationOpen, setNotificationOpen] = useState(false)
+  const [notificationTarget, setNotificationTarget] = useState<AdminNotificationTarget | null>(null)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [dragging, setDragging] = useState(false)
   const [snapTarget, setSnapTarget] = useState<WindowSnapTarget | null>(null)
@@ -359,15 +371,22 @@ export function AdminWorkspace({
   useEffect(() => {
     const controller = new AbortController()
 
-    void getUnreadNotificationCount(controller.signal)
-      .then(setNotificationCount)
-      .catch((cause) => {
-        if (cause instanceof DOMException && cause.name === 'AbortError') return
-        setNotificationCount(0)
-        if (isGestorAuthenticationError(cause)) onSessionExpired()
-      })
+    const refreshNotifications = () => {
+      void getUnreadNotificationCount(controller.signal)
+        .then(setNotificationCount)
+        .catch((cause) => {
+          if (cause instanceof DOMException && cause.name === 'AbortError') return
+          setNotificationCount(0)
+          if (isGestorAuthenticationError(cause)) onSessionExpired()
+        })
+    }
 
-    return () => controller.abort()
+    refreshNotifications()
+    const timer = window.setInterval(refreshNotifications, 60_000)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+    }
   }, [onSessionExpired])
 
   useEffect(() => {
@@ -408,23 +427,24 @@ export function AdminWorkspace({
   }, [paletteQuery])
 
   const openModule = useCallback((module: AdminModule, notify = true) => {
-    if (!isModuleAvailable(module)) {
-      const selected = getModule(module)
+    const requestedModule = module === 'maintenance' ? 'operations' : module
+    if (!isModuleAvailable(requestedModule)) {
+      const selected = getModule(requestedModule)
       setCommercialAccessNotice(`${selected.label} não está incluído no plano ${commercialAccess?.plano.nome ?? 'atual'}.`)
       setPaletteOpen(false)
       return
     }
     const nextZIndex = ++zIndexRef.current
     setWindows((current) => {
-      const existing = current.find((item) => item.module === module)
+      const existing = current.find((item) => item.module === requestedModule)
       if (existing) {
         return current.map((item) => (
-          item.module === module
+          item.module === requestedModule
             ? { ...item, minimized: false, layoutHidden: false, zIndex: nextZIndex }
             : item
         ))
       }
-      return [...current, createWindow(module, current.length, nextZIndex)]
+      return [...current, createWindow(requestedModule, current.length, nextZIndex)]
     })
     setPaletteOpen(false)
     setWindowManagerOpen(false)
@@ -432,11 +452,15 @@ export function AdminWorkspace({
     setProfileOpen(false)
     setCompanyOpen(false)
     setCommercialAccessNotice('')
-    if (notify) onModuleChange(module)
+    if (notify) onModuleChange(requestedModule)
   }, [commercialAccess?.plano.nome, isModuleAvailable, onModuleChange])
 
   useEffect(() => {
     if (!commercialAccess) return
+    if (activeModule === 'maintenance') {
+      onModuleChange('operations')
+      return
+    }
     setWindows((current) => current.filter((item) => isModuleAvailable(item.module)))
     if (!isModuleAvailable(activeModule)) onModuleChange('overview')
   }, [activeModule, commercialAccess, isModuleAvailable, onModuleChange])
@@ -789,6 +813,63 @@ export function AdminWorkspace({
     }
   }
 
+  async function handleOpenNotification(notification: GestorNotification) {
+    const notificationType = String(notification.tipo ?? '').trim().toUpperCase()
+    let entityType = String(notification.entidade_tipo ?? '').trim().toUpperCase()
+    let entityId = String(notification.entidade_id ?? '').trim()
+
+    if (entityType === 'DEMANDAS_TECNICAS' && entityId) {
+      const demand = (await listAdminTechnicalDemands())
+        .find((item) => String(item.id) === entityId)
+      if (!demand) {
+        throw new Error('A demanda vinculada a esta notificação não foi encontrada no histórico técnico.')
+      }
+      entityType = String(demand.entidade_tipo ?? '').trim().toUpperCase()
+      entityId = String(demand.entidade_id ?? '').trim()
+    }
+
+    if (!entityId) {
+      throw new Error('Esta notificação não possui um registro de destino válido.')
+    }
+
+    setNotificationTarget({
+      notificationType,
+      entityType,
+      entityId,
+      nonce: Date.now(),
+    })
+
+    if (notificationType === 'ANALISE_TECNICA' || entityType === 'ANALISES_TECNICAS') {
+      openModule('operations')
+      return
+    }
+
+    if (
+      entityType === 'PLANOS_MANUTENCAO' ||
+      entityType === 'CHECKLIST_MODELO' ||
+      entityType === 'PLANO_CHECKLIST'
+    ) {
+      openModule('checklists')
+      return
+    }
+
+    if (
+      entityType === 'ORDEM_SERVICO_RASCUNHO' ||
+      entityType === 'ORDENS_SERVICO' ||
+      entityType === 'OS_ACOES'
+    ) {
+      openModule('operations')
+      return
+    }
+
+    if (entityType === 'ATIVOS' || entityType === 'COMPONENTES') {
+      openModule('assets')
+      return
+    }
+
+    throw new Error(`O destino ${entityType || 'desconhecido'} ainda não possui uma tela vinculada.`)
+  }
+
   return (
     <div className={`admin-desktop-shell${dragging ? ' is-dragging' : ''}`}>
       <section className="admin-command-mobile-block">
@@ -817,7 +898,9 @@ export function AdminWorkspace({
             type="button"
             title={notificationCount ? `${notificationCount} aviso(s) não lido(s)` : 'Nenhum aviso não lido'}
             aria-label={notificationCount ? `Avisos operacionais: ${notificationCount} não lido(s)` : 'Avisos operacionais: nenhum não lido'}
-            onClick={() => openModule('operations')}
+            aria-haspopup="dialog"
+            aria-expanded={notificationOpen}
+            onClick={() => setNotificationOpen(true)}
           >
             <BellIcon />
             {notificationCount ? <span>{notificationCount > 99 ? '99+' : notificationCount}</span> : null}
@@ -896,7 +979,7 @@ export function AdminWorkspace({
                   </header>
                   <article><ShieldIcon /><span><strong>Governança e acesso</strong><small>Perfis, permissões e rastreabilidade.</small></span></article>
                   <article><SettingsIcon /><span><strong>Estrutura e regras</strong><small>Cadastros, fluxos e configuração.</small></span></article>
-                  <article><ChartIcon /><span><strong>Operação e indicadores</strong><small>Intervenções, custos, OEE e SLA.</small></span></article>
+                  <article><ChartIcon /><span><strong>Operação e indicadores</strong><small>Intervenções, confiabilidade, tempos e SLA.</small></span></article>
                 </aside>
               </div>
             </section>
@@ -945,6 +1028,7 @@ export function AdminWorkspace({
                       onSessionExpired={onSessionExpired}
                       activeModule={item.module}
                       embedded
+                      notificationTarget={notificationTarget}
                       onModuleChange={(nextModule) => openModule(nextModule)}
                     />
                   </div>
@@ -1126,6 +1210,15 @@ export function AdminWorkspace({
           onSave={handleSaveCompany}
         />
       ) : null}
+
+      <NotificationCenter
+        open={notificationOpen}
+        audience="admin"
+        onClose={() => setNotificationOpen(false)}
+        onOpenNotification={handleOpenNotification}
+        onUnreadChange={setNotificationCount}
+        onSessionExpired={onSessionExpired}
+      />
     </div>
   )
 }

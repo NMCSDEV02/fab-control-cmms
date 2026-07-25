@@ -48,6 +48,8 @@ const EMPTY_OVERVIEW: GestorOverview = {
   stops: [],
   openStops: [],
   occurrences: [],
+  completedActions: [],
+  occurrenceHistory: [],
   kpis: {
     ativo_id: 'TODOS',
     inicio_em: '',

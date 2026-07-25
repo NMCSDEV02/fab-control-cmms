@@ -27,7 +27,9 @@ import type {
   ConfigurationValidation,
   ConfigurationValue,
   ConfigurationVersion,
+  AdminTechnicalAnalysis,
 } from '../../types/admin'
+import type { GestorTechnicalDemand } from '../../types/gestor'
 import { API_TIMEOUT_MS, ApiRequestError, callApi } from './client'
 import { getGestorToken } from './config'
 
@@ -371,4 +373,24 @@ export function rollbackConfiguration(
     base_versao_id: baseVersionId,
     motivo: reason,
   })
+}
+
+export async function listAdminTechnicalAnalyses(
+  signal?: AbortSignal,
+): Promise<AdminTechnicalAnalysis[]> {
+  const data = await readAdminData<{
+    total: number
+    analises: AdminTechnicalAnalysis[]
+  }>('admin.analises_tecnicas.listar', {}, signal)
+  return Array.isArray(data.analises) ? data.analises : []
+}
+
+export async function listAdminTechnicalDemands(
+  signal?: AbortSignal,
+): Promise<GestorTechnicalDemand[]> {
+  const data = await readAdminData<{
+    total: number
+    demandas: GestorTechnicalDemand[]
+  }>('admin.demandas_tecnicas.listar', { limite: 500 }, signal)
+  return Array.isArray(data.demandas) ? data.demandas : []
 }

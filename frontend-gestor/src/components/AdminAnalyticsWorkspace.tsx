@@ -140,7 +140,6 @@ export function AdminAnalyticsWorkspace({ onSessionExpired }: AdminAnalyticsWork
       ['Lead time demanda (segundos)', kpis.lead_time_demanda_segundos ?? 'Sem amostra'],
       ['SLA primeira resposta (%)', kpis.sla_resposta_pct ?? 'Sem amostra'],
       ['SLA resolução (%)', kpis.sla_resolucao_pct ?? 'Sem amostra'],
-      ['OEE (%)', kpis.oee_pct ?? 'Sem amostra'],
       ['Falhas não planejadas', kpis.falhas_nao_planejadas],
       ['Metodologia', kpis.metodologia || ''],
     ]
@@ -154,10 +153,8 @@ export function AdminAnalyticsWorkspace({ onSessionExpired }: AdminAnalyticsWork
   }
 
   const availabilityTarget = kpis.metas?.disponibilidade_pct ?? 90
-  const oeeTarget = kpis.metas?.oee_pct ?? 75
   const healthItems = [
     { label: 'Disponibilidade', value: kpis.disponibilidade_pct, target: availabilityTarget },
-    { label: 'OEE', value: kpis.oee_pct, target: oeeTarget },
     { label: 'SLA resposta', value: kpis.sla_resposta_pct, target: 90 },
     { label: 'SLA resolução', value: kpis.sla_resolucao_pct, target: 90 },
   ]
@@ -193,9 +190,13 @@ export function AdminAnalyticsWorkspace({ onSessionExpired }: AdminAnalyticsWork
           })}</div>
         </section>
 
-        <section className="admin-analytics-oee">
-          <header><span className="eyebrow">OEE</span><h2>Eficiência global</h2><strong>{percent(kpis.oee_pct)}</strong><small>{kpis.oee_disponivel ? `${kpis.producao_amostra} apontamento(s) de produção` : 'Aguardando apontamentos de produção'}</small></header>
-          <div><article><span>Disponibilidade</span><b>{percent(kpis.oee_disponibilidade_pct)}</b></article><article><span>Performance</span><b>{percent(kpis.oee_performance_pct)}</b></article><article><span>Qualidade</span><b>{percent(kpis.oee_qualidade_pct)}</b></article></div>
+        <section className="admin-analytics-oee admin-analytics-reliability">
+          <header><span className="eyebrow">CONFIABILIDADE</span><h2>Comportamento da manutenção</h2><strong>{kpis.falhas_nao_planejadas} falha(s)</strong><small>Somente dados técnicos registrados no período</small></header>
+          <div>
+            <article><span>Tempo em operação</span><b>{duration(kpis.tempo_operacao_segundos)}</b></article>
+            <article><span>Tempo em parada</span><b>{duration(kpis.tempo_parada_segundos)}</b></article>
+            <article><span>MTBF observado</span><b>{duration(kpis.mtbf_segundos)}</b></article>
+          </div>
           <footer><strong>Janela analisada</strong><span>{dateLabel(kpis.inicio_em)} → {dateLabel(kpis.fim_em)}</span><small>{kpis.metodologia}</small></footer>
         </section>
       </div>

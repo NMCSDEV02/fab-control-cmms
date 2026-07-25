@@ -12,12 +12,14 @@ import {
 } from '../components/Icons'
 import { AssetJourneyPanel } from '../components/AssetJourneyPanel'
 import {
+  createGestorStopTreatment,
   getGestorAssetCatalog,
   getGestorAssetJourney,
   getGestorOverview,
   getGestorTechnicalKpisForPeriod,
   isGestorAuthenticationError,
 } from '../services/api/gestor'
+import { ActionReviewDialog } from '../components/ActionReviewDialog'
 import type {
   GestorAction,
   GestorAsset,
@@ -27,7 +29,7 @@ import type {
   GestorTechnicalKpis,
 } from '../types/gestor'
 
-type AnalyticsView = 'indicators' | 'monitoring' | 'critical' | 'library'
+type AnalyticsView = 'indicators' | 'monitoring' | 'history' | 'critical' | 'library'
 
 interface GestorAnalyticsWorkspaceProps {
   focusAssetId?: string
@@ -151,6 +153,9 @@ export function GestorAnalyticsWorkspace({
   const [current, setCurrent] = useState<GestorTechnicalKpis | null>(null)
   const [previous, setPrevious] = useState<GestorTechnicalKpis | null>(null)
   const [search, setSearch] = useState('')
+  const [selectedHistoryAction, setSelectedHistoryAction] =
+    useState<GestorAction | null>(null)
+  const [treatingStopId, setTreatingStopId] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
@@ -247,10 +252,14 @@ export function GestorAnalyticsWorkspace({
         hint: 'Tempo disponível para operar',
       },
       {
-        label: 'OEE',
-        value: current.oee_disponivel ? formatPercent(current.oee_pct) : 'Sem produção',
-        trend: metricTrend(current.oee_pct, previous?.oee_pct),
-        hint: 'Disponibilidade × performance × qualidade',
+        label: 'Falhas não planejadas',
+        value: String(current.falhas_nao_planejadas),
+        trend: metricTrend(
+          current.falhas_nao_planejadas,
+          previous?.falhas_nao_planejadas,
+          true,
+        ),
+        hint: 'Falhas corretivas registradas no período',
       },
       {
         label: 'MTTR',
@@ -308,6 +317,31 @@ export function GestorAnalyticsWorkspace({
     [assetId, overview?.openStops],
   )
 
+  const completedActions = useMemo(() => {
+    const normalized = search.trim().toLocaleLowerCase('pt-BR')
+    return (overview?.completedActions ?? [])
+      .filter((action) => !assetId || action.ativo_id === assetId)
+      .filter((action) => {
+        if (!normalized) return true
+        return [
+          action.id,
+          action.titulo,
+          action.ativo_tag,
+          action.ativo_nome,
+          action.responsavel_nome,
+          action.responsavel_id,
+        ].some((value) => String(value ?? '').toLocaleLowerCase('pt-BR').includes(normalized))
+      })
+  }, [assetId, overview?.completedActions, search])
+
+  const treatmentByStop = useMemo(() => {
+    const treatments = new Map<string, GestorOverview['occurrences'][number]>()
+    for (const occurrence of overview?.occurrenceHistory ?? []) {
+      if (occurrence.parada_id) treatments.set(occurrence.parada_id, occurrence)
+    }
+    return treatments
+  }, [overview?.occurrenceHistory])
+
   const monitoringCounts = useMemo(() => ({
     executing: monitoredActions.filter(
       (action) => upper(action.status) === 'EM_EXECUCAO',
@@ -358,6 +392,28 @@ export function GestorAnalyticsWorkspace({
     ].some((value) => String(value ?? '').toLocaleLowerCase('pt-BR').includes(normalized)))
   }, [catalog.assets, search])
 
+  async function handleStopTreatment(stopId: string) {
+    if (treatingStopId) return
+    setTreatingStopId(stopId)
+    setError('')
+    try {
+      const result = await createGestorStopTreatment(stopId)
+      onOpenDecision('occurrence', result.occurrence.id)
+    } catch (cause) {
+      if (isGestorAuthenticationError(cause)) {
+        onSessionExpired()
+        return
+      }
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível iniciar o tratamento da parada.',
+      )
+    } finally {
+      setTreatingStopId('')
+    }
+  }
+
   const views: Array<{
     id: AnalyticsView
     label: string
@@ -365,6 +421,7 @@ export function GestorAnalyticsWorkspace({
   }> = [
     { id: 'indicators', label: 'Indicadores' },
     { id: 'monitoring', label: 'Acompanhamento', count: monitoredActions.length },
+    { id: 'history', label: 'Concluídas', count: completedActions.length },
     {
       id: 'critical',
       label: 'Críticos',
@@ -465,26 +522,17 @@ export function GestorAnalyticsWorkspace({
 
             {!loading && current ? (
               <div className="manager-analytics-summary">
-                <article className="manager-oee-compact">
+                <article className="manager-operation-compact manager-service-compact">
                   <header>
-                    <div><span className="eyebrow">OEE</span><h2>Composição operacional</h2></div>
-                    <strong>{current.oee_disponivel ? formatPercent(current.oee_pct) : 'Sem base'}</strong>
+                    <div><span className="eyebrow">ATENDIMENTO TÉCNICO</span><h2>Resposta e resolução</h2></div>
+                    <strong>{current.sla_resolucao_amostra} caso(s)</strong>
                   </header>
-                  <div>
-                    {[
-                      ['Disponibilidade', current.oee_disponibilidade_pct],
-                      ['Performance', current.oee_performance_pct],
-                      ['Qualidade', current.oee_qualidade_pct],
-                    ].map(([label, value]) => {
-                      const numeric = Number(value ?? 0)
-                      return (
-                        <div key={String(label)}>
-                          <span><small>{label}</small><strong>{formatPercent(value as number | null)}</strong></span>
-                          <i><b style={{ width: `${Math.max(0, Math.min(100, numeric))}%` }} /></i>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <dl>
+                    <div><dt><CheckIcon /> SLA de primeira resposta</dt><dd>{formatPercent(current.sla_resposta_pct)}</dd></div>
+                    <div><dt><CheckIcon /> SLA de resolução</dt><dd>{formatPercent(current.sla_resolucao_pct)}</dd></div>
+                    <div><dt><AlertIcon /> Lead time da demanda</dt><dd>{formatDuration(current.lead_time_demanda_segundos)}</dd></div>
+                    <div><dt><i className="is-running" /> Demandas avaliadas</dt><dd>{current.sla_resposta_amostra}</dd></div>
+                  </dl>
                 </article>
 
                 <article className="manager-operation-compact">
@@ -649,6 +697,62 @@ export function GestorAnalyticsWorkspace({
           </div>
         ) : null}
 
+        {view === 'history' ? (
+          <div className="manager-completed-view">
+            <header className="manager-stage-toolbar">
+              <div>
+                <span className="eyebrow">HISTÓRICO OPERACIONAL</span>
+                <h2>Execuções concluídas</h2>
+                <p>Registros preservados para consulta técnica e auditoria.</p>
+              </div>
+              <label>
+                <SearchIcon />
+                <input
+                  value={search}
+                  placeholder="Buscar execução, ativo ou responsável"
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </label>
+            </header>
+            <div className="manager-completed-list">
+              {completedActions.map((action) => (
+                <button
+                  type="button"
+                  key={action.id}
+                  onClick={() => setSelectedHistoryAction(action)}
+                >
+                  <span><CheckIcon /></span>
+                  <div>
+                    <small>{actionAssetLabel(action)}</small>
+                    <strong>{action.titulo || 'Execução concluída'}</strong>
+                    <p>
+                      Finalizada em {formatDate(action.finalizado_em || action.atualizado_em)}
+                    </p>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Responsável</dt>
+                      <dd>{String(action.responsavel_nome || action.responsavel_id || 'Registro auditado')}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>Concluída</dd>
+                    </div>
+                  </dl>
+                  <b>Ver auditoria</b>
+                </button>
+              ))}
+              {!completedActions.length ? (
+                <div className="manager-decision-empty">
+                  <CheckIcon />
+                  <strong>Nenhuma conclusão neste filtro</strong>
+                  <span>As ações aprovadas pelo Gestor ficarão preservadas aqui.</span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         {view === 'critical' ? (
           <div className="manager-critical-view">
             <section>
@@ -681,17 +785,47 @@ export function GestorAnalyticsWorkspace({
                 <span>{overview?.openStops.length ?? 0}</span>
               </header>
               <div>
-                {(overview?.openStops ?? []).map((stop) => (
-                  <article key={stop.id}>
-                    <StopIcon />
-                    <span>
-                      <small>{humanize(stop.status)} · {formatDate(stop.iniciada_em)}</small>
-                      <strong>{stop.ativo_id}</strong>
-                      <p>{stop.motivo_parada || 'Motivo não informado.'}</p>
-                    </span>
-                    <b>{stop.elapsed_seconds ? formatDuration(stop.elapsed_seconds) : 'Em aberto'}</b>
-                  </article>
-                ))}
+                {(overview?.openStops ?? []).map((stop) => {
+                  const treatment = treatmentByStop.get(stop.id)
+                  const treatmentPending =
+                    upper(treatment?.status) === 'AGUARDANDO_ANALISE'
+                  return (
+                    <article className="manager-stop-treatment" key={stop.id}>
+                      <StopIcon />
+                      <span>
+                        <small>{humanize(stop.status)} · {formatDate(stop.iniciada_em)}</small>
+                        <strong>{stop.ativo_id}</strong>
+                        <p>{stop.motivo_parada || 'Motivo não informado.'}</p>
+                      </span>
+                      <div>
+                        <b>{stop.elapsed_seconds ? formatDuration(stop.elapsed_seconds) : 'Em aberto'}</b>
+                        {treatment ? (
+                          <button
+                            type="button"
+                            disabled={!treatmentPending}
+                            onClick={() => {
+                              if (treatmentPending) {
+                                onOpenDecision('occurrence', treatment.id)
+                              }
+                            }}
+                          >
+                            {treatmentPending ? 'Abrir tratamento' : 'Tratamento enviado'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={Boolean(treatingStopId)}
+                            onClick={() => void handleStopTreatment(stop.id)}
+                          >
+                            {treatingStopId === stop.id
+                              ? 'Preparando…'
+                              : 'Criar tratamento'}
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
                 {!overview?.openStops.length ? <p className="panel-state">Nenhuma parada aberta.</p> : null}
               </div>
             </section>
@@ -745,6 +879,15 @@ export function GestorAnalyticsWorkspace({
           </div>
         ) : null}
       </section>
+
+      {selectedHistoryAction ? (
+        <ActionReviewDialog
+          action={selectedHistoryAction}
+          onClose={() => setSelectedHistoryAction(null)}
+          onDecisionComplete={() => undefined}
+          onSessionExpired={onSessionExpired}
+        />
+      ) : null}
     </main>
   )
 }

@@ -97,7 +97,7 @@ const SH = {
 
   paradas_equipamento: ["id", "ativo_id", "componente_id", "os_id", "acao_id", "execucao_id", "origem", "tipo", "status", "iniciada_em", "iniciada_por", "manutencao_iniciada_em", "manutencao_finalizada_em", "finalizada_em", "finalizada_por", "tempo_parada_segundos", "tempo_espera_manutencao_segundos", "tempo_execucao_segundos", "tempo_retorno_operacional_segundos", "motivo_parada", "categoria_retorno", "justificativa_divergencia", "tolerancia_retorno_min", "criado_em", "atualizado_em"],
   paradas_manutencao: ["id", "ativo_id", "componente_id", "os_id", "acao_id", "execucao_id", "modo_configurado", "decisao_execucao", "status", "equipamento_ja_parado", "alterou_status_ativo", "iniciada_em", "finalizada_em", "duracao_segundos", "usuario_id", "criado_em", "atualizado_em"],
-  ocorrencias_operacionais: ["id", "ativo_id", "componente_id", "tipo", "titulo", "descricao", "severidade", "status", "usuario_id", "perfil", "os_id", "acao_id", "criado_em", "atualizado_em"],
+  ocorrencias_operacionais: ["id", "ativo_id", "componente_id", "tipo", "titulo", "descricao", "severidade", "status", "usuario_id", "perfil", "os_id", "acao_id", "parada_id", "criado_em", "atualizado_em"],
 
   areas_tecnicas: ["id","codigo","nome","descricao","status","exige_assinatura_padrao","criado_por","criado_em","atualizado_em"],
   cargos_tecnicos: ["id","area_id","codigo","nome","descricao","status","pode_assinar","criado_por","criado_em","atualizado_em"],
@@ -147,7 +147,7 @@ const PERM = {
     "operador.contexto_qr", "operador.contexto_qr_fast", "operador.historico_qr", "operador.iniciar_acao", "operador.salvar_checklist_item", "operador.finalizar_acao", "operador.registrar_evidencia", "operador.upload_evidencia_foto", "admin.registrar_horimetro_telemetria", "admin.reiniciar_contador_servico", "admin.verificar_drive_evidencias", "operador.registrar_material", "operador.registrar_parametro", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "gestor.listar_paradas", "gestor.listar_ocorrencias", "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
-    "gestor.contexto_tecnico", "gestor.demandas.listar", "gestor.demandas.detalhe", "gestor.demandas.assumir", "gestor.demandas.encaminhar", "gestor.demandas.assinar", "gestor.demandas.decidir", "gestor.analises.salvar", "gestor.analises.enviar_admin", "gestor.notificacoes.listar", "gestor.notificacoes.marcar_lida",
+    "gestor.contexto_tecnico", "gestor.demandas.listar", "gestor.demandas.detalhe", "gestor.demandas.assumir", "gestor.demandas.encaminhar", "gestor.demandas.assinar", "gestor.demandas.decidir", "gestor.paradas.criar_tratamento", "gestor.analises.salvar", "gestor.analises.enviar_admin", "gestor.notificacoes.listar", "gestor.notificacoes.marcar_lida",
     "cmms.kpis_base", "cmms.kpis_tecnicos", "cmms.diagnostico", "perf.cache_status", "perf.cache_clear", "cmms.higiene_diagnosticar", "cmms.higienizar_status", "cmms.higienizar_duplicidades", "cmms.higienizar_base",
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"
   ],
@@ -160,7 +160,7 @@ const PERM = {
     "operador.contexto_qr", "operador.contexto_qr_fast", "operador.historico_qr", "operador.parada_ativa", "operador.iniciar_parada", "operador.finalizar_parada", "operador.registrar_ocorrencia",
     "gestor.listar_paradas", "gestor.listar_ocorrencias",
     "gestor.listar_acoes", "gestor.detalhe_acao", "gestor.detalhe_acao_fast", "gestor.auditoria_execucao_checklist", "gestor.validar_acao", "gestor.configurar_sessoes", "gestor.adicionar_colaborador", "gestor.liberar_locks",
-    "gestor.contexto_tecnico", "gestor.demandas.listar", "gestor.demandas.detalhe", "gestor.demandas.assumir", "gestor.demandas.encaminhar", "gestor.demandas.assinar", "gestor.demandas.decidir", "gestor.analises.salvar", "gestor.analises.enviar_admin", "gestor.notificacoes.listar", "gestor.notificacoes.marcar_lida",
+    "gestor.contexto_tecnico", "gestor.demandas.listar", "gestor.demandas.detalhe", "gestor.demandas.assumir", "gestor.demandas.encaminhar", "gestor.demandas.assinar", "gestor.demandas.decidir", "gestor.paradas.criar_tratamento", "gestor.analises.salvar", "gestor.analises.enviar_admin", "gestor.notificacoes.listar", "gestor.notificacoes.marcar_lida",
     "lock.status", "lock.adquirir", "lock.heartbeat", "lock.liberar",
     "cmms.kpis_base", "cmms.kpis_tecnicos", "cmms.diagnostico", "perf.cache_status", "perf.cache_clear", "cmms.higiene_diagnosticar", "cmms.higienizar_status", "cmms.higienizar_duplicidades",
     "telemetria.iniciar", "telemetria.evento", "telemetria.finalizar"

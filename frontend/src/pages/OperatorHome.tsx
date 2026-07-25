@@ -3,7 +3,7 @@ import type { OperatorAction } from '../types/operator'
 import { ActionCard, resolveActionAvailability } from '../components/ActionCard'
 import { ArrowIcon } from '../components/Icons'
 
-type QueueView = 'PENDENTES' | 'EM_EXECUCAO' | 'CONCLUIDAS'
+type QueueView = 'PENDENTES' | 'EM_EXECUCAO'
 type ScheduledFilter = 'TODAS' | 'AGENDADA' | 'EM_ALERTA' | 'DISPONIVEL' | 'ATRASADA'
 type NonScheduledFilter = 'TODAS' | 'CRITICA' | 'ALTA' | 'DEMAIS'
 
@@ -20,16 +20,12 @@ export interface OperatorHomeProps {
 
 function statusMatchesView(action: OperatorAction, view: QueueView): boolean {
   if (view === 'PENDENTES') return action.status === 'PENDENTE'
-  if (view === 'EM_EXECUCAO') return action.status === 'EM_EXECUCAO'
-
-  // Para o operador, uma ação aguardando validação já teve a execução concluída.
-  return action.status === 'AGUARDANDO_VALIDACAO' || action.status === 'CONCLUIDA'
+  return action.status === 'EM_EXECUCAO'
 }
 
 function queueDescription(view: QueueView): string {
   if (view === 'PENDENTES') return 'Ações pendentes, agendadas e disponíveis para o operador.'
-  if (view === 'EM_EXECUCAO') return 'Atividades em execução neste turno.'
-  return 'Execuções finalizadas ou aguardando validação.'
+  return 'Atividades em execução neste turno.'
 }
 
 function scheduledMatchesFilter(
@@ -80,16 +76,6 @@ export function OperatorHome({
     () => actions.filter((action) => action.status === 'EM_EXECUCAO'),
     [actions],
   )
-  const completed = useMemo(
-    () =>
-      actions.filter(
-        (action) =>
-          action.status === 'AGUARDANDO_VALIDACAO' ||
-          action.status === 'CONCLUIDA',
-      ),
-    [actions],
-  )
-
   const visibleActions = useMemo(
     () => actions.filter((action) => statusMatchesView(action, activeView)),
     [actions, activeView],
@@ -223,7 +209,7 @@ export function OperatorHome({
         </button>
       </header>
 
-      <div className="summary-grid" aria-label="Filtrar ações por situação">
+      <div className="summary-grid summary-grid--active-queue" aria-label="Filtrar ações por situação">
         <button
           type="button"
           className={activeView === 'PENDENTES' ? 'summary-card summary-card--active' : 'summary-card'}
@@ -241,15 +227,6 @@ export function OperatorHome({
         >
           <strong>{running.length}</strong>
           <span>Em execução</span>
-        </button>
-        <button
-          type="button"
-          className={activeView === 'CONCLUIDAS' ? 'summary-card summary-card--active' : 'summary-card'}
-          aria-pressed={activeView === 'CONCLUIDAS'}
-          onClick={() => setActiveView('CONCLUIDAS')}
-        >
-          <strong>{completed.length}</strong>
-          <span>Concluídas</span>
         </button>
       </div>
 

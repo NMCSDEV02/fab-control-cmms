@@ -22,6 +22,7 @@ import {
 import type { GestorSession } from '../services/api/auth'
 import { isGestorAuthenticationError } from '../services/api/gestor'
 import type {
+  AdminNotificationTarget,
   AdminPermissionMatrix,
   AdminUser,
   AdminUserProfile,
@@ -33,6 +34,7 @@ interface AdminPageProps {
   onSessionExpired: () => void
   activeModule?: AdminModule
   embedded?: boolean
+  notificationTarget?: AdminNotificationTarget | null
   onModuleChange?: (module: AdminModule) => void
 }
 
@@ -87,6 +89,7 @@ export function AdminPage({
   onSessionExpired,
   activeModule,
   embedded = false,
+  notificationTarget,
   onModuleChange,
 }: AdminPageProps) {
   const [internalModule, setInternalModule] = useState<AdminModule>('overview')
@@ -326,11 +329,10 @@ export function AdminPage({
                 <button type="button" onClick={() => setTab('structure')}><AssetIcon /><span><strong>Estrutura fabril</strong><small>Plantas, setores e linhas com vínculos controlados.</small></span><b>Assistida</b></button>
                 <button type="button" onClick={() => setTab('assets')}><AssetIcon /><span><strong>Cadastro técnico</strong><small>Equipamentos, componentes, criticidade e localização.</small></span><b>Rastreável</b></button>
                 <button type="button" onClick={() => setTab('checklists')}><CheckIcon /><span><strong>Construtor de checklist</strong><small>Etapas dinâmicas, evidências e filtro técnico.</small></span><b>Validado</b></button>
-                <button type="button" onClick={() => setTab('maintenance')}><SettingsIcon /><span><strong>Planos programados</strong><small>Gatilhos por tempo, horímetro e parâmetro técnico.</small></span><b>Protegido</b></button>
+                <button type="button" onClick={() => setTab('operations')}><SettingsIcon /><span><strong>Programação, intervenções e OS</strong><small>Planos, gatilhos, demandas planejadas e não planejadas.</small></span><b>Unificada</b></button>
                 <button type="button" onClick={() => setTab('inventory')}><AssetIcon /><span><strong>Materiais e peças</strong><small>Itens, unidades, saldo e estoque mínimo.</small></span><b>Controlado</b></button>
                 <button type="button" onClick={() => setTab('workforce')}><UsersIcon /><span><strong>Áreas e cargos técnicos</strong><small>Destinos, especialistas e permissão de assinatura.</small></span><b>Roteável</b></button>
-                <button type="button" onClick={() => setTab('operations')}><AssetIcon /><span><strong>Intervenções e OS</strong><small>Rascunho, filtro técnico e liberação ao Operador.</small></span><b>Controlada</b></button>
-                <button type="button" onClick={() => setTab('analytics')}><SettingsIcon /><span><strong>Indicadores e relatórios</strong><small>MTTR, MTBF, lead time, SLA, OEE e exportação.</small></span><b>Calculado</b></button>
+                <button type="button" onClick={() => setTab('analytics')}><SettingsIcon /><span><strong>Indicadores e relatórios</strong><small>Disponibilidade, falhas, MTTR, MTBF, lead time e SLA.</small></span><b>Calculado</b></button>
                 <button type="button" onClick={() => setTab('documents')}><AssetIcon /><span><strong>Documentos técnicos</strong><small>Arquivos privados, validade e revisões imutáveis.</small></span><b>Versionado</b></button>
                 <button type="button" onClick={() => setTab('governance')}><ShieldIcon /><span><strong>Auditoria e monitoramento</strong><small>Integridade, eventos e alterações com dados sensíveis protegidos.</small></span><b>Observável</b></button>
                 <button type="button" onClick={() => setTab('backup')}><ShieldIcon /><span><strong>Backup e continuidade</strong><small>Pontos integrais privados com criação confirmada e auditada.</small></span><b>Protegido</b></button>
@@ -376,15 +378,25 @@ export function AdminPage({
 
       {tab === 'assets' ? <AdminCatalogWorkspace scope="assets" onSessionExpired={onSessionExpired} onOpenImports={() => setTab('imports')} /> : null}
 
-      {tab === 'maintenance' ? <AdminCatalogWorkspace scope="maintenance" onSessionExpired={onSessionExpired} onOpenImports={() => setTab('imports')} /> : null}
-
       {tab === 'inventory' ? <AdminCatalogWorkspace scope="inventory" onSessionExpired={onSessionExpired} onOpenImports={() => setTab('imports')} /> : null}
 
-      {tab === 'checklists' ? <AdminChecklistBuilder onSessionExpired={onSessionExpired} /> : null}
+      {tab === 'checklists' ? (
+        <AdminChecklistBuilder
+          onSessionExpired={onSessionExpired}
+          focusTarget={notificationTarget}
+        />
+      ) : null}
 
       {tab === 'workforce' ? <AdminTechnicalStructure onSessionExpired={onSessionExpired} /> : null}
 
-      {tab === 'operations' ? <AdminInterventionsWorkspace onSessionExpired={onSessionExpired} /> : null}
+      {tab === 'operations' || tab === 'maintenance' ? (
+        <AdminInterventionsWorkspace
+          onSessionExpired={onSessionExpired}
+          focusTarget={notificationTarget}
+          onOpenChecklists={() => setTab('checklists')}
+          onOpenImports={() => setTab('imports')}
+        />
+      ) : null}
 
       {tab === 'analytics' ? <AdminAnalyticsWorkspace onSessionExpired={onSessionExpired} /> : null}
 

@@ -378,3 +378,34 @@ export interface ConfigurationPublishResult {
   aviso?: string
   rollback_from_version_id?: string
 }
+
+export interface AdminTechnicalAnalysis {
+  id: string
+  demanda_id?: string
+  ocorrencia_id: string
+  ativo_id?: string
+  componente_id?: string
+  autor_id?: string
+  area_id?: string
+  cargo_id?: string
+  titulo: string
+  diagnostico?: string
+  risco?: string
+  causa_provavel?: string
+  recomendacao?: string
+  recomenda_checklist?: string
+  recomenda_os?: string
+  prioridade?: string
+  status: string
+  enviado_admin_em?: string
+  criado_em?: string
+  atualizado_em?: string
+  relatorio_tecnico_json?: string
+}
+
+export interface AdminNotificationTarget {
+  notificationType: string
+  entityType: string
+  entityId: string
+  nonce: number
+}

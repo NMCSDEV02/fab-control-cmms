@@ -32,6 +32,8 @@ export interface AdminIntervention {
   plano_nome?: string
   plano_revisao?: number | string
   plano_itens_count?: number | string
+  acao_id?: string
+  acao_status?: string
   demanda?: AdminTechnicalDemandSummary | null
   criado_em?: string
   atualizado_em?: string

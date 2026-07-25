@@ -26,12 +26,22 @@ const assetJourney = read('frontend-gestor/src/components/AssetJourneyPanel.tsx'
 const checklistBuilder = read('frontend-gestor/src/components/AdminChecklistBuilder.tsx')
 const notifications = read('frontend-gestor/src/components/NotificationCenter.tsx')
 const gestorApp = read('frontend-gestor/src/app/App.tsx')
+const adminWorkspace = read('frontend-gestor/src/components/AdminWorkspace.tsx')
+const adminPage = read('frontend-gestor/src/pages/AdminPage.tsx')
+const adminAnalytics = read('frontend-gestor/src/components/AdminAnalyticsWorkspace.tsx')
+const adminInterventions = read('frontend-gestor/src/components/AdminInterventionsWorkspace.tsx')
+const adminApi = read('frontend-gestor/src/services/api/admin.ts')
 const technicalAnalysis = read('frontend-gestor/src/components/TechnicalAnalysisDialog.tsx')
 const demandDialog = read('frontend-gestor/src/components/TechnicalDemandDialog.tsx')
 const navigation = read('frontend-gestor/src/components/AppNavigation.tsx')
 const gestorStyles = read('frontend-gestor/src/styles/global.css')
 const operatorAction = read('frontend/src/pages/ActionDetailPage.tsx')
 const operatorChecklist = read('frontend/src/pages/ChecklistExecutionPage.tsx')
+const operatorApp = read('frontend/src/app/App.tsx')
+const operatorHome = read('frontend/src/pages/OperatorHome.tsx')
+const operatorApi = read('frontend/src/services/api/operator.ts')
+const operatorQueue = read('backend/apps-script/23_Fila_Operador_Performance.js')
+const executionBoundary = read('frontend/src/components/ExecutionErrorBoundary.tsx')
 const operatorContract = read('backend/apps-script/17_Consolidacao_Operacional_UI.js')
 const interventionsApi = read('frontend-gestor/src/services/api/interventions.ts')
 const interventionsBackend = read('backend/apps-script/28_Admin_Intervencoes.js')
@@ -71,8 +81,11 @@ const requiredActions = [
   'gestor.demandas.encaminhar',
   'gestor.demandas.assinar',
   'gestor.demandas.decidir',
+  'gestor.paradas.criar_tratamento',
   'gestor.analises.salvar',
   'gestor.analises.enviar_admin',
+  'gestor.notificacoes.listar',
+  'gestor.notificacoes.marcar_lida',
 ]
 
 for (const action of requiredActions) {
@@ -150,10 +163,27 @@ assert(
 assert(analytics.includes("label: 'MTBF'"), 'modo Analítico não exibe MTBF')
 assert(analytics.includes("label: 'Lead time'"), 'modo Analítico não exibe lead time')
 assert(analytics.includes("label: 'SLA de resposta'"), 'modo Analítico não exibe SLA')
-assert(analytics.includes("'Sem produção'"), 'OEE sem amostra não é diferenciado de zero')
+assert(
+  !analytics.includes("label: 'OEE'") &&
+    analytics.includes("label: 'Falhas não planejadas'") &&
+    analytics.includes('ATENDIMENTO TÉCNICO'),
+  'painel do Gestor ainda exibe OEE sem dados de produção ou não oferece métricas técnicas substitutas',
+)
+assert(
+  !adminAnalytics.includes("['OEE (%)'") &&
+    !adminAnalytics.includes('>OEE</span>') &&
+    adminAnalytics.includes('CONFIABILIDADE'),
+  'painel do Admin ainda publica OEE sem base de produção',
+)
 assert(analytics.includes('período anterior'), 'painel não compara tendências')
 assert(analytics.includes('Todos os ativos'), 'painel não permite recorte por ativo')
-assert(analytics.includes("'monitoring'") && analytics.includes("'critical'") && analytics.includes("'library'"), 'áreas analíticas não estão separadas em abas')
+assert(
+  analytics.includes("'monitoring'") &&
+    analytics.includes("'history'") &&
+    analytics.includes("'critical'") &&
+    analytics.includes("'library'"),
+  'áreas analíticas e histórico concluído não estão separados em abas',
+)
 assert(gestorApi.includes('getGestorTechnicalKpisForPeriod'), 'cliente não envia período e ativo aos KPIs')
 assert(gestorApi.includes('getGestorAssetJourney') && gestorApi.includes("'operador.contexto_qr'"), 'ficha do ativo não usa o contexto técnico real')
 assert(assetJourney.includes('Faixas configuradas') && assetJourney.includes('Últimas alterações') && assetJourney.includes('Histórico'), 'jornada completa do ativo está incompleta')
@@ -193,10 +223,90 @@ assert(
 assert(gestorApi.includes('getGestorNotifications') && gestorApi.includes('markGestorNotificationRead'), 'central de notificações não usa o backend real')
 assert(gestorApp.includes('notification.entidade_tipo') && notifications.includes('NAO_LIDA'), 'notificações não preservam contexto e leitura')
 assert(
+  notifications.includes('manager-notification-summary') &&
+    notifications.includes('Buscar por ativo, ocorrência ou decisão') &&
+    notifications.includes('Todos os contextos') &&
+    notifications.includes('markAllAsRead') &&
+    notifications.includes('Marcar todas como lidas'),
+  'central de notificações não oferece priorização, busca, filtros e leitura em lote',
+)
+assert(
+  gestorApp.includes('audience="manager"') &&
+    adminWorkspace.includes('audience="admin"'),
+  'central de notificações não adapta o contexto entre Gestor e Admin',
+)
+assert(
+  adminWorkspace.includes('<NotificationCenter') &&
+    adminWorkspace.includes('setNotificationOpen(true)') &&
+    adminWorkspace.includes("notificationType === 'ANALISE_TECNICA'"),
+  'Admin não possui central de notificações com roteamento para análises técnicas',
+)
+assert(
+  adminWorkspace.includes('listAdminTechnicalDemands') &&
+    adminWorkspace.includes("entityType === 'DEMANDAS_TECNICAS'") &&
+    adminWorkspace.includes('setNotificationTarget'),
+  'notificação administrativa não resolve o registro técnico real antes de navegar',
+)
+assert(
+  notifications.includes('await onOpenNotification(notification)') &&
+    notifications.includes('openingId') &&
+    notifications.includes('Abrindo…'),
+  'central marca a notificação como lida antes de confirmar a abertura do destino',
+)
+assert(
+  adminApi.includes('admin.analises_tecnicas.listar') &&
+    adminInterventions.includes('Análises recebidas do Gestor') &&
+    adminInterventions.includes('focusTarget.entityId') &&
+    adminInterventions.includes('String(item.acao_id'),
+  'Admin não possui caixa de análises nem foco no registro originado pela notificação',
+)
+assert(
+  workflow.includes('technicalNotify_({perfil:ROLE.ADMIN}, "ANALISE_TECNICA"') &&
+    workflow.includes('"DECISAO_TECNICA"'),
+  'decisões e análises do Gestor não notificam o Admin',
+)
+assert(
+  workflow.includes('demand.entidade_tipo') &&
+    workflow.includes('demand.entidade_id'),
+  'decisão técnica ainda notifica uma demanda intermediária em vez da entidade de destino',
+)
+assert(
   analytics.includes('ATENÇÃO AGORA') &&
     analytics.includes('TRABALHO EM CAMPO') &&
     analytics.includes('Acompanhar ativo'),
   'acompanhamento do Gestor não apresenta desvios e execuções em campo',
+)
+assert(
+  analytics.includes('Execuções concluídas') &&
+    analytics.includes('Ver auditoria') &&
+    gestorApi.includes('getGestorCompletedActions') &&
+    gestorApi.includes("status: 'CONCLUIDA'"),
+  'conclusões do Operador não foram transferidas para o histórico auditável do Gestor',
+)
+assert(
+  operatorQueue.includes('status:"PENDENTE,EM_EXECUCAO"') &&
+    operatorQueue.includes('incluir_concluidas:false') &&
+    operatorApi.includes("status: 'PENDENTE,EM_EXECUCAO'") &&
+    operatorApi.includes('incluir_concluidas: false') &&
+    !operatorHome.includes("'CONCLUIDAS'") &&
+    operatorApp.includes('remainingActions'),
+  'Operador ainda recebe ou mantém ações concluídas na fila operacional',
+)
+assert(
+  config.includes('"parada_id"') &&
+    workflow.includes('function gestorParadaCriarTratamento_') &&
+    workflow.includes('TRATAMENTO_PARADA_CRIADO') &&
+    analytics.includes('Criar tratamento') &&
+    gestorApi.includes("'gestor.paradas.criar_tratamento'"),
+  'parada técnica aberta não cria uma ocorrência rastreável para tratamento',
+)
+assert(
+  !adminWorkspace.includes("{ id: 'maintenance', code: 'PM'") &&
+    adminWorkspace.includes("module === 'maintenance' ? 'operations' : module") &&
+    adminInterventions.includes("scope=\"maintenance\"") &&
+    adminInterventions.includes('Planejadas e não planejadas') &&
+    adminPage.includes("tab === 'operations' || tab === 'maintenance'"),
+  'Programação e Intervenções/OS continuam concorrendo em janelas separadas',
 )
 assert(technicalAnalysis.includes('relatorio_tecnico: brief'), 'análise assistida não envia o relatório estruturado')
 assert(workflow.includes('TECH_SIGNATURE_SEGREGATION'), 'segregação de assinatura ausente')
@@ -207,6 +317,17 @@ assert(interventionsBackend.includes('analise_tecnica_json:clean_(order.analise_
 assert(operatorContract.includes('analise_tecnica:CMMS110_technicalBrief_'), 'tela do Operador não recebe o briefing técnico')
 assert(operatorAction.includes("titulo: 'Preparar e isolar'") && operatorAction.includes('technical-requirements-grid'), 'Operador não possui etapas e requisitos seguros de fallback')
 assert(operatorAction.includes('technicalFacts.map') && !operatorAction.includes("<span>Duração prevista</span><strong>{detail.plano?.tempo_estimado_min"), 'análise do Operador ainda exibe fatos técnicos vazios')
+assert(
+  operatorChecklist.includes("String(value ?? '')") &&
+    operatorChecklist.includes('Array.isArray(options)'),
+  'checklist do Operador não normaliza valores heterogêneos vindos da planilha',
+)
+assert(
+  operatorApp.includes('<ExecutionErrorBoundary') &&
+    operatorApp.includes('Carregando checklist') &&
+    executionBoundary.includes('Não foi possível exibir o checklist'),
+  'execução do Operador ainda pode resultar em uma tela vazia',
+)
 assert(workflow.includes('workflow.tecnico.text.repair.version'), 'catálogo técnico não versiona a correção de acentuação')
 assert(workflow.includes('technicalLooksMojibake_'), 'catálogo técnico não detecta textos legados corrompidos')
 assert(workflow.includes('var roleId = eid_("CTEC", definition.codigo)'), 'correção de cargos não preserva o identificador estável')

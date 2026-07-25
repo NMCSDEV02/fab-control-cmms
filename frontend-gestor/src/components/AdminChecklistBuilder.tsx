@@ -9,7 +9,7 @@ import {
   sendAdminChecklistForValidation,
 } from '../services/api/checklists'
 import { isGestorAuthenticationError } from '../services/api/gestor'
-import type { TechnicalArea, TechnicalRole } from '../types/admin'
+import type { AdminNotificationTarget, TechnicalArea, TechnicalRole } from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminChecklistItem, AdminChecklistPlan, ChecklistResponseType } from '../types/checklists'
 import {
@@ -33,6 +33,7 @@ import {
 
 interface AdminChecklistBuilderProps {
   onSessionExpired: () => void
+  focusTarget?: AdminNotificationTarget | null
 }
 
 const RESPONSE_TYPES: Array<{ value: ChecklistResponseType; label: string }> = [
@@ -154,8 +155,12 @@ function isAvailable(record: AdminEntityRecord): boolean {
   return String(record.status ?? '').trim().toUpperCase() !== 'INATIVO'
 }
 
-export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilderProps) {
+export function AdminChecklistBuilder({
+  onSessionExpired,
+  focusTarget,
+}: AdminChecklistBuilderProps) {
   const workspaceRef = useRef<HTMLElement | null>(null)
+  const handledFocusRef = useRef(0)
   const [models, setModels] = useState<AdminChecklistPlan[]>([])
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
   const [components, setComponents] = useState<AdminEntityRecord[]>([])
@@ -267,6 +272,19 @@ export function AdminChecklistBuilder({ onSessionExpired }: AdminChecklistBuilde
       setDetailLoading(false)
     }
   }
+
+  useEffect(() => {
+    const entityType = String(focusTarget?.entityType ?? '').toUpperCase()
+    if (
+      !focusTarget?.entityId ||
+      !['PLANOS_MANUTENCAO', 'CHECKLIST_MODELO', 'PLANO_CHECKLIST'].includes(entityType) ||
+      handledFocusRef.current === focusTarget.nonce
+    ) {
+      return
+    }
+    handledFocusRef.current = focusTarget.nonce
+    void openModel(focusTarget.entityId)
+  }, [focusTarget?.entityId, focusTarget?.entityType, focusTarget?.nonce])
 
   function updatePlan<K extends keyof AdminChecklistPlan>(key: K, value: AdminChecklistPlan[K]) {
     setPlan((current) => {

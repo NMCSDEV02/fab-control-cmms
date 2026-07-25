@@ -63,12 +63,18 @@ const FINAL_OUTCOME_OPTIONS: Array<{
 ]
 
 function typeOf(item: RawChecklistItem): string {
-  return (item.input?.tipo_resposta || item.tipo_resposta || 'TEXTO').toUpperCase()
+  return String(
+    item.input?.tipo_resposta || item.tipo_resposta || 'TEXTO',
+  ).toUpperCase()
 }
 
 function optionsOf(item: RawChecklistItem): string[] {
   const options = item.input?.opcoes?.length ? item.input.opcoes : item.opcoes
-  if (options?.length) return options
+  if (Array.isArray(options) && options.length) {
+    return options
+      .map((option) => String(option ?? '').trim())
+      .filter(Boolean)
+  }
   if (typeOf(item) === 'OK_NOK') return ['OK', 'NOK', 'N/A']
   if (typeOf(item) === 'CONFIRMACAO') return ['SIM']
   return []
@@ -81,8 +87,11 @@ function evidenceMinimum(item: RawChecklistItem): number {
   return typeOf(item) === 'EVIDENCIA' || item.evidencia_obrigatoria ? 1 : 0
 }
 
-function normalizeTechnicalText(value?: string): string {
-  return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+function normalizeTechnicalText(value?: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
 }
 
 function isHourMeterItem(item: RawChecklistItem): boolean {
@@ -103,7 +112,7 @@ function existingAnswer(item: RawChecklistItem): string {
     const raw = item.valor_numero ?? item.resposta ?? ''
     return raw === null || raw === undefined ? '' : String(raw)
   }
-  return item.resposta ?? ''
+  return String(item.resposta ?? '')
 }
 
 function answered(item: RawChecklistItem, draft: DraftAnswer): boolean {
@@ -215,7 +224,7 @@ export function ChecklistExecutionPage({
           : ''
       serverDrafts[item.id] = {
         answer: serverAnswer || automaticHourMeterValue,
-        observation: item.observacao ?? '',
+        observation: String(item.observacao ?? ''),
       }
     }
 

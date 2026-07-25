@@ -122,6 +122,12 @@ function adminIntervencoesListar_(p, auth){
     var planId = String(item.plano_id || "");
     planItemCounts[planId] = (planItemCounts[planId] || 0) + 1;
   });
+  var actionsByOrder = {};
+  rows_("os_acoes", true).forEach(function(item){
+    var orderId = clean_(item.os_id);
+    if(!orderId || actionsByOrder[orderId]) return;
+    actionsByOrder[orderId] = item;
+  });
   var orders = rows_("ordens_servico", true).filter(function(order){
     if(upper_(order.origem) !== "ADMIN") return false;
     if(status && upper_(order.status) !== status) return false;
@@ -139,6 +145,8 @@ function adminIntervencoesListar_(p, auth){
     out.plano_nome = clean_(plan && plan.nome);
     out.plano_revisao = num_(plan && plan.revisao, 1);
     out.plano_itens_count = planItemCounts[String(order.plano_id)] || 0;
+    out.acao_id = clean_(actionsByOrder[String(order.id)] && actionsByOrder[String(order.id)].id);
+    out.acao_status = clean_(actionsByOrder[String(order.id)] && actionsByOrder[String(order.id)].status);
     out.demanda = demand ? technicalDemandPublic_(demand) : null;
     return out;
   });

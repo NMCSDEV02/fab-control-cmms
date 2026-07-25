@@ -180,6 +180,21 @@ export async function getGestorActions(
   return Array.isArray(data.acoes) ? data.acoes : []
 }
 
+export async function getGestorCompletedActions(
+  signal?: AbortSignal,
+): Promise<GestorAction[]> {
+  const data = await readGestorData<ActionListData>(
+    'gestor.listar_acoes',
+    {
+      status: 'CONCLUIDA',
+      limite: 200,
+    },
+    signal,
+  )
+
+  return Array.isArray(data.acoes) ? data.acoes : []
+}
+
 export async function getGestorStops(
   signal?: AbortSignal,
 ): Promise<GestorStop[]> {
@@ -194,17 +209,31 @@ export async function getGestorStops(
 
 export async function getGestorOccurrences(
   signal?: AbortSignal,
+  status = 'AGUARDANDO_ANALISE',
 ): Promise<GestorOccurrence[]> {
   const data = await readGestorData<OccurrenceListData>(
     'gestor.listar_ocorrencias',
     {
-      status: 'AGUARDANDO_ANALISE',
+      status,
       limite: 200,
     },
     signal,
   )
 
   return Array.isArray(data.ocorrencias) ? data.ocorrencias : []
+}
+
+export async function createGestorStopTreatment(
+  stopId: string,
+): Promise<{
+  created: boolean
+  already_exists: boolean
+  parada_id: string
+  occurrence: GestorOccurrence
+}> {
+  return writeGestorData('gestor.paradas.criar_tratamento', {
+    parada_id: stopId,
+  })
 }
 
 export async function getUnreadNotificationCount(
@@ -247,12 +276,22 @@ export function markGestorNotificationRead(
 export async function getGestorOverview(
   signal?: AbortSignal,
 ): Promise<GestorOverview> {
-  const [actions, stops, occurrences, kpis] = await Promise.all([
+  const [
+    actions,
+    completedActions,
+    stops,
+    occurrenceHistory,
+    kpis,
+  ] = await Promise.all([
     getGestorActions(signal),
+    getGestorCompletedActions(signal),
     getGestorStops(signal),
-    getGestorOccurrences(signal),
+    getGestorOccurrences(signal, ''),
     getGestorTechnicalKpis(signal),
   ])
+  const occurrences = occurrenceHistory.filter(
+    (occurrence) => normalizedStatus(occurrence.status) === 'AGUARDANDO_ANALISE',
+  )
 
   const statusCount = (status: string) =>
     actions.filter((action) => action.status.trim().toUpperCase() === status).length
@@ -267,10 +306,12 @@ export async function getGestorOverview(
 
   return {
     actions,
+    completedActions,
     validationQueue,
     stops,
     openStops,
     occurrences,
+    occurrenceHistory,
     kpis,
     counts: {
       pending: statusCount('PENDENTE'),

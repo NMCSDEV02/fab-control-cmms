@@ -153,6 +153,9 @@ export function App() {
   function handleOpenNotification(notification: GestorNotification) {
     const entityType = String(notification.entidade_tipo ?? '').trim().toUpperCase()
     const entityId = String(notification.entidade_id ?? '').trim()
+    if (!entityId) {
+      throw new Error('Esta notificação não possui um registro de destino válido.')
+    }
     if (entityType === 'OCORRENCIAS_OPERACIONAIS') {
       handleOpenAnalytics('', entityId)
       return
@@ -169,11 +172,15 @@ export function App() {
       handleOpenDecision('actions', { kind: 'action', id: entityId })
       return
     }
-    if (entityType === 'PLANOS_MANUTENCAO') {
+    if (
+      entityType === 'PLANOS_MANUTENCAO' ||
+      entityType === 'CHECKLIST_MODELO' ||
+      entityType === 'PLANO_CHECKLIST'
+    ) {
       handleOpenDecision('models', { kind: 'model', id: entityId })
       return
     }
-    handleOpenDecision('demands')
+    throw new Error(`O destino ${entityType || 'desconhecido'} não está disponível neste perfil.`)
   }
 
   async function handleLogout() {
@@ -338,6 +345,7 @@ export function App() {
 
       <NotificationCenter
         open={notificationOpen}
+        audience="manager"
         onClose={() => setNotificationOpen(false)}
         onOpenNotification={handleOpenNotification}
         onUnreadChange={setNotificationCount}
