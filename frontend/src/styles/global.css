@@ -5444,3 +5444,45 @@ p {
     justify-content: flex-start;
   }
 }
+
+.operator-auto-sync {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid #cfe3db;
+  border-radius: 12px;
+  background: #f3fbf7;
+  color: #18704f;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.operator-auto-sync > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22a16f;
+  box-shadow: 0 0 0 4px rgba(34, 161, 111, 0.12);
+}
+
+.operator-auto-sync.is-syncing > i {
+  animation: operator-sync-pulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes operator-sync-pulse {
+  to {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+
+@media (max-width: 540px) {
+  .operator-auto-sync {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 0.64rem;
+  }
+}

@@ -9,6 +9,7 @@ import {
   sendAdminChecklistForValidation,
 } from '../services/api/checklists'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { AdminNotificationTarget, AdminUser, TechnicalRole } from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminChecklistItem, AdminChecklistPlan, ChecklistResponseType } from '../types/checklists'
@@ -24,7 +25,6 @@ import {
   DocumentIcon,
   NumberIcon,
   PlusIcon,
-  RefreshIcon,
   SearchIcon,
   ShieldIcon,
   TextIcon,
@@ -220,6 +220,17 @@ export function AdminChecklistBuilder({
       .finally(() => setLoading(false))
     return () => controller.abort()
   }, [handleFailure, loadWorkspace])
+
+  useAutoRefresh(async () => {
+    try {
+      await loadWorkspace()
+    } catch (cause) {
+      handleFailure(cause, 'Não foi possível sincronizar a biblioteca de checklists.')
+    }
+  }, {
+    enabled: !detailLoading && !saving && !sending && !libraryBusy && !routingOpen && !modelToDelete,
+    intervalMs: 20_000,
+  })
 
   const filteredModels = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -444,19 +455,6 @@ export function AdminChecklistBuilder({
     }
   }
 
-  async function refresh() {
-    setLoading(true)
-    setError('')
-    try {
-      await loadWorkspace()
-      setNotice('Biblioteca e listas de cadastro atualizadas.')
-    } catch (cause) {
-      handleFailure(cause, 'Não foi possível atualizar os checklists.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   async function createRevision(modelId: string) {
     setLibraryBusy(true)
     setError('')
@@ -514,7 +512,7 @@ export function AdminChecklistBuilder({
 
       <div className="admin-checklist-layout">
         <aside className="admin-checklist-library">
-          <header><div><span className="eyebrow">BIBLIOTECA</span><h2>Modelos técnicos</h2></div><button type="button" onClick={() => void refresh()} aria-label="Atualizar"><RefreshIcon /></button></header>
+          <header><div><span className="eyebrow">BIBLIOTECA</span><h2>Modelos técnicos</h2></div><span className="manager-live-sync manager-live-sync--compact" title="Biblioteca sincronizada automaticamente"><i aria-hidden="true" />Ao vivo</span></header>
           <label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar checklist ou ativo" /></label>
           <button className="primary-button admin-checklist-new" type="button" onClick={newModel}>+ Novo checklist</button>
           <div className="admin-checklist-models">

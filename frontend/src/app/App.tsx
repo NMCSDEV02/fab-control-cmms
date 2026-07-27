@@ -414,14 +414,16 @@ export function App() {
     }
     const interval = window.setInterval(() => {
       if (canRefreshHome()) void refresh({ silent: true })
-    }, 60_000)
+    }, 12_000)
 
     document.addEventListener('visibilitychange', refreshWhenVisible)
     window.addEventListener('focus', refreshOnFocus)
+    window.addEventListener('online', refreshOnFocus)
     return () => {
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
       window.removeEventListener('focus', refreshOnFocus)
+      window.removeEventListener('online', refreshOnFocus)
     }
   }, [refresh])
 

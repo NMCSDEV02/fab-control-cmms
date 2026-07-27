@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { listAdminUsers } from '../services/api/admin'
 import { getAdminMonitoring, listAdminAudit } from '../services/api/governance'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { AdminUser } from '../types/admin'
 import type { AdminAuditEvent, AdminMonitoringState } from '../types/governance'
-import { RefreshIcon, SearchIcon, ShieldIcon } from './Icons'
+import { SearchIcon, ShieldIcon } from './Icons'
 
 interface AdminGovernanceWorkspaceProps {
   onSessionExpired: () => void
@@ -31,7 +32,6 @@ export function AdminGovernanceWorkspace({ onSessionExpired }: AdminGovernanceWo
   const [userId, setUserId] = useState('')
   const [selected, setSelected] = useState<AdminAuditEvent | null>(null)
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
 
   const handleFailure = useCallback((cause: unknown) => {
@@ -69,11 +69,16 @@ export function AdminGovernanceWorkspace({ onSessionExpired }: AdminGovernanceWo
     }
   }, [handleFailure, loadAll])
 
-  async function refresh() {
-    setRefreshing(true)
-    setError('')
-    try { await loadAll() } catch (cause) { handleFailure(cause) } finally { setRefreshing(false) }
-  }
+  useAutoRefresh(async () => {
+    try {
+      await loadAll()
+    } catch (cause) {
+      handleFailure(cause)
+    }
+  }, {
+    enabled: !selected,
+    intervalMs: 15_000,
+  })
 
   const userNames = new Map(users.map((user) => [user.id, user.nome]))
   const issueCount = monitoring?.diagnostico.total_issues ?? 0
@@ -99,7 +104,7 @@ export function AdminGovernanceWorkspace({ onSessionExpired }: AdminGovernanceWo
         <label><span>Grupo de ação</span><select value={action} onChange={(event) => setAction(event.target.value)}><option value="">Todos</option><option value="DOCUMENT">Documentos</option><option value="BACKUP">Backups</option><option value="CONFIG">Configuração</option><option value="ADMIN_ENTITY">Cadastros</option><option value="INTERVENTION">Intervenções</option><option value="USER">Usuários</option><option value="PERMISSION">Permissões</option></select></label>
         <label><span>Entidade</span><select value={entity} onChange={(event) => setEntity(event.target.value)}><option value="">Todas</option><option value="documentos_tecnicos">Documentos</option><option value="spreadsheet">Planilha principal</option><option value="usuarios">Usuários</option><option value="ordens_servico">Ordens de serviço</option><option value="configuracao_versoes">Configuração</option><option value="ativos">Ativos</option><option value="planos_manutencao">Planos</option></select></label>
         <label><span>Responsável</span><select value={userId} onChange={(event) => setUserId(event.target.value)}><option value="">Todos</option>{users.map((user) => <option value={user.id} key={user.id}>{user.nome} · {user.perfil}</option>)}</select></label>
-        <button type="button" disabled={refreshing} onClick={() => void refresh()}><RefreshIcon />{refreshing ? 'Verificando…' : 'Atualizar'}</button>
+        <span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Auditoria ao vivo</span>
       </section>
 
       <section className="admin-governance-table-card">

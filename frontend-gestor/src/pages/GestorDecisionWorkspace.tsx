@@ -4,10 +4,10 @@ import { ChecklistModelReviewDialog } from '../components/ChecklistModelReviewDi
 import {
   CheckIcon,
   ChevronRightIcon,
-  RefreshIcon,
   SearchIcon,
   ShieldIcon,
 } from '../components/Icons'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import { TechnicalDemandDialog } from '../components/TechnicalDemandDialog'
 import {
   getGestorActions,
@@ -165,6 +165,7 @@ export function GestorDecisionWorkspace({
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [selectedDemand, setSelectedDemand] =
@@ -205,6 +206,7 @@ export function GestorDecisionWorkspace({
       setModels(standaloneModels)
       setDemands(demandData)
       setTechnicalContext(contextData)
+      setLastSyncedAt(new Date())
       onQueueCountChange(
         demandData.length +
         validationActions.length +
@@ -234,6 +236,11 @@ export function GestorDecisionWorkspace({
     void load(controller.signal)
     return () => controller.abort()
   }, [load])
+
+  useAutoRefresh(
+    () => load(undefined, true),
+    { intervalMs: 12_000 },
+  )
 
   const items = useMemo<DecisionItem[]>(() => {
     const demandItems = demands.map((demand): DecisionItem => {
@@ -401,15 +408,16 @@ export function GestorDecisionWorkspace({
             <span className={criticalCount ? 'is-critical' : ''}>
               <strong>{criticalCount}</strong> críticos
             </span>
-            <button
-              type="button"
-              disabled={loading || refreshing}
-              onClick={() => void load(undefined, true)}
-              aria-label="Atualizar decisões"
-              title="Atualizar"
+            <span
+              className={`manager-live-sync manager-live-sync--compact${refreshing ? ' is-syncing' : ''}`}
+              title={lastSyncedAt
+                ? `Sincronizado às ${lastSyncedAt.toLocaleTimeString('pt-BR')}`
+                : 'Aguardando sincronização'}
+              role="status"
             >
-              <RefreshIcon />
-            </button>
+              <i aria-hidden="true" />
+              {refreshing ? 'Sincronizando' : 'Ao vivo'}
+            </span>
           </div>
         </section>
 

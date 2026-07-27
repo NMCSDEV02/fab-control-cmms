@@ -8,6 +8,7 @@ import {
   uploadAdminDocument,
 } from '../services/api/governance'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { AdminUser } from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type {
@@ -18,7 +19,7 @@ import type {
   AdminDocumentStatus,
   AdminDocumentType,
 } from '../types/governance'
-import { RefreshIcon, SearchIcon, ShieldIcon } from './Icons'
+import { SearchIcon, ShieldIcon } from './Icons'
 
 interface AdminDocumentsWorkspaceProps {
   onSessionExpired: () => void
@@ -165,6 +166,17 @@ export function AdminDocumentsWorkspace({ onSessionExpired }: AdminDocumentsWork
     }
   }, [handleFailure, load])
 
+  useAutoRefresh(async () => {
+    try {
+      await load()
+    } catch (cause) {
+      handleFailure(cause)
+    }
+  }, {
+    enabled: !editor && !saving,
+    intervalMs: 20_000,
+  })
+
   const targetOptions = useMemo(() => catalogs[form.entidade_tipo] || [], [catalogs, form.entidade_tipo])
   const userNames = useMemo(() => new Map(users.map((user) => [user.id, user.nome])), [users])
 
@@ -253,7 +265,7 @@ export function AdminDocumentsWorkspace({ onSessionExpired }: AdminDocumentsWork
         <label className="search-field"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, título ou arquivo" /></label>
         <label><span>Tipo</span><select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as AdminDocumentType | '')}><option value="">Todos</option>{DOCUMENT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         <label><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AdminDocumentStatus | '')}><option value="">Todos</option>{DOCUMENT_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        <button type="button" onClick={() => void load()}><RefreshIcon />Atualizar</button>
+        <span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Biblioteca ao vivo</span>
         <button className="primary-button" type="button" onClick={() => openEditor('create')}>Novo documento</button>
       </section>
 

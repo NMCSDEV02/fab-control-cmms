@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getAdminTechnicalKpis } from '../services/api/analytics'
 import { listAdminEntity } from '../services/api/catalog'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { GestorTechnicalKpis } from '../types/gestor'
-import { AssetIcon, CheckIcon, RefreshIcon, ShieldIcon, StopIcon } from './Icons'
+import { AssetIcon, CheckIcon, ShieldIcon, StopIcon } from './Icons'
 
 interface AdminAnalyticsWorkspaceProps {
   onSessionExpired: () => void
@@ -102,6 +103,18 @@ export function AdminAnalyticsWorkspace({ onSessionExpired }: AdminAnalyticsWork
     return () => controller.abort()
   }, [handleFailure, initialPeriod.end, initialPeriod.start, loadKpis])
 
+  useAutoRefresh(async () => {
+    if (!start || !end || new Date(start).getTime() >= new Date(end).getTime()) return
+    try {
+      await loadKpis(assetId, start, end)
+    } catch (cause) {
+      handleFailure(cause)
+    }
+  }, {
+    enabled: !refreshing,
+    intervalMs: 20_000,
+  })
+
   function changePeriod(value: string) {
     setPeriod(value)
     if (value !== 'CUSTOM') {
@@ -168,7 +181,7 @@ export function AdminAnalyticsWorkspace({ onSessionExpired }: AdminAnalyticsWork
         <label><span>Equipamento</span><select value={assetId} onChange={(event) => setAssetId(event.target.value)}><option value="">Todos os ativos</option>{assets.map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
         <label><span>Período</span><select value={period} onChange={(event) => changePeriod(event.target.value)}><option value="7">Últimos 7 dias</option><option value="30">Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="365">Últimos 12 meses</option><option value="CUSTOM">Personalizado</option></select></label>
         {period === 'CUSTOM' ? <><label><span>Início</span><input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} /></label><label><span>Fim</span><input type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} /></label></> : null}
-        <button type="button" disabled={refreshing} onClick={() => void applyFilters()}><RefreshIcon />{refreshing ? 'Calculando…' : 'Aplicar filtros'}</button>
+        <button type="button" disabled={refreshing} onClick={() => void applyFilters()}><CheckIcon />{refreshing ? 'Calculando…' : 'Aplicar período'}</button>
         <button type="button" onClick={exportReport}>Exportar CSV</button>
       </section>
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { actionAdminEntity, listAdminEntity, saveAdminEntity } from '../services/api/catalog'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { AdminEntity, AdminEntityRecord } from '../types/catalog'
-import { AssetIcon, CheckIcon, MoreIcon, RefreshIcon, SearchIcon, SettingsIcon, StopIcon } from './Icons'
+import { AssetIcon, CheckIcon, MoreIcon, SearchIcon, SettingsIcon, StopIcon } from './Icons'
 
 export type AdminCatalogScope = 'structure' | 'assets' | 'inventory' | 'maintenance'
 
@@ -356,6 +357,21 @@ export function AdminCatalogWorkspace({
     return () => controller.abort()
   }, [loadData, onSessionExpired])
 
+  useAutoRefresh(async () => {
+    try {
+      await loadData()
+    } catch (cause) {
+      if (isGestorAuthenticationError(cause)) {
+        onSessionExpired()
+        return
+      }
+      setError(cause instanceof Error ? cause.message : 'Não foi possível sincronizar os cadastros.')
+    }
+  }, {
+    enabled: editing === undefined && !actionRecord && !saving && !actionBusy,
+    intervalMs: 20_000,
+  })
+
   const definition = ENTITY_DEFINITIONS[selectedEntity]
   const editingReadOnly = selectedEntity === 'planos' && Boolean(editing && isProtectedPlan(editing))
   const visibleRecords = useMemo(() => {
@@ -580,23 +596,6 @@ export function AdminCatalogWorkspace({
     }
   }
 
-  async function refresh() {
-    setLoading(true)
-    setError('')
-    try {
-      await loadData()
-      setNotice('Cadastros atualizados.')
-    } catch (cause) {
-      if (isGestorAuthenticationError(cause)) {
-        onSessionExpired()
-        return
-      }
-      setError(cause instanceof Error ? cause.message : 'Não foi possível atualizar os cadastros.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const selectedStatus = upper(actionRecord?.status)
   const selectedWorkflow = upper(actionRecord?.workflow_status)
   const selectedRelations = actionRecord ? relationSummary(actionRecord) : []
@@ -628,7 +627,7 @@ export function AdminCatalogWorkspace({
       <section className="admin-catalog-panel">
         <header>
           <div><span className="eyebrow">CADASTRO MESTRE</span><h2>{definition.label}</h2><p>{definition.description}</p></div>
-          <div><button className="admin-catalog-refresh" type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={() => openEditor()}>Novo {definition.singular}</button></div>
+          <div><span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Sincronização automática</span><button className="primary-button" type="button" onClick={() => openEditor()}>Novo {definition.singular}</button></div>
         </header>
         {selectedEntity === 'planos' ? <div className="admin-plan-rule"><CheckIcon /><span><strong>Programação protegida</strong><small>Salvar cria um rascunho inativo. A liberação ao Operador só ocorre depois do checklist e da validação do Gestor.</small></span></div> : null}
         <label className="admin-catalog-search"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Buscar em ${definition.label.toLowerCase()}`} /></label>

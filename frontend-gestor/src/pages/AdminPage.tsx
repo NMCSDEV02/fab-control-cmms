@@ -11,7 +11,8 @@ import { AdminAnalyticsWorkspace } from '../components/AdminAnalyticsWorkspace'
 import { AdminDocumentsWorkspace } from '../components/AdminDocumentsWorkspace'
 import { AdminGovernanceWorkspace } from '../components/AdminGovernanceWorkspace'
 import { AdminBackupWorkspace } from '../components/AdminBackupWorkspace'
-import { AssetIcon, CheckIcon, KeyIcon, RefreshIcon, SearchIcon, SettingsIcon, ShieldIcon, UsersIcon } from '../components/Icons'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
+import { AssetIcon, CheckIcon, KeyIcon, SearchIcon, SettingsIcon, ShieldIcon, UsersIcon } from '../components/Icons'
 import {
   getAdminPermissionMatrix,
   listAdminUsers,
@@ -182,6 +183,17 @@ export function AdminPage({
     }
   }
 
+  useAutoRefresh(
+    () => refresh(),
+    {
+      enabled:
+        ['overview', 'users', 'permissions'].includes(tab) &&
+        editingUser === undefined &&
+        !resetUser,
+      intervalMs: 20_000,
+    },
+  )
+
   async function unlockUser(user: AdminUser) {
     setActionUserId(user.id)
     setError('')
@@ -324,7 +336,7 @@ export function AdminPage({
 
           <div className="admin-command-dashboard-grid">
             <section className="admin-command-control-panel">
-              <header><div><span className="eyebrow">CONTROLES CENTRAIS</span><h2>Governança do sistema</h2></div><button type="button" disabled={refreshing} onClick={() => void refresh('Workspace atualizado.') }><RefreshIcon />{refreshing ? 'Atualizando…' : 'Atualizar'}</button></header>
+              <header><div><span className="eyebrow">CONTROLES CENTRAIS</span><h2>Governança do sistema</h2></div><span className={`manager-live-sync manager-live-sync--compact${refreshing ? ' is-syncing' : ''}`}><i aria-hidden="true" />{refreshing ? 'Sincronizando' : 'Ao vivo'}</span></header>
               <div className="admin-command-module-grid">
                 <button type="button" onClick={() => setTab('structure')}><AssetIcon /><span><strong>Estrutura fabril</strong><small>Plantas, setores e linhas com vínculos controlados.</small></span><b>Assistida</b></button>
                 <button type="button" onClick={() => setTab('assets')}><AssetIcon /><span><strong>Cadastro técnico</strong><small>Equipamentos, componentes, criticidade e localização.</small></span><b>Rastreável</b></button>

@@ -204,9 +204,10 @@ export function OperatorHome({
           <h1>Manutenções do turno</h1>
           <p>{queueDescription(activeView)}</p>
         </div>
-        <button className="refresh-button" type="button" onClick={onRetry} disabled={loading}>
-          {loading ? 'Atualizando…' : 'Atualizar'}
-        </button>
+        <span className={`operator-auto-sync${loading ? ' is-syncing' : ''}`} role="status">
+          <i aria-hidden="true" />
+          {loading ? 'Sincronizando' : 'Fila ao vivo'}
+        </span>
       </header>
 
       <div className="summary-grid summary-grid--active-queue" aria-label="Filtrar ações por situação">

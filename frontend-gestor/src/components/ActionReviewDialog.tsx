@@ -16,6 +16,7 @@ import type {
 
 export interface ActionReviewDialogProps {
   action: GestorAction
+  readOnly?: boolean
   onClose: () => void
   onDecisionComplete: (result: GestorDecisionResult) => void | Promise<void>
   onSessionExpired: () => void
@@ -60,6 +61,16 @@ function formatDate(value?: string): string {
   }).format(date)
 }
 
+function humanizeAuditEvent(value: unknown): string {
+  const normalized = String(value ?? '')
+    .trim()
+    .replaceAll('_', ' ')
+    .toLocaleLowerCase('pt-BR')
+  return normalized
+    ? normalized.charAt(0).toLocaleUpperCase('pt-BR') + normalized.slice(1)
+    : 'Evento registrado'
+}
+
 function checklistAnswered(item: GestorChecklistItem): boolean {
   return (
     item.respondido === true ||
@@ -78,6 +89,7 @@ function auditCanFinalize(audit: GestorActionAudit | null): boolean {
 
 export function ActionReviewDialog({
   action,
+  readOnly = false,
   onClose,
   onDecisionComplete,
   onSessionExpired,
@@ -158,7 +170,8 @@ export function ActionReviewDialog({
   const currentStatus = upper(detail?.acao.status ?? action.status)
   const integrityOk = auditIntegrity(audit)
   const canFinalize = auditCanFinalize(audit)
-  const canDecide = currentStatus === 'AGUARDANDO_VALIDACAO' && !result
+  const canDecide =
+    !readOnly && currentStatus === 'AGUARDANDO_VALIDACAO' && !result
   const canApprove = canDecide && integrityOk && canFinalize
   const answeredCount = (detail?.checklist ?? []).filter(checklistAnswered).length
   const checklistTotal = detail?.checklist.length ?? 0
@@ -252,7 +265,9 @@ export function ActionReviewDialog({
       >
         <header className="review-header">
           <div>
-            <span className="eyebrow">VALIDAÇÃO DA EXECUÇÃO</span>
+            <span className="eyebrow">
+              {readOnly ? 'REGISTRO TÉCNICO CONCLUÍDO' : 'VALIDAÇÃO DA EXECUÇÃO'}
+            </span>
             <h2 id="review-title">{title}</h2>
             <p>
               {asset}
@@ -288,13 +303,103 @@ export function ActionReviewDialog({
               </article>
               <article>
                 <span>Auditoria</span>
-                <strong>{integrityOk ? 'Íntegra' : 'Divergência'}</strong>
+                <strong>
+                  {audit?.auditoria
+                    ? integrityOk ? 'Íntegra' : 'Divergência'
+                    : 'Registro preservado'}
+                </strong>
               </article>
               <article>
-                <span>Liberação técnica</span>
-                <strong>{canFinalize ? 'Liberada' : 'Bloqueada'}</strong>
+                <span>{readOnly ? 'Encerramento' : 'Liberação técnica'}</span>
+                <strong>
+                  {readOnly
+                    ? formatDate(detail.acao.finalizado_em || detail.acao.atualizado_em)
+                    : canFinalize ? 'Liberada' : 'Bloqueada'}
+                </strong>
               </article>
             </section>
+
+            {readOnly && detail.evidencias.length ? (
+              <section className="review-section">
+                <header>
+                  <div>
+                    <span className="eyebrow">EVIDÊNCIAS</span>
+                    <h3>Arquivos e registros de campo</h3>
+                  </div>
+                  <span className="panel-count">{detail.evidencias.length}</span>
+                </header>
+                <div className="review-record-list">
+                  {detail.evidencias.map((evidence, index) => {
+                    const evidenceName =
+                      evidence.nome_arquivo ||
+                      evidence.tipo ||
+                      `Evidência ${index + 1}`
+                    return (
+                      <article key={String(evidence.id ?? index)}>
+                        <span>{String(index + 1).padStart(2, '0')}</span>
+                        <div>
+                          <strong>{evidenceName}</strong>
+                          <small>
+                            {evidence.observacao || 'Evidência registrada durante a execução.'}
+                          </small>
+                          <em>
+                            {evidence.usuario_id || 'Autoria preservada'} · {formatDate(evidence.criado_em)}
+                          </em>
+                        </div>
+                        {evidence.url ? (
+                          <a
+                            href={evidence.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Abrir arquivo
+                          </a>
+                        ) : null}
+                      </article>
+                    )
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            {readOnly && detail.materiais.length ? (
+              <section className="review-section">
+                <header>
+                  <div>
+                    <span className="eyebrow">MATERIAIS</span>
+                    <h3>Consumo registrado</h3>
+                  </div>
+                  <span className="panel-count">{detail.materiais.length}</span>
+                </header>
+                <div className="review-record-list">
+                  {detail.materiais.map((material, index) => (
+                    <article key={recordValue(material, ['id', 'material_id']) || index}>
+                      <span>{String(index + 1).padStart(2, '0')}</span>
+                      <div>
+                        <strong>
+                          {recordValue(material, [
+                            'material_nome',
+                            'nome',
+                            'descricao',
+                            'material_id',
+                          ]) || `Material ${index + 1}`}
+                        </strong>
+                        <small>
+                          Quantidade: {recordValue(material, [
+                            'quantidade_utilizada',
+                            'quantidade',
+                            'qtd',
+                          ]) || 'não registrada'}
+                          {recordValue(material, ['unidade', 'unidade_medida'])
+                            ? ` ${recordValue(material, ['unidade', 'unidade_medida'])}`
+                            : ''}
+                        </small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             <section className="review-section">
               <header>
@@ -401,7 +506,7 @@ export function ActionReviewDialog({
               <header>
                 <div>
                   <span className="eyebrow">AUDITORIA</span>
-                  <h3>Integridade para decisão</h3>
+                  <h3>{readOnly ? 'Rastreabilidade do registro' : 'Integridade para decisão'}</h3>
                 </div>
               </header>
 
@@ -425,9 +530,48 @@ export function ActionReviewDialog({
               </div>
             </section>
 
+            {readOnly ? (
+              <section className="review-section">
+                <header>
+                  <div>
+                    <span className="eyebrow">LINHA DO TEMPO</span>
+                    <h3>Histórico imutável da execução</h3>
+                  </div>
+                  <span className="panel-count">{detail.historico.length}</span>
+                </header>
+                {detail.historico.length ? (
+                  <ol className="review-history-list">
+                    {detail.historico.map((item, index) => (
+                      <li key={String(item.id ?? index)}>
+                        <i aria-hidden="true" />
+                        <div>
+                          <strong>
+                            {item.descricao || humanizeAuditEvent(item.evento)}
+                          </strong>
+                          <span>
+                            {item.usuario_id || 'Sistema'} · {humanizeAuditEvent(item.perfil)}
+                          </span>
+                        </div>
+                        <time>{formatDate(item.criado_em)}</time>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="review-empty">
+                    O encerramento está preservado, sem eventos adicionais retornados pela API.
+                  </p>
+                )}
+              </section>
+            ) : null}
+
             {error ? <div className="review-error" role="alert">{error}</div> : null}
 
-            {result ? (
+            {readOnly ? (
+              <div className="review-success review-success--readonly" role="status">
+                <strong>Execução encerrada e preservada para auditoria.</strong>
+                <span>Este registro não aceita novas decisões operacionais.</span>
+              </div>
+            ) : result ? (
               <div className="review-success" role="status">
                 <strong>
                   {result.decisao === 'APROVAR'
@@ -488,7 +632,7 @@ export function ActionReviewDialog({
             disabled={submitting}
             onClick={onClose}
           >
-            {result ? 'Fechar' : 'Cancelar'}
+            {readOnly || result ? 'Fechar' : 'Cancelar'}
           </button>
         </footer>
       </section>

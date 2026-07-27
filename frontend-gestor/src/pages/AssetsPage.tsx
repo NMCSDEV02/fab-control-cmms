@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AssetIcon, RefreshIcon, SearchIcon, WrenchIcon } from '../components/Icons'
+import { AssetIcon, SearchIcon, WrenchIcon } from '../components/Icons'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import {
   getGestorAssetCatalog,
   isGestorAuthenticationError,
@@ -32,6 +33,7 @@ export function AssetsPage({ onSessionExpired }: AssetsPageProps) {
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [error, setError] = useState('')
 
   const load = useCallback(
@@ -43,6 +45,7 @@ export function AssetsPage({ onSessionExpired }: AssetsPageProps) {
       try {
         const data = await getGestorAssetCatalog(signal)
         setCatalog(data)
+        setLastSyncedAt(new Date())
         setSelectedId((current) =>
           current && data.assets.some((asset) => asset.id === current)
             ? current
@@ -75,6 +78,11 @@ export function AssetsPage({ onSessionExpired }: AssetsPageProps) {
     return () => controller.abort()
   }, [load])
 
+  useAutoRefresh(
+    () => load(undefined, true),
+    { intervalMs: 20_000 },
+  )
+
   const filteredAssets = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR')
     return catalog.assets.filter((asset) => {
@@ -105,15 +113,16 @@ export function AssetsPage({ onSessionExpired }: AssetsPageProps) {
           <h1>Ativos e componentes</h1>
           <p>Consulte a estrutura cadastrada sem alterar os dados mestres.</p>
         </div>
-        <button
-          className="icon-text-button"
-          type="button"
-          disabled={loading || refreshing}
-          onClick={() => void load(undefined, true)}
+        <span
+          className={`manager-live-sync${refreshing ? ' is-syncing' : ''}`}
+          title={lastSyncedAt
+            ? `Sincronizado às ${lastSyncedAt.toLocaleTimeString('pt-BR')}`
+            : 'Aguardando sincronização'}
+          role="status"
         >
-          <RefreshIcon />
-          {refreshing ? 'Atualizando…' : 'Atualizar'}
-        </button>
+          <i aria-hidden="true" />
+          {refreshing ? 'Sincronizando' : 'Atualização automática'}
+        </span>
       </section>
 
       {error ? <div className="dashboard-error" role="alert"><strong>Falha no catálogo.</strong><span>{error}</span></div> : null}

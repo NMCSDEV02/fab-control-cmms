@@ -382,10 +382,19 @@ export function AdminWorkspace({
     }
 
     refreshNotifications()
-    const timer = window.setInterval(refreshNotifications, 60_000)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshNotifications()
+    }
+    const timer = window.setInterval(refreshNotifications, 12_000)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refreshNotifications)
+    window.addEventListener('online', refreshNotifications)
     return () => {
       controller.abort()
       window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refreshNotifications)
+      window.removeEventListener('online', refreshNotifications)
     }
   }, [onSessionExpired])
 

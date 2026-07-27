@@ -5,12 +5,12 @@ import {
   markGestorNotificationRead,
 } from '../services/api/gestor'
 import type { GestorNotification } from '../types/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import {
   AlertIcon,
   BellIcon,
   CheckIcon,
   ChevronRightIcon,
-  RefreshIcon,
   SearchIcon,
 } from './Icons'
 
@@ -46,6 +46,19 @@ function formatDate(value?: string): string {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(date)
+}
+
+function relativeTime(value?: string): string {
+  if (!value) return 'agora'
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return formatDate(value)
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - time) / 60_000))
+  if (elapsedMinutes < 1) return 'agora'
+  if (elapsedMinutes < 60) return `há ${elapsedMinutes} min`
+  const hours = Math.floor(elapsedMinutes / 60)
+  if (hours < 24) return `há ${hours} h`
+  const days = Math.floor(hours / 24)
+  return `há ${days} dia${days === 1 ? '' : 's'}`
 }
 
 function isToday(value?: string): boolean {
@@ -138,6 +151,7 @@ export function NotificationCenter({
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [markingAll, setMarkingAll] = useState(false)
   const [openingId, setOpeningId] = useState('')
   const [error, setError] = useState('')
@@ -150,6 +164,7 @@ export function NotificationCenter({
     try {
       const data = await getGestorNotifications(signal)
       setNotifications(data)
+      setLastSyncedAt(new Date())
     } catch (cause) {
       if (signal?.aborted) return
       if (isGestorAuthenticationError(cause)) {
@@ -175,6 +190,11 @@ export function NotificationCenter({
     void load(controller.signal)
     return () => controller.abort()
   }, [load, open])
+
+  useAutoRefresh(
+    () => load(undefined, true),
+    { enabled: open, intervalMs: 12_000 },
+  )
 
   const summary = useMemo(() => ({
     unread: notifications.filter(isUnread).length,
@@ -300,15 +320,16 @@ export function NotificationCenter({
             <p>{audienceDescription}</p>
           </div>
           <div>
-            <button
-              type="button"
-              disabled={loading || refreshing}
-              onClick={() => void load(undefined, true)}
-              aria-label="Atualizar notificações"
-              title="Atualizar"
+            <span
+              className={`manager-live-sync manager-live-sync--compact${refreshing ? ' is-syncing' : ''}`}
+              role="status"
+              title={lastSyncedAt
+                ? `Sincronizado às ${lastSyncedAt.toLocaleTimeString('pt-BR')}`
+                : 'Aguardando sincronização'}
             >
-              <RefreshIcon />
-            </button>
+              <i aria-hidden="true" />
+              {refreshing ? 'Sincronizando' : 'Ao vivo'}
+            </span>
             <button type="button" onClick={onClose} aria-label="Fechar notificações">×</button>
           </div>
         </header>
@@ -472,12 +493,13 @@ function NotificationGroup({
                 <small>
                   <b>{metadata.typeLabel}</b>
                   <i aria-hidden="true">·</i>
-                  {formatDate(item.criado_em)}
+                  {relativeTime(item.criado_em)}
                 </small>
                 <strong>{item.titulo}</strong>
                 <p>{item.mensagem || 'Abra para consultar o contexto relacionado.'}</p>
                 <span>
                   <em>{metadata.entityLabel}</em>
+                  {item.entidade_id ? <em>{item.entidade_id}</em> : null}
                   {item.prioridade ? <em className={critical ? 'is-critical' : ''}>{upper(item.prioridade)}</em> : null}
                 </span>
               </span>

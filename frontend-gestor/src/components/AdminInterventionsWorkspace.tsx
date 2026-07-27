@@ -16,7 +16,8 @@ import type {
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminIntervention, AdminInterventionInput } from '../types/interventions'
 import type { ValidationRouteDraft } from '../types/validation'
-import { AssetIcon, CheckIcon, RefreshIcon, SearchIcon, ShieldIcon, WrenchIcon } from './Icons'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
+import { AssetIcon, CheckIcon, SearchIcon, ShieldIcon, WrenchIcon } from './Icons'
 import { AdminCatalogWorkspace } from './AdminCatalogWorkspace'
 import { ValidationPolicySelector } from './ValidationPolicySelector'
 
@@ -114,6 +115,7 @@ export function AdminInterventionsWorkspace({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
 
   const handleFailure = useCallback((cause: unknown, fallback: string) => {
     if (isGestorAuthenticationError(cause)) {
@@ -151,6 +153,7 @@ export function AdminInterventionsWorkspace({
     setPlanItems(planItemList.rows)
     setUsers(nextUsers)
     setRoles(nextRoles)
+    setLastSyncedAt(new Date())
   }, [])
 
   useEffect(() => {
@@ -164,6 +167,14 @@ export function AdminInterventionsWorkspace({
       .finally(() => setLoading(false))
     return () => controller.abort()
   }, [handleFailure, loadData])
+
+  useAutoRefresh(
+    () => refresh(true),
+    {
+      enabled: !editor && !routing && !viewing && !viewingAnalysis,
+      intervalMs: 15_000,
+    },
+  )
 
   const visibleInterventions = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -380,16 +391,16 @@ export function AdminInterventionsWorkspace({
     }
   }
 
-  async function refresh() {
-    setLoading(true)
+  async function refresh(background = false) {
+    if (!background) setLoading(true)
     setError('')
     try {
       await loadData()
-      setNotice('Intervenções atualizadas.')
+      if (!background) setNotice('Intervenções atualizadas.')
     } catch (cause) {
       handleFailure(cause, 'Não foi possível atualizar as intervenções.')
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }
 
@@ -458,7 +469,7 @@ export function AdminInterventionsWorkspace({
         />
       </section>
       <section className="admin-intervention-panel" hidden={activeArea !== 'interventions'}>
-        <header><div><span className="eyebrow">ORDEM CONTROLADA</span><h2>Intervenções administrativas</h2><p>Crie, classifique e acompanhe intervenções planejadas ou não planejadas até a liberação ao chão de fábrica.</p></div><div><button type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={() => openEditor()}>Nova intervenção</button></div></header>
+        <header><div><span className="eyebrow">ORDEM CONTROLADA</span><h2>Intervenções administrativas</h2><p>Crie, classifique e acompanhe intervenções planejadas ou não planejadas até a liberação ao chão de fábrica.</p></div><div><span className="manager-live-sync manager-live-sync--compact" title={lastSyncedAt ? `Sincronizado às ${lastSyncedAt.toLocaleTimeString('pt-BR')}` : 'Aguardando sincronização'}><i aria-hidden="true" />Ao vivo</span><button className="primary-button" type="button" onClick={() => openEditor()}>Nova intervenção</button></div></header>
         <div className="admin-intervention-filters"><label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar código, título ou equipamento" /></label><select value={scheduleFilter} onChange={(event) => setScheduleFilter(event.target.value)}><option value="">Planejadas e não planejadas</option><option value="PLANEJADA">Somente planejadas</option><option value="NAO_PLANEJADA">Somente não planejadas</option></select><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos os status</option><option value="RASCUNHO">Rascunhos</option><option value="DEVOLVIDA_ADMIN">Devolvidas</option><option value="AGUARDANDO_VALIDACAO">Em validação</option><option value="ABERTA">Liberadas</option><option value="EM_EXECUCAO">Em execução</option><option value="FINALIZADA">Finalizadas</option><option value="CONCLUIDA">Concluídas</option></select></div>
         <div className="admin-intervention-table">
           <div><span>Intervenção</span><span>Equipamento</span><span>Prioridade</span><span>Filtro técnico</span><span>Status</span><span>Ações</span></div>
@@ -473,7 +484,7 @@ export function AdminInterventionsWorkspace({
             <h2>Análises recebidas do Gestor</h2>
             <p>Abra o diagnóstico exato, confira a recomendação e transforme-o em uma intervenção ou checklist.</p>
           </div>
-          <div><button type="button" onClick={() => void refresh()}><RefreshIcon />Atualizar</button></div>
+          <div><span className="manager-live-sync manager-live-sync--compact" title={lastSyncedAt ? `Sincronizado às ${lastSyncedAt.toLocaleTimeString('pt-BR')}` : 'Aguardando sincronização'}><i aria-hidden="true" />Ao vivo</span></div>
         </header>
         <div className="admin-intervention-filters">
           <label><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar análise, ativo, causa ou recomendação" /></label>

@@ -6,6 +6,7 @@ import {
   saveTechnicalRole,
 } from '../services/api/admin'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type {
   AdminUserStatus,
   TechnicalArea,
@@ -13,7 +14,7 @@ import type {
   TechnicalRole,
   TechnicalRoleInput,
 } from '../types/admin'
-import { CheckIcon, RefreshIcon, SearchIcon, ShieldIcon, UsersIcon } from './Icons'
+import { CheckIcon, SearchIcon, ShieldIcon, UsersIcon } from './Icons'
 
 interface AdminTechnicalStructureProps {
   onSessionExpired: () => void
@@ -91,6 +92,17 @@ export function AdminTechnicalStructure({ onSessionExpired }: AdminTechnicalStru
     return () => controller.abort()
   }, [handleFailure, loadData])
 
+  useAutoRefresh(async () => {
+    try {
+      await loadData()
+    } catch (cause) {
+      handleFailure(cause, 'Não foi possível sincronizar as áreas e cargos.')
+    }
+  }, {
+    enabled: !editor && !saving,
+    intervalMs: 20_000,
+  })
+
   const visibleAreas = useMemo(() => {
     const term = areaSearch.trim().toLowerCase()
     return areas.filter((area) => !term || [area.codigo, area.nome, area.descricao]
@@ -105,19 +117,6 @@ export function AdminTechnicalStructure({ onSessionExpired }: AdminTechnicalStru
 
   const selectedArea = areas.find((area) => area.id === selectedAreaId)
   const signatureRoles = roles.filter((role) => role.status === 'ATIVO' && String(role.pode_assinar).toUpperCase() === 'SIM').length
-
-  async function refresh() {
-    setLoading(true)
-    setError('')
-    try {
-      await loadData()
-      setNotice('Estrutura técnica atualizada.')
-    } catch (cause) {
-      handleFailure(cause, 'Não foi possível atualizar a estrutura técnica.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   async function saveEditor() {
     if (!editor) return
@@ -166,7 +165,7 @@ export function AdminTechnicalStructure({ onSessionExpired }: AdminTechnicalStru
         <article><UsersIcon /><span><strong>{areas.filter((area) => area.status === 'ATIVO').length}</strong><small>áreas técnicas ativas</small></span></article>
         <article><UsersIcon /><span><strong>{roles.filter((role) => role.status === 'ATIVO').length}</strong><small>cargos técnicos ativos</small></span></article>
         <article><ShieldIcon /><span><strong>{signatureRoles}</strong><small>cargos autorizados a assinar</small></span></article>
-        <button type="button" onClick={() => void refresh()}><RefreshIcon /><span><strong>Atualizar</strong><small>Recarregar catálogos</small></span></button>
+        <span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Sincronização automática</span>
       </section>
 
       <div className="admin-technical-columns">

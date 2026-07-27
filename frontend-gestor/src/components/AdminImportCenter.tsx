@@ -7,6 +7,7 @@ import {
   validateAdminImport,
 } from '../services/api/imports'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import {
   downloadAdminImportTemplate,
   parseAdminWorkbook,
@@ -17,7 +18,7 @@ import type {
   AdminImportModel,
   ParsedAdminWorkbook,
 } from '../types/imports'
-import { AlertIcon, CheckIcon, RefreshIcon, SettingsIcon, ShieldIcon } from './Icons'
+import { AlertIcon, CheckIcon, SettingsIcon, ShieldIcon } from './Icons'
 
 interface AdminImportCenterProps {
   onSessionExpired: () => void
@@ -88,6 +89,21 @@ export function AdminImportCenter({ onSessionExpired }: AdminImportCenterProps) 
       .finally(() => setLoading(false))
     return () => controller.abort()
   }, [loadWorkspace, onSessionExpired])
+
+  useAutoRefresh(async () => {
+    try {
+      await loadWorkspace()
+    } catch (cause) {
+      if (isGestorAuthenticationError(cause)) {
+        onSessionExpired()
+        return
+      }
+      setError(cause instanceof Error ? cause.message : 'Não foi possível sincronizar os lotes.')
+    }
+  }, {
+    enabled: !busy,
+    intervalMs: 20_000,
+  })
 
   const selectedModel = useMemo(
     () => catalog?.modelos.find((model) => model.tipo === selectedType) ?? null,
@@ -218,23 +234,6 @@ export function AdminImportCenter({ onSessionExpired }: AdminImportCenterProps) 
     }
   }
 
-  async function refresh() {
-    setBusy('refreshing')
-    setError('')
-    try {
-      await loadWorkspace()
-      setNotice('Central de Importação atualizada.')
-    } catch (cause) {
-      if (isGestorAuthenticationError(cause)) {
-        onSessionExpired()
-        return
-      }
-      setError(cause instanceof Error ? cause.message : 'Não foi possível atualizar os lotes.')
-    } finally {
-      setBusy('')
-    }
-  }
-
   if (loading) return <div className="dashboard-loading">Carregando Central de Importação…</div>
 
   return (
@@ -319,7 +318,7 @@ export function AdminImportCenter({ onSessionExpired }: AdminImportCenterProps) 
       </div>
 
       <section className="admin-import-history">
-        <header><div><span className="eyebrow">RASTREABILIDADE</span><h2>Lotes recentes</h2><p>Cada confirmação registra valores anteriores e posteriores por linha.</p></div><button type="button" disabled={busy === 'refreshing'} onClick={() => void refresh()}><RefreshIcon />{busy === 'refreshing' ? 'Atualizando…' : 'Atualizar'}</button></header>
+        <header><div><span className="eyebrow">RASTREABILIDADE</span><h2>Lotes recentes</h2><p>Cada confirmação registra valores anteriores e posteriores por linha.</p></div><span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Sincronização automática</span></header>
         <div className="admin-import-batch-list">
           {batches.length ? batches.map((batch) => (
             <article key={batch.id}>

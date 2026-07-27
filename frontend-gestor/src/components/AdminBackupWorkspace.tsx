@@ -6,8 +6,9 @@ import {
   prepareAdminBackupRestore,
 } from '../services/api/governance'
 import { isGestorAuthenticationError } from '../services/api/gestor'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { AdminBackup, AdminBackupRestorePreparation } from '../types/governance'
-import { RefreshIcon, ShieldIcon } from './Icons'
+import { ShieldIcon } from './Icons'
 
 interface AdminBackupWorkspaceProps {
   onSessionExpired: () => void
@@ -67,6 +68,17 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
     }).finally(() => setLoading(false))
     return () => controller.abort()
   }, [handleFailure, load])
+
+  useAutoRefresh(async () => {
+    try {
+      await load()
+    } catch (cause) {
+      handleFailure(cause)
+    }
+  }, {
+    enabled: !dialogMode && !creating && !preparing && !restoring,
+    intervalMs: 30_000,
+  })
 
   function openBackupDialog() {
     setDialogMode('backup')
@@ -180,7 +192,7 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
       <section className="admin-continuity-warning"><ShieldIcon /><span><strong>Restauração operacional protegida</strong><small>Substitui somente dados operacionais. Configuração, usuários, sessões, auditoria e locks permanecem intactos. Antes da troca, o sistema cria outro backup integral automaticamente.</small></span><button type="button" disabled={!backups.length} onClick={() => openRestoreDialog()}>{backups.length ? 'Preparar restauração' : 'Sem backup disponível'}</button></section>
 
       <section className="admin-governance-table-card">
-        <header><div><span className="eyebrow">CONTINUIDADE OPERACIONAL</span><h2>Pontos de backup</h2></div><div className="admin-backup-header-actions"><button type="button" onClick={() => void load()}><RefreshIcon />Atualizar</button><button className="primary-button" type="button" onClick={openBackupDialog}>Criar backup</button></div></header>
+        <header><div><span className="eyebrow">CONTINUIDADE OPERACIONAL</span><h2>Pontos de backup</h2></div><div className="admin-backup-header-actions"><span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Sincronização automática</span><button className="primary-button" type="button" onClick={openBackupDialog}>Criar backup</button></div></header>
         <div className="admin-governance-table-wrap"><table className="admin-governance-table"><thead><tr><th>Arquivo</th><th>Data de criação</th><th>Tamanho</th><th>Armazenamento</th><th>Ação segura</th></tr></thead><tbody>
           {backups.map((backup) => <tr key={backup.id}><td><strong>{backup.nome}</strong><small>{backup.id}</small></td><td><strong>{formatDate(backup.criado_em)}</strong><small>cópia imutável</small></td><td><strong>{formatBytes(backup.tamanho_bytes)}</strong><small>base integral</small></td><td><strong>Drive privado</strong><small>acesso controlado pela conta proprietária</small></td><td><div className="admin-governance-actions"><button type="button" onClick={() => window.open(backup.url, '_blank', 'noopener,noreferrer')}>Abrir</button><button type="button" onClick={() => openRestoreDialog(backup.id)}>Restaurar</button></div></td></tr>)}
           {!backups.length ? <tr><td colSpan={5}><div className="admin-empty-state">Nenhum backup administrativo foi criado.</div></td></tr> : null}

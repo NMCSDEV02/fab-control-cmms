@@ -86,10 +86,19 @@ export function App() {
     }
 
     void refreshNotifications()
-    const timer = window.setInterval(() => void refreshNotifications(), 60_000)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshNotifications()
+    }
+    const timer = window.setInterval(() => void refreshNotifications(), 12_000)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refreshNotifications)
+    window.addEventListener('online', refreshNotifications)
     return () => {
       controller.abort()
       window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refreshNotifications)
+      window.removeEventListener('online', refreshNotifications)
     }
   }, [expireSession, isAdmin, isSystem, session, workspaceReady])
 
