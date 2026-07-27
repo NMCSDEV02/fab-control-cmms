@@ -243,7 +243,7 @@ export async function getUnreadNotificationCount(
   const [data, overview] = await Promise.all([
     readGestorData<NotificationListData>(
       'gestor.notificacoes.listar',
-      { status: 'NAO_LIDA', limite: 200 },
+      { limite: 300 },
       signal,
     ),
     getGestorOverview(signal),
@@ -251,6 +251,9 @@ export async function getUnreadNotificationCount(
   const notifications = Array.isArray(data.notificacoes)
     ? data.notificacoes
     : []
+  const unreadNotifications = notifications.filter(
+    (item) => normalizedStatus(item.status) === 'NAO_LIDA',
+  )
   const entities = new Set(
     notifications.map((item) => (
       `${normalizedStatus(item.entidade_tipo)}:${item.entidade_id ?? ''}`
@@ -271,7 +274,7 @@ export async function getUnreadNotificationCount(
       : `PARADAS_EQUIPAMENTO:${stop.id}`
     return !entities.has(key)
   }).length
-  return notifications.length + occurrenceCount + stopCount
+  return unreadNotifications.length + occurrenceCount + stopCount
 }
 
 export async function getGestorNotifications(
@@ -279,7 +282,7 @@ export async function getGestorNotifications(
 ): Promise<GestorNotification[]> {
   const data = await readGestorData<NotificationListData>(
     'gestor.notificacoes.listar',
-    { limite: 200 },
+    { limite: 300 },
     signal,
   )
 
@@ -287,14 +290,24 @@ export async function getGestorNotifications(
 }
 
 export function markGestorNotificationRead(
-  notificationId: string,
+  notification: Pick<
+    GestorNotification,
+    'id' | 'tipo' | 'titulo' | 'mensagem' | 'entidade_tipo' | 'entidade_id' | 'prioridade'
+  >,
 ): Promise<{
   read: boolean
   already_read?: boolean
   notificacao_id: string
 }> {
+  const virtual = notification.id.startsWith('virtual-')
   return writeGestorData('gestor.notificacoes.marcar_lida', {
-    notificacao_id: notificationId,
+    notificacao_id: virtual ? '' : notification.id,
+    entidade_tipo: notification.entidade_tipo ?? '',
+    entidade_id: notification.entidade_id ?? '',
+    tipo: notification.tipo,
+    titulo: notification.titulo,
+    mensagem: notification.mensagem ?? '',
+    prioridade: notification.prioridade ?? 'MEDIA',
   })
 }
 

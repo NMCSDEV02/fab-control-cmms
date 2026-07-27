@@ -277,6 +277,18 @@ assert(
 assert(gestorApi.includes('getGestorNotifications') && gestorApi.includes('markGestorNotificationRead'), 'central de notificações não usa o backend real')
 assert(gestorApp.includes('notification.entidade_tipo') && notifications.includes('NAO_LIDA'), 'notificações não preservam contexto e leitura')
 assert(
+  gestorApi.includes("{ limite: 300 }") &&
+    gestorApi.includes("normalizedStatus(item.status) === 'NAO_LIDA'") &&
+    workflow.includes('context_acknowledged:true'),
+  'contagem não distingue mensagens não lidas de contextos operacionais já reconhecidos',
+)
+assert(
+  notifications.indexOf('await markGestorNotificationRead(destination)') <
+    notifications.indexOf('await onOpenNotification(destination)') &&
+    notifications.includes('const pending = notifications.filter(isUnread)'),
+  'clique e leitura em lote não persistem a leitura antes de navegar',
+)
+assert(
   notifications.includes('manager-notification-summary') &&
     notifications.includes('Buscar por ativo, ocorrência ou decisão') &&
     notifications.includes('Todos os contextos') &&

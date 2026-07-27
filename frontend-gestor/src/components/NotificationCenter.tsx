@@ -266,9 +266,6 @@ export function NotificationCenter({
 
   const summary = useMemo(() => ({
     unread: notifications.filter(isUnread).length,
-    readableUnread: notifications.filter(
-      (item) => isUnread(item) && !item.id.startsWith('virtual-'),
-    ).length,
     critical: notifications.filter((item) => isUnread(item) && isCritical(item)).length,
     today: notifications.filter((item) => isToday(item.criado_em)).length,
   }), [notifications])
@@ -330,11 +327,11 @@ export function NotificationCenter({
           entidade_id: treatment.occurrence.id,
         }
       }
-      await onOpenNotification(destination)
-      if (isUnread(notification) && !notification.id.startsWith('virtual-')) {
-        await markGestorNotificationRead(notification.id)
+      if (isUnread(notification)) {
+        await markGestorNotificationRead(destination)
         updateNotificationAsRead(notification.id)
       }
+      await onOpenNotification(destination)
       onClose()
     } catch (cause) {
       if (isGestorAuthenticationError(cause)) {
@@ -352,20 +349,18 @@ export function NotificationCenter({
   }
 
   async function markAllAsRead() {
-    const pending = notifications.filter(
-      (item) => isUnread(item) && !item.id.startsWith('virtual-'),
-    )
+    const pending = notifications.filter(isUnread)
     if (!pending.length || markingAll) return
 
     setMarkingAll(true)
     setError('')
     try {
       for (const notification of pending) {
-        await markGestorNotificationRead(notification.id)
+        await markGestorNotificationRead(notification)
       }
       const readAt = new Date().toISOString()
       setNotifications((current) => current.map((item) => (
-        isUnread(item) && !item.id.startsWith('virtual-')
+        isUnread(item)
           ? { ...item, status: 'LIDA', lida_em: readAt }
           : item
       )))
@@ -529,7 +524,7 @@ export function NotificationCenter({
           </span>
           <button
             type="button"
-            disabled={!summary.readableUnread || markingAll}
+            disabled={!summary.unread || markingAll}
             onClick={() => void markAllAsRead()}
           >
             <CheckIcon />

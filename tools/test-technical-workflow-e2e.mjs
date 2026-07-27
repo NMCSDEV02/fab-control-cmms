@@ -223,6 +223,38 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
   };
 })())`, context))
 
+const notificationResult = JSON.parse(vm.runInContext(`JSON.stringify((function(){
+  var reader = {usuario_id:'USR-ADMIN',perfil:'ADMIN',nome:'Admin'};
+  var persistent = rows_('notificacoes').find(function(item){
+    return item.usuario_id === reader.usuario_id && upper_(item.status) === 'NAO_LIDA';
+  });
+  var firstRead = gestorNotificacaoMarcarLida_({notificacao_id:persistent.id}, reader);
+  var repeatedRead = gestorNotificacaoMarcarLida_({notificacao_id:persistent.id}, reader);
+  var contextRead = gestorNotificacaoMarcarLida_({
+    entidade_tipo:'PARADAS_EQUIPAMENTO',
+    entidade_id:'PARADA-VIRTUAL-1',
+    tipo:'PARADA_TECNICA',
+    titulo:'Parada consultada',
+    prioridade:'CRITICA'
+  }, reader);
+  var contextRepeated = gestorNotificacaoMarcarLida_({
+    entidade_tipo:'PARADAS_EQUIPAMENTO',
+    entidade_id:'PARADA-VIRTUAL-1'
+  }, reader);
+  var listed = gestorNotificacoesListar_({}, reader).notificacoes;
+  return {
+    firstRead:firstRead,
+    repeatedRead:repeatedRead,
+    contextRead:contextRead,
+    contextRepeated:contextRepeated,
+    persistentStatus:find_('notificacoes','id',persistent.id).status,
+    contextMarkers:listed.filter(function(item){
+      return upper_(item.entidade_tipo) === 'PARADAS_EQUIPAMENTO' &&
+        item.entidade_id === 'PARADA-VIRTUAL-1';
+    })
+  };
+})())`, context))
+
 assert(result.qualityQueueBefore === 1, 'Qualidade não recebeu a demanda do administrador')
 assert(result.safetyQueueBefore === 1, 'Segurança não recebeu a demanda do administrador')
 assert(result.maintenanceQueueBefore === 0, 'Manutenção recebeu documento reservado aos validadores')
@@ -257,6 +289,13 @@ assert(result.interventionAction.plano_id === 'PLN-1', 'ação foi liberada sem 
 assert(result.interventionAction.modo_parada_manutencao === 'OBRIGATORIA', 'modo de parada não foi preservado')
 assert(JSON.parse(result.interventionOrder.analise_tecnica_json).etapas.length === 3, 'briefing não foi vinculado à OS')
 assert(result.interventionAction.analise_tecnica_json === result.interventionOrder.analise_tecnica_json, 'briefing não chegou à ação do Operador')
+assert(notificationResult.firstRead.read === true, 'clique não marcou a notificação persistente')
+assert(notificationResult.repeatedRead.already_read === true, 'leitura repetida não foi idempotente')
+assert(notificationResult.persistentStatus === 'LIDA', 'status persistente da notificação não foi atualizado')
+assert(notificationResult.contextRead.context_acknowledged === true, 'alerta operacional virtual não criou reconhecimento')
+assert(notificationResult.contextRepeated.already_read === true, 'reconhecimento virtual repetido não foi idempotente')
+assert(notificationResult.contextMarkers.length === 1, 'contexto virtual criou reconhecimentos duplicados')
+assert(notificationResult.contextMarkers[0].status === 'LIDA', 'reconhecimento virtual não foi gravado como lido')
 
 console.log('FLUXO TÉCNICO E2E EM MEMÓRIA APROVADO')
 console.log('ADMIN → QUALIDADE + SEGURANÇA (assinaturas permanentes) → CHECKLIST APROVADO')

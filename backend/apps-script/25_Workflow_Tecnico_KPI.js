@@ -1445,9 +1445,40 @@ function gestorNotificacoesListar_(p, auth){
 function gestorNotificacaoMarcarLida_(p, auth){
   technicalRequireManager_(auth);
   technicalEnsureSchema_();
-  req_(p, ["notificacao_id"]);
-  var item = find_("notificacoes", "id", p.notificacao_id);
-  if(!item || String(item.usuario_id) !== String(auth.usuario_id)) err_("NOTIFICATION_NOT_FOUND", "Notificação não encontrada.", 404);
+  var identity = technicalIdentity_(auth);
+  var notificationId = clean_(p.notificacao_id);
+  var entityType = upper_(p.entidade_tipo);
+  var entityId = clean_(p.entidade_id);
+  if(!notificationId && (!entityType || !entityId)){
+    err_("NOTIFICATION_REFERENCE_REQUIRED", "Informe a notificação ou o contexto operacional lido.", 400);
+  }
+  var item = notificationId
+    ? find_("notificacoes", "id", notificationId)
+    : rows_("notificacoes", true).filter(function(candidate){
+        return String(candidate.usuario_id) === String(identity.usuario_id) &&
+          upper_(candidate.entidade_tipo) === entityType &&
+          String(candidate.entidade_id) === String(entityId);
+      })[0];
+  if(notificationId && (!item || String(item.usuario_id) !== String(identity.usuario_id))){
+    err_("NOTIFICATION_NOT_FOUND", "Notificação não encontrada.", 404);
+  }
+  if(!item){
+    var acknowledged = fit_("notificacoes", {
+      id:uuid_("NOT"), usuario_id:identity.usuario_id, perfil:identity.perfil,
+      area_id:identity.area_id, tipo:upper_(p.tipo || "CONTEXTO_OPERACIONAL"),
+      titulo:clean_(p.titulo || "Contexto operacional consultado"),
+      mensagem:clean_(p.mensagem), entidade_tipo:entityType, entidade_id:entityId,
+      prioridade:upper_(p.prioridade || "MEDIA"), status:"LIDA",
+      lida_em:now_(), criado_em:now_()
+    });
+    append_("notificacoes", acknowledged);
+    return {
+      read:true,
+      already_read:false,
+      context_acknowledged:true,
+      notificacao_id:acknowledged.id
+    };
+  }
   if(upper_(item.status) === "LIDA") return {read:true, already_read:true, notificacao_id:item.id};
   update_("notificacoes", item.__rowIndex, {status:"LIDA", lida_em:now_()});
   return {read:true, already_read:false, notificacao_id:item.id};
