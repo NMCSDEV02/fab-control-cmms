@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "FFCF1D96C50CA5E6FDC0BF317DB535B7B4F023E13D112F85727BC6F95E92E00A",
-    "immutableAppsScriptVersion": 33,
+    "backendSourceSha256": "EF6C58EA2333226A89CEF841960BFFF6D027B165B81BE2F87ED8803753FAB2B2",
+    "immutableAppsScriptVersion": 34,
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "929dc4f"
+    "sourceGitCommit": "102bd8e"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -149,14 +149,18 @@
     "permanentDocumentSignature": "approved-version-and-content-hash",
     "managerRoleSeparation": "approved-validation-versus-monitoring",
     "occurrenceTreatmentTraceability": "approved-operator-manager-admin-operator",
+    "managerAdaptiveWorkspace": "approved-desktop-tablet-mobile-with-qr",
+    "managerAssetComponentDrilldown": "approved-equipment-component-kpis-parameters-history",
+    "managerTechnicalReading": "approved-audited-equipment-and-component-scope",
+    "managerNotificationFilters": "approved-unread-today-critical-context",
     "remoteCanary": "public-contract-approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "FFCF1D96C50CA5E6FDC0BF317DB535B7B4F023E13D112F85727BC6F95E92E00A",
-    "immutableAppsScriptVersion": 33,
-    "sourceGitCommit": "929dc4f",
+    "backendSourceSha256": "EF6C58EA2333226A89CEF841960BFFF6D027B165B81BE2F87ED8803753FAB2B2",
+    "immutableAppsScriptVersion": 34,
+    "sourceGitCommit": "102bd8e",
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
