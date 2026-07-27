@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "EF6C58EA2333226A89CEF841960BFFF6D027B165B81BE2F87ED8803753FAB2B2",
-    "immutableAppsScriptVersion": 34,
+    "backendSourceSha256": "06EC8223253CBD4ECD01D7DE7185A8810BB36A6DE516DDE5963609F4B2243425",
+    "immutableAppsScriptVersion": 35,
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "102bd8e"
+    "sourceGitCommit": "da1b43e"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -153,14 +153,15 @@
     "managerAssetComponentDrilldown": "approved-equipment-component-kpis-parameters-history",
     "managerTechnicalReading": "approved-audited-equipment-and-component-scope",
     "managerNotificationFilters": "approved-unread-today-critical-context",
+    "notificationReadPersistence": "approved-user-context-idempotent",
     "remoteCanary": "public-contract-approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "EF6C58EA2333226A89CEF841960BFFF6D027B165B81BE2F87ED8803753FAB2B2",
-    "immutableAppsScriptVersion": 34,
-    "sourceGitCommit": "102bd8e",
+    "backendSourceSha256": "06EC8223253CBD4ECD01D7DE7185A8810BB36A6DE516DDE5963609F4B2243425",
+    "immutableAppsScriptVersion": 35,
+    "sourceGitCommit": "da1b43e",
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
