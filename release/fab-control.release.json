@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "A46B4EF4C8E4CE418FA000D4E260F2A7F65957A7D29A85C425A22CCB99B39DF8",
-    "immutableAppsScriptVersion": 32,
+    "backendSourceSha256": "FFCF1D96C50CA5E6FDC0BF317DB535B7B4F023E13D112F85727BC6F95E92E00A",
+    "immutableAppsScriptVersion": 33,
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "eed1ac4"
+    "sourceGitCommit": "929dc4f"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -137,7 +137,12 @@
     "gestorAdminStartupContract": "approved",
     "gestorAdminStartupVisual": "approved-admin-and-manager-blocking-role-aware",
     "managerWorkCenterContract": "approved-single-inbox-four-categories-next-action-guidance",
-    "managerPerformanceContract": "approved-period-asset-previous-window-oee-breakdown-no-fake-zero",
+    "managerPerformanceContract": "approved-period-asset-reliability-rankings-no-production-oee",
+    "continuousLiveRefreshContract": "approved-operator-manager-admin",
+    "managerTechnicalRankings": "approved-asset-impact-and-completed-work-by-responsible",
+    "completedActionReadOnlyAudit": "approved-checklist-evidence-materials-immutable-timeline",
+    "canaryAdminRecovery": "approved-first-access-required",
+    "canaryMaintenanceVisual": "approved-signed-one-time-full-engine",
     "technicalWorkflowContract": "approved",
     "technicalWorkflowE2E": "approved",
     "technicalValidationPolicy": "approved-quality-safety-both-or-custom",
@@ -149,9 +154,9 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "A46B4EF4C8E4CE418FA000D4E260F2A7F65957A7D29A85C425A22CCB99B39DF8",
-    "immutableAppsScriptVersion": 32,
-    "sourceGitCommit": "eed1ac4",
+    "backendSourceSha256": "FFCF1D96C50CA5E6FDC0BF317DB535B7B4F023E13D112F85727BC6F95E92E00A",
+    "immutableAppsScriptVersion": 33,
+    "sourceGitCommit": "929dc4f",
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
@@ -205,6 +210,11 @@
       "authenticatedTechnicalContextRead": "approved",
       "authenticatedTechnicalQueueRead": "approved",
       "technicalSchemaSeeded": "approved",
+      "continuousLiveRefreshContract": "approved",
+      "managerTechnicalRankings": "approved",
+      "completedActionReadOnlyAudit": "approved",
+      "canaryAdminRecovery": "approved-first-access-required",
+      "canaryMaintenanceVisual": "approved-signed-one-time-full-engine",
       "authenticatedConfigurationStateRead": "pending",
       "configurationSchemaSeeded": "pending",
       "authenticatedImportCatalogRead": "pending",

@@ -44,9 +44,9 @@ assert(production.release === '1.3.1', 'produção não permaneceu em 1.3.1')
 assert(production.health === 'approved-unchanged', 'produção não foi reconfirmada')
 assert(production.deploymentId !== target.deploymentId, 'deployment canário não está isolado')
 assert(production.spreadsheetId !== target.spreadsheetId, 'planilha canária não está isolada')
-assert(target.immutableAppsScriptVersion === 32, 'versão imutável canária incorreta')
+assert(target.immutableAppsScriptVersion === 33, 'versão imutável canária incorreta')
 assert(target.deploymentId !== 'HEAD', 'deployment canário não pode usar HEAD')
-assert(target.sourceGitCommit === 'eed1ac4', 'commit-fonte canário incorreto')
+assert(target.sourceGitCommit === '929dc4f', 'commit-fonte canário incorreto')
 assert(
   manifest.candidateEvidence?.gestorAdminStartupContract === 'approved',
   'contrato de pré-carregamento Gestor/Admin ausente',
@@ -62,6 +62,26 @@ assert(
 assert(
   manifest.candidateEvidence?.managerPerformanceContract?.startsWith('approved-'),
   'contrato de desempenho técnico do Gestor ausente',
+)
+assert(
+  manifest.candidateEvidence?.continuousLiveRefreshContract?.startsWith('approved-'),
+  'contrato de sincronização contínua ausente',
+)
+assert(
+  manifest.candidateEvidence?.managerTechnicalRankings?.startsWith('approved-'),
+  'rankings técnicos do Gestor ausentes',
+)
+assert(
+  manifest.candidateEvidence?.completedActionReadOnlyAudit?.startsWith('approved-'),
+  'auditoria de ações concluídas ausente',
+)
+assert(
+  manifest.candidateEvidence?.canaryAdminRecovery === 'approved-first-access-required',
+  'recuperação controlada do Administrador ausente',
+)
+assert(
+  manifest.candidateEvidence?.canaryMaintenanceVisual?.startsWith('approved-'),
+  'validação visual do modo de manutenção ausente',
 )
 
 assert(manifest.candidateEvidence?.motorCommercialAccessContract === 'approved', 'contrato comercial do motor ausente')
