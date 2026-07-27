@@ -176,7 +176,7 @@ function adminIntervencaoSalvar_(p, auth){
 function adminIntervencaoEnviarValidacao_(p, auth){
   adminRequireIdentityAdmin_(auth);
   technicalEnsureSchema_();
-  req_(p, ["intervencao_id","area_atual_id"]);
+  req_(p, ["intervencao_id"]);
   var lock = LockService.getScriptLock();
   if(!lock.tryLock(10000)) err_("ADMIN_WRITE_BUSY", "Outra alteração administrativa está em andamento.", 409);
   try{
@@ -205,7 +205,10 @@ function adminIntervencaoEnviarValidacao_(p, auth){
           area_atual_id:clean_(p.area_atual_id),
           cargo_atual_id:clean_(p.cargo_atual_id),
           responsavel_atual_id:clean_(p.responsavel_atual_id),
-          exige_assinatura:p.exige_assinatura,
+          politica_assinatura:clean_(p.politica_assinatura),
+          areas_validadoras:p.areas_validadoras,
+          usuarios_validadores:p.usuarios_validadores,
+          exige_assinatura:"SIM",
           assinaturas_necessarias:p.assinaturas_necessarias,
           exige_segregacao:p.exige_segregacao,
           versao_entidade:clean_(order.atualizado_em || "1")
@@ -222,6 +225,83 @@ function adminIntervencaoEnviarValidacao_(p, auth){
   } finally {
     lock.releaseLock();
   }
+}
+
+function adminIntervencaoCriarDaOcorrenciaAprovada_(plan, demand, identity){
+  var occurrenceId = clean_(plan && plan.ocorrencia_origem_id);
+  if(!occurrenceId) return null;
+  var occurrence = find_("ocorrencias_operacionais", "id", occurrenceId);
+  if(!occurrence) return null;
+
+  var existingOrder = rows_("ordens_servico", true).find(function(order){
+    if(String(order.plano_id) !== String(plan.id)) return false;
+    var action = rows_("os_acoes", true).find(function(item){
+      return String(item.os_id) === String(order.id);
+    });
+    return !!action || ["RASCUNHO","AGUARDANDO_VALIDACAO","ABERTA"].indexOf(upper_(order.status)) >= 0;
+  });
+  if(existingOrder){
+    var existingAction = rows_("os_acoes", true).find(function(item){
+      return String(item.os_id) === String(existingOrder.id);
+    }) || null;
+    update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+      status:existingAction ? "LIBERADA_OPERACAO" : "EM_VALIDACAO_TECNICA",
+      os_id:existingOrder.id,
+      acao_id:existingAction ? existingAction.id : clean_(occurrence.acao_id),
+      tratamento_status:existingAction ? "LIBERADA_OPERACAO" : "AGUARDANDO_ASSINATURA",
+      atualizado_em:now_()
+    });
+    return {order:existingOrder, action:existingAction, already_created:true};
+  }
+
+  var order = fit_("ordens_servico", {
+    id:uuid_("OS"),
+    codigo:"OS-TRAT-"+Utilities.formatDate(new Date(), FAB.TZ, "yyyyMMdd-HHmmss"),
+    ativo_id:plan.ativo_id,
+    componente_id:clean_(plan.componente_id),
+    plano_id:plan.id,
+    origem:"ADMIN",
+    tipo:upper_(plan.tipo || occurrence.tipo || "CORRETIVA"),
+    titulo:clean_(plan.nome || occurrence.titulo),
+    descricao:clean_(occurrence.descricao || plan.nome),
+    prioridade:upper_(occurrence.severidade || plan.criticidade || "MEDIA"),
+    status:ADMIN_INTERVENTION_WAITING,
+    solicitante_id:clean_(demand.criado_por),
+    responsavel_id:"",
+    aberta_em:"",
+    planejada_para:"",
+    iniciada_em:"",
+    finalizada_em:"",
+    criado_em:now_(),
+    atualizado_em:now_(),
+    modo_parada_manutencao:normalizaModoParadaManutencao115_(plan.modo_parada_manutencao),
+    analise_tecnica_json:clean_(plan.analise_tecnica_json)
+  });
+  append_("ordens_servico", order);
+  var syntheticDemand = Object.assign({}, demand, {
+    entidade_tipo:"ORDEM_SERVICO_RASCUNHO",
+    entidade_id:order.id
+  });
+  var action = adminIntervencaoLiberarOperacao_(syntheticDemand, identity);
+  update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+    status:"LIBERADA_OPERACAO",
+    demanda_tecnica_id:demand.id,
+    os_id:order.id,
+    acao_id:action.id,
+    tratamento_status:"LIBERADA_OPERACAO",
+    atualizado_em:now_()
+  });
+  hist_({
+    ativo_id:order.ativo_id,
+    componente_id:order.componente_id,
+    os_id:order.id,
+    acao_id:action.id,
+    evento:"OCORRENCIA_CONVERTIDA_EM_INTERVENCAO",
+    descricao:"Checklist aprovado e liberado ao Operador após validação técnica.",
+    usuario_id:identity.usuario_id || "",
+    perfil:identity.perfil || ROLE.GESTOR
+  });
+  return {order:order, action:action, already_created:false};
 }
 
 function adminIntervencaoLiberarOperacao_(demand, identity){

@@ -1,4 +1,5 @@
 import type { AdminEntityRecord } from './catalog'
+import type { ValidationRouteDraft } from './validation'
 
 export interface AdminTechnicalDemandSummary extends AdminEntityRecord {
   status?: string
@@ -52,12 +53,6 @@ export interface AdminInterventionInput {
   modo_parada_manutencao: string
 }
 
-export interface AdminInterventionRoute {
+export interface AdminInterventionRoute extends ValidationRouteDraft {
   intervencao_id: string
-  area_atual_id: string
-  cargo_atual_id?: string
-  comentario: string
-  exige_assinatura: string
-  assinaturas_necessarias: number
-  exige_segregacao: string
 }

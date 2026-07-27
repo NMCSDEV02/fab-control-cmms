@@ -30,6 +30,12 @@ const CONFIG_ENGINE_CATALOG = [
     tipo:"INTEIRO", padrao:1, minimo:1, maximo:5, unidade:"assinaturas"
   },
   {
+    chave:"workflow.tecnico.politica_validacao_padrao", grupo:"WORKFLOW", nome:"Filtro técnico padrão",
+    descricao:"Define quem pode validar documentos quando o Administrador não escolher uma política específica.",
+    tipo:"ENUM", padrao:"QUALIDADE_OU_SEGURANCA",
+    opcoes:["QUALIDADE_OU_SEGURANCA","QUALIDADE","SEGURANCA","QUALIDADE_E_SEGURANCA"]
+  },
+  {
     chave:"kpi.janela_padrao_dias", grupo:"INDICADORES", nome:"Janela padrão dos indicadores",
     descricao:"Período usado quando o painel não informa datas de consulta.",
     tipo:"INTEIRO", padrao:30, minimo:1, maximo:365, unidade:"dias"

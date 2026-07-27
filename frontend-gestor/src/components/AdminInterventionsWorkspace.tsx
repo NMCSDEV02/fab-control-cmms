@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  listAdminUsers,
   listAdminTechnicalAnalyses,
-  listTechnicalAreas,
   listTechnicalRoles,
 } from '../services/api/admin'
 import { listAdminEntity } from '../services/api/catalog'
@@ -10,13 +10,15 @@ import { isGestorAuthenticationError } from '../services/api/gestor'
 import type {
   AdminNotificationTarget,
   AdminTechnicalAnalysis,
-  TechnicalArea,
+  AdminUser,
   TechnicalRole,
 } from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminIntervention, AdminInterventionInput } from '../types/interventions'
+import type { ValidationRouteDraft } from '../types/validation'
 import { AssetIcon, CheckIcon, RefreshIcon, SearchIcon, ShieldIcon, WrenchIcon } from './Icons'
 import { AdminCatalogWorkspace } from './AdminCatalogWorkspace'
+import { ValidationPolicySelector } from './ValidationPolicySelector'
 
 interface AdminInterventionsWorkspaceProps {
   onSessionExpired: () => void
@@ -89,7 +91,7 @@ export function AdminInterventionsWorkspace({
   const [components, setComponents] = useState<AdminEntityRecord[]>([])
   const [plans, setPlans] = useState<AdminEntityRecord[]>([])
   const [planItems, setPlanItems] = useState<AdminEntityRecord[]>([])
-  const [areas, setAreas] = useState<TechnicalArea[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [roles, setRoles] = useState<TechnicalRole[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -100,7 +102,13 @@ export function AdminInterventionsWorkspace({
   const [routing, setRouting] = useState<AdminIntervention | null>(null)
   const [viewing, setViewing] = useState<AdminIntervention | null>(null)
   const [viewingAnalysis, setViewingAnalysis] = useState<AdminTechnicalAnalysis | null>(null)
-  const [routeDraft, setRouteDraft] = useState({ area_atual_id: '', cargo_atual_id: '', comentario: '', exige_assinatura: 'SIM', assinaturas_necessarias: 1, exige_segregacao: 'SIM' })
+  const [routeDraft, setRouteDraft] = useState<ValidationRouteDraft>({
+    politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+    comentario: '',
+    exige_segregacao: 'SIM',
+    responsavel_atual_id: '',
+    usuarios_validadores: [],
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
@@ -123,7 +131,7 @@ export function AdminInterventionsWorkspace({
       componentList,
       planList,
       planItemList,
-      nextAreas,
+      nextUsers,
       nextRoles,
     ] = await Promise.all([
       listAdminInterventions(signal),
@@ -132,7 +140,7 @@ export function AdminInterventionsWorkspace({
       listAdminEntity('componentes', signal),
       listAdminEntity('planos', signal),
       listAdminEntity('plano_itens', signal),
-      listTechnicalAreas(signal),
+      listAdminUsers({ perfil: 'GESTOR', status: 'ATIVO' }, signal),
       listTechnicalRoles('', signal),
     ])
     setInterventions(nextInterventions)
@@ -141,7 +149,7 @@ export function AdminInterventionsWorkspace({
     setComponents(componentList.rows)
     setPlans(planList.rows)
     setPlanItems(planItemList.rows)
-    setAreas(nextAreas)
+    setUsers(nextUsers)
     setRoles(nextRoles)
   }, [])
 
@@ -216,10 +224,6 @@ export function AdminInterventionsWorkspace({
       editor?.componente_id,
       plans,
     ],
-  )
-  const routeRoles = useMemo(
-    () => roles.filter((role) => role.area_id === routeDraft.area_atual_id),
-    [roles, routeDraft.area_atual_id],
   )
   const metrics = useMemo(() => ({
     drafts: interventions.filter((item) => item.status === 'RASCUNHO' || item.status === 'DEVOLVIDA_ADMIN').length,
@@ -318,7 +322,13 @@ export function AdminInterventionsWorkspace({
 
   function openRouting(intervention: AdminIntervention) {
     setRouting(intervention)
-    setRouteDraft({ area_atual_id: '', cargo_atual_id: '', comentario: intervention.descricao, exige_assinatura: 'SIM', assinaturas_necessarias: 1, exige_segregacao: 'SIM' })
+    setRouteDraft({
+      politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+      comentario: intervention.descricao,
+      exige_segregacao: 'SIM',
+      responsavel_atual_id: '',
+      usuarios_validadores: [],
+    })
     setError('')
   }
 
@@ -346,8 +356,14 @@ export function AdminInterventionsWorkspace({
 
   async function send() {
     if (!routing) return
-    if (!routeDraft.area_atual_id || routeDraft.comentario.trim().length < 5) {
-      setError('Selecione a área e informe a orientação para validação.')
+    if (
+      routeDraft.comentario.trim().length < 5 ||
+      (
+        routeDraft.politica_assinatura === 'PERSONALIZADA' &&
+        !routeDraft.responsavel_atual_id
+      )
+    ) {
+      setError('Defina o validador e informe a orientação para validação.')
       return
     }
     setSending(true)
@@ -356,7 +372,7 @@ export function AdminInterventionsWorkspace({
       await sendAdminInterventionForValidation({ intervencao_id: routing.id, ...routeDraft })
       await loadData()
       setRouting(null)
-      setNotice('Intervenção enviada ao filtro técnico. A ação só aparecerá ao Operador após a liberação do Gestor.')
+      setNotice('Intervenção enviada para assinatura técnica. A ação aparecerá ao Operador após todas as assinaturas exigidas.')
     } catch (cause) {
       handleFailure(cause, 'Não foi possível enviar a intervenção.')
     } finally {
@@ -512,13 +528,10 @@ export function AdminInterventionsWorkspace({
       </div><footer><span>Salvar não cria ação operacional.</span><div><button type="button" disabled={saving} onClick={() => setEditor(null)}>Cancelar</button><button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button></div></footer></section></div> : null}
 
       {routing ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !sending) setRouting(null) }}><section role="dialog" aria-modal="true" aria-labelledby="intervention-route-title"><header><div><span className="eyebrow">FILTRO TÉCNICO</span><h2 id="intervention-route-title">Enviar {routing.codigo}</h2></div><button type="button" onClick={() => setRouting(null)}>×</button></header><div className="admin-catalog-form">
-        <label><span>Área responsável *</span><select value={routeDraft.area_atual_id} onChange={(event) => setRouteDraft((current) => ({ ...current, area_atual_id: event.target.value, cargo_atual_id: '' }))}><option value="">Selecione…</option>{areas.map((area) => <option value={area.id} key={area.id}>{area.codigo} · {area.nome}</option>)}</select></label>
-        <label><span>Cargo técnico</span><select value={routeDraft.cargo_atual_id} onChange={(event) => setRouteDraft((current) => ({ ...current, cargo_atual_id: event.target.value }))}><option value="">Qualquer gestor da área</option>{routeRoles.map((role) => <option value={role.id} key={role.id}>{role.nome}</option>)}</select></label>
-        <label><span>Exigir assinatura</span><select value={routeDraft.exige_assinatura} onChange={(event) => setRouteDraft((current) => ({ ...current, exige_assinatura: event.target.value }))}><option value="SIM">Sim</option><option value="NAO">Não</option></select></label>
-        <label><span>Assinaturas necessárias</span><select disabled={routeDraft.exige_assinatura !== 'SIM'} value={routeDraft.assinaturas_necessarias} onChange={(event) => setRouteDraft((current) => ({ ...current, assinaturas_necessarias: Number(event.target.value) }))}><option value="1">1 assinatura</option><option value="2">2 assinaturas</option><option value="3">3 assinaturas</option></select></label>
+        <ValidationPolicySelector value={routeDraft} users={users} roles={roles} onChange={setRouteDraft} />
         <label><span>Segregar criador e aprovador</span><select value={routeDraft.exige_segregacao} onChange={(event) => setRouteDraft((current) => ({ ...current, exige_segregacao: event.target.value }))}><option value="SIM">Sim</option><option value="NAO">Não</option></select></label>
         <label style={{ gridColumn: '1 / -1' }}><span>Orientação ao Gestor *</span><textarea rows={4} value={routeDraft.comentario} onChange={(event) => setRouteDraft((current) => ({ ...current, comentario: event.target.value }))} /></label>
-      </div><footer><span>A ação operacional só será criada depois da decisão técnica.</span><div><button type="button" disabled={sending} onClick={() => setRouting(null)}>Cancelar</button><button className="primary-button" type="button" disabled={sending} onClick={() => void send()}>{sending ? 'Enviando…' : 'Enviar ao Gestor'}</button></div></footer></section></div> : null}
+      </div><footer><span>A ação operacional só será criada depois das assinaturas técnicas.</span><div><button type="button" disabled={sending} onClick={() => setRouting(null)}>Cancelar</button><button className="primary-button" type="button" disabled={sending} onClick={() => void send()}>{sending ? 'Enviando…' : 'Enviar para assinatura'}</button></div></footer></section></div> : null}
 
       {viewingAnalysis ? (
         <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => {

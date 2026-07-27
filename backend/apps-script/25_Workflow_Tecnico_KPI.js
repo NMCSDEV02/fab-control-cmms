@@ -11,7 +11,17 @@ const TECH_DEMAND_STATUS = {
   CANCELADA:"CANCELADA"
 };
 
-const TECH_WORKFLOW_SCHEMA_VERSION = FAB.SCHEMA_VERSION + ".briefing.3";
+const TECH_WORKFLOW_SCHEMA_VERSION = FAB.SCHEMA_VERSION + ".validation-policy.1";
+
+const TECH_SIGNATURE_POLICY = {
+  QUALIDADE_OU_SEGURANCA:"QUALIDADE_OU_SEGURANCA",
+  QUALIDADE:"QUALIDADE",
+  SEGURANCA:"SEGURANCA",
+  QUALIDADE_E_SEGURANCA:"QUALIDADE_E_SEGURANCA",
+  PERSONALIZADA:"PERSONALIZADA"
+};
+
+const TECH_DEFAULT_VALIDATOR_CODES = ["QUALIDADE","SEGURANCA"];
 
 const TECH_FINAL_STATUSES = [
   TECH_DEMAND_STATUS.DEVOLVIDA_ADMIN,
@@ -45,6 +55,7 @@ function technicalEnsureSchema_(){
       });
     }
     technicalSeedCatalog_({usuario_id:"SISTEMA", perfil:ROLE.SISTEMA});
+    technicalMigrateValidationPolicies_();
     upsert_("config", "chave", {
       chave:"workflow.tecnico.text.repair.version",
       valor:"1",
@@ -86,12 +97,15 @@ function cmmsWorkflowTecnicoSchemaUpgrade_(p, auth){
 }
 
 function technicalSeedCatalog_(auth){
+  var permissionMigrationKey = "workflow.tecnico.validadores_padrao.v1";
+  var permissionMigration = find_("config", "chave", permissionMigrationKey);
+  var shouldMigratePermissions = !permissionMigration || !bool_(permissionMigration.valor);
   var definitions = [
-    {codigo:"MANUTENCAO", nome:"Manutenção", descricao:"Diagnóstico, reparo, confiabilidade e liberação técnica.", exige:"NAO", cargo:"TÉCNICO DE MANUTENÇÃO"},
-    {codigo:"QUALIDADE", nome:"Qualidade", descricao:"Conformidade, inspeção e assinatura de qualidade.", exige:"SIM", cargo:"INSPETOR DE QUALIDADE"},
-    {codigo:"SEGURANCA", nome:"Segurança", descricao:"Riscos, bloqueios e liberação de segurança.", exige:"SIM", cargo:"TÉCNICO DE SEGURANÇA"},
-    {codigo:"SUPERVISAO", nome:"Supervisão", descricao:"Coordenação operacional e decisão de turno.", exige:"NAO", cargo:"SUPERVISOR"},
-    {codigo:"LIDERANCA_SETOR", nome:"Liderança de setor", descricao:"Gestão do escopo da linha ou setor.", exige:"NAO", cargo:"LÍDER DE SETOR"}
+    {codigo:"MANUTENCAO", nome:"Manutenção", descricao:"Diagnóstico, reparo, confiabilidade e acompanhamento técnico.", exige:"NAO", assina:"NAO", cargo:"TÉCNICO DE MANUTENÇÃO"},
+    {codigo:"QUALIDADE", nome:"Qualidade", descricao:"Conformidade, inspeção e assinatura de qualidade.", exige:"SIM", assina:"SIM", cargo:"INSPETOR DE QUALIDADE"},
+    {codigo:"SEGURANCA", nome:"Segurança", descricao:"Riscos, bloqueios e assinatura de segurança.", exige:"SIM", assina:"SIM", cargo:"TÉCNICO DE SEGURANÇA"},
+    {codigo:"SUPERVISAO", nome:"Supervisão", descricao:"Coordenação operacional e acompanhamento de turno.", exige:"NAO", assina:"NAO", cargo:"SUPERVISOR"},
+    {codigo:"LIDERANCA_SETOR", nome:"Liderança de setor", descricao:"Acompanhamento do escopo da linha ou setor.", exige:"NAO", assina:"NAO", cargo:"LÍDER DE SETOR"}
   ];
   var createdAreas = 0;
   var createdRoles = 0;
@@ -123,18 +137,32 @@ function technicalSeedCatalog_(auth){
       append_("cargos_tecnicos", fit_("cargos_tecnicos", {
         id:roleId, area_id:area.id, codigo:roleCode,
         nome:definition.cargo, descricao:definition.descricao, status:ST.ATIVO,
-        pode_assinar:"SIM", criado_por:auth.usuario_id, criado_em:now_(), atualizado_em:now_()
+        pode_assinar:definition.assina, criado_por:auth.usuario_id, criado_em:now_(), atualizado_em:now_()
       }));
       createdRoles++;
-    } else if(upper_(role.codigo) !== roleCode || technicalLooksMojibake_(role.nome) || technicalLooksMojibake_(role.descricao)){
+    } else if(upper_(role.codigo) !== roleCode || (shouldMigratePermissions && upper_(role.pode_assinar) !== definition.assina) || technicalLooksMojibake_(role.nome) || technicalLooksMojibake_(role.descricao)){
       update_("cargos_tecnicos", role.__rowIndex, {
         codigo:roleCode,
         nome:definition.cargo,
         descricao:definition.descricao,
+        pode_assinar:shouldMigratePermissions ? definition.assina : role.pode_assinar,
         atualizado_em:now_()
       });
     }
   });
+  if(shouldMigratePermissions){
+    var migrationRow = {
+      chave:permissionMigrationKey,
+      valor:"SIM",
+      descricao:"Migração única dos validadores padrão de Qualidade e Segurança.",
+      atualizado_em:now_()
+    };
+    if(permissionMigration){
+      update_("config", permissionMigration.__rowIndex, migrationRow);
+    } else {
+      append_("config", fit_("config", migrationRow));
+    }
+  }
   [
     {prioridade:"CRITICA", resposta:15, resolucao:120},
     {prioridade:"ALTA", resposta:30, resolucao:240},
@@ -175,10 +203,12 @@ function technicalIdentity_(auth){
     nome:clean_(user && user.nome || auth && auth.nome),
     perfil:upper_(user && user.perfil || auth && auth.perfil),
     area_id:clean_(user && user.area_id),
+    area_codigo:upper_(area && area.codigo),
     area_nome:clean_(area && area.nome),
     cargo_id:clean_(user && user.cargo_id),
     cargo_nome:clean_(role && role.nome),
     pode_assinar:!!(role && bool_(role.pode_assinar)),
+    validador_padrao:TECH_DEFAULT_VALIDATOR_CODES.indexOf(upper_(area && area.codigo)) >= 0,
     especialidades:technicalJsonArray_(user && user.especialidades_json),
     escopo_ids:technicalJsonArray_(user && user.escopo_ids_json)
   };
@@ -302,6 +332,217 @@ function technicalActiveRole_(id, areaId){
   return role;
 }
 
+function technicalAreaByCode_(code){
+  var normalized = upper_(code);
+  var area = rows_("areas_tecnicas", true).find(function(item){
+    return upper_(item.codigo) === normalized && upper_(item.status) === ST.ATIVO;
+  }) || null;
+  if(!area){
+    err_(
+      "TECH_VALIDATOR_AREA_MISSING",
+      "A área técnica "+normalized+" precisa estar ativa antes de usar o filtro de validação.",
+      409
+    );
+  }
+  return area;
+}
+
+function technicalNormalizeSignaturePolicy_(value){
+  var normalized = upper_(value || configurationRuntimeValue_(
+    "workflow.tecnico.politica_validacao_padrao",
+    TECH_SIGNATURE_POLICY.QUALIDADE_OU_SEGURANCA
+  ));
+  return Object.keys(TECH_SIGNATURE_POLICY).some(function(key){
+    return TECH_SIGNATURE_POLICY[key] === normalized;
+  }) ? normalized : TECH_SIGNATURE_POLICY.QUALIDADE_OU_SEGURANCA;
+}
+
+function technicalResolveValidationPolicy_(data){
+  var policy = technicalNormalizeSignaturePolicy_(data.politica_assinatura);
+  var areaIds = [];
+  var userIds = technicalJsonArray_(data.usuarios_validadores_json || data.usuarios_validadores);
+  if(policy === TECH_SIGNATURE_POLICY.QUALIDADE){
+    areaIds = [technicalAreaByCode_("QUALIDADE").id];
+  } else if(policy === TECH_SIGNATURE_POLICY.SEGURANCA){
+    areaIds = [technicalAreaByCode_("SEGURANCA").id];
+  } else if(policy === TECH_SIGNATURE_POLICY.QUALIDADE_E_SEGURANCA || policy === TECH_SIGNATURE_POLICY.QUALIDADE_OU_SEGURANCA){
+    areaIds = [
+      technicalAreaByCode_("QUALIDADE").id,
+      technicalAreaByCode_("SEGURANCA").id
+    ];
+  } else {
+    areaIds = technicalJsonArray_(data.areas_validadoras_json || data.areas_validadoras);
+    if(clean_(data.area_atual_id) && areaIds.indexOf(clean_(data.area_atual_id)) < 0){
+      areaIds.push(clean_(data.area_atual_id));
+    }
+    if(clean_(data.responsavel_atual_id) && userIds.indexOf(clean_(data.responsavel_atual_id)) < 0){
+      userIds.push(clean_(data.responsavel_atual_id));
+    }
+    if(!areaIds.length && !userIds.length){
+      err_("TECH_CUSTOM_VALIDATOR_REQUIRED", "Escolha ao menos uma área ou pessoa autorizada para a validação personalizada.", 400);
+    }
+  }
+  areaIds = areaIds.filter(function(id, index, list){
+    technicalActiveArea_(id);
+    return list.indexOf(id) === index;
+  });
+  userIds = userIds.filter(function(id, index, list){
+    var user = find_("usuarios", "id", id);
+    if(!user || upper_(user.status) !== ST.ATIVO || upper_(user.perfil) !== ROLE.GESTOR){
+      err_("TECH_CUSTOM_VALIDATOR_INVALID", "A pessoa escolhida não possui um perfil técnico ativo.", 400);
+    }
+    var role = technicalActiveRole_(user.cargo_id, user.area_id);
+    if(!role || !bool_(role.pode_assinar)){
+      err_("TECH_CUSTOM_VALIDATOR_NOT_AUTHORIZED", "A pessoa escolhida não está autorizada a assinar documentos.", 400);
+    }
+    return list.indexOf(id) === index;
+  });
+  var required = policy === TECH_SIGNATURE_POLICY.QUALIDADE_E_SEGURANCA
+    ? 2
+    : (policy === TECH_SIGNATURE_POLICY.PERSONALIZADA
+      ? Math.max(1, num_(data.assinaturas_necessarias, areaIds.length || userIds.length))
+      : 1);
+  var primaryArea = areaIds.indexOf(clean_(data.area_atual_id)) >= 0
+    ? clean_(data.area_atual_id)
+    : (areaIds[0] || clean_(data.area_atual_id));
+  if(!primaryArea && userIds.length){
+    var primaryUser = find_("usuarios", "id", userIds[0]);
+    primaryArea = clean_(primaryUser && primaryUser.area_id);
+  }
+  return {
+    politica:policy,
+    areas:areaIds,
+    usuarios:userIds,
+    assinaturas_necessarias:required,
+    area_primaria:primaryArea
+  };
+}
+
+function technicalDemandValidatorAreaIds_(demand){
+  var ids = technicalJsonArray_(demand.areas_validadoras_json);
+  if(ids.length) return ids;
+  var current = clean_(demand.area_atual_id);
+  return current ? [current] : [];
+}
+
+function technicalDemandValidatorUserIds_(demand){
+  return technicalJsonArray_(demand.usuarios_validadores_json);
+}
+
+function technicalSignaturesForDemand_(demand){
+  return rows_("assinaturas_tecnicas", true).filter(function(signature){
+    if(clean_(signature.revogado_em)) return false;
+    return upper_(signature.entidade_tipo) === upper_(demand.entidade_tipo) &&
+      String(signature.entidade_id) === String(demand.entidade_id) &&
+      String(signature.versao_entidade) === String(demand.versao_entidade) &&
+      String(signature.payload_hash) === String(demand.payload_hash);
+  });
+}
+
+function technicalSignatureProgress_(demand){
+  var signatures = technicalSignaturesForDemand_(demand);
+  var policy = technicalNormalizeSignaturePolicy_(demand.politica_assinatura);
+  var areaIds = technicalDemandValidatorAreaIds_(demand);
+  var userIds = technicalDemandValidatorUserIds_(demand);
+  var signedAreaIds = [];
+  var signedUserIds = [];
+  signatures.forEach(function(signature){
+    var areaId = clean_(signature.area_id);
+    var userId = clean_(signature.usuario_id);
+    if(areaId && signedAreaIds.indexOf(areaId) < 0) signedAreaIds.push(areaId);
+    if(userId && signedUserIds.indexOf(userId) < 0) signedUserIds.push(userId);
+  });
+  var completed;
+  if(policy === TECH_SIGNATURE_POLICY.QUALIDADE_E_SEGURANCA){
+    completed = areaIds.filter(function(id){ return signedAreaIds.indexOf(id) >= 0; }).length;
+  } else if(policy === TECH_SIGNATURE_POLICY.PERSONALIZADA){
+    completed = signatures.filter(function(signature){
+      return areaIds.indexOf(clean_(signature.area_id)) >= 0 ||
+        userIds.indexOf(clean_(signature.usuario_id)) >= 0;
+    }).length;
+  } else {
+    completed = signatures.some(function(signature){
+      return areaIds.indexOf(clean_(signature.area_id)) >= 0;
+    }) ? 1 : 0;
+  }
+  var required = Math.max(1, num_(demand.assinaturas_necessarias, 1));
+  return {
+    politica:policy,
+    necessarias:required,
+    realizadas:Math.min(completed, required),
+    concluida:completed >= required,
+    areas_assinadas:signedAreaIds,
+    areas_pendentes:completed >= required
+      ? []
+      : areaIds.filter(function(id){ return signedAreaIds.indexOf(id) < 0; }),
+    assinaturas:signatures
+  };
+}
+
+function technicalCanValidateDemand_(demand, identity){
+  if(identity.perfil === ROLE.ADMIN) return true;
+  if(identity.perfil !== ROLE.GESTOR || !identity.pode_assinar) return false;
+  var allowedUsers = technicalDemandValidatorUserIds_(demand);
+  if(allowedUsers.indexOf(identity.usuario_id) >= 0) return true;
+  return technicalDemandValidatorAreaIds_(demand).indexOf(identity.area_id) >= 0;
+}
+
+function technicalAssertValidationIdentity_(auth, demand){
+  var identity = technicalIdentity_(auth);
+  if(demand){
+    if(!technicalCanValidateDemand_(demand, identity)){
+      err_("TECH_VALIDATOR_NOT_ALLOWED", "Somente o validador definido pelo Administrador pode assinar este documento.", 403);
+    }
+    return identity;
+  }
+  if(identity.perfil !== ROLE.ADMIN && (
+    identity.perfil !== ROLE.GESTOR ||
+    !identity.pode_assinar ||
+    TECH_DEFAULT_VALIDATOR_CODES.indexOf(identity.area_codigo) < 0
+  )){
+    err_("TECH_VALIDATOR_REQUIRED", "Esta validação exige um técnico de Qualidade ou de Segurança.", 403);
+  }
+  return identity;
+}
+
+function technicalMigrateValidationPolicies_(){
+  rows_("demandas_tecnicas", true).forEach(function(demand){
+    if(clean_(demand.politica_assinatura)) return;
+    var currentArea = demand.area_atual_id ? find_("areas_tecnicas", "id", demand.area_atual_id) : null;
+    var currentCode = upper_(currentArea && currentArea.codigo);
+    var legacyPolicy = currentCode === "QUALIDADE"
+      ? TECH_SIGNATURE_POLICY.QUALIDADE
+      : (currentCode === "SEGURANCA"
+        ? TECH_SIGNATURE_POLICY.SEGURANCA
+        : TECH_SIGNATURE_POLICY.QUALIDADE_OU_SEGURANCA);
+    var policy = technicalResolveValidationPolicy_({
+      politica_assinatura:legacyPolicy,
+      area_atual_id:demand.area_atual_id
+    });
+    var patch = {
+      politica_assinatura:policy.politica,
+      areas_validadoras_json:JSON.stringify(policy.areas),
+      usuarios_validadores_json:"[]",
+      area_atual_id:policy.area_primaria,
+      cargo_atual_id:"",
+      responsavel_atual_id:"",
+      exige_assinatura:"SIM",
+      assinaturas_necessarias:policy.assinaturas_necessarias,
+      atualizado_em:now_()
+    };
+    var next = Object.assign({}, strip_(demand), patch);
+    patch.payload_hash = technicalDemandHash_(next);
+    var progress = technicalSignatureProgress_(Object.assign({}, next, {payload_hash:patch.payload_hash}));
+    patch.assinaturas_realizadas = progress.realizadas;
+    if(TECH_FINAL_STATUSES.indexOf(upper_(demand.status)) < 0){
+      patch.status = progress.concluida
+        ? TECH_DEMAND_STATUS.EM_VALIDACAO
+        : TECH_DEMAND_STATUS.AGUARDANDO_ASSINATURA;
+    }
+    update_("demandas_tecnicas", demand.__rowIndex, patch);
+  });
+}
+
 function adminAreasTecnicasListar_(p, auth){
   technicalRequireAdmin_(auth);
   technicalEnsureSchema_();
@@ -407,8 +648,9 @@ function technicalDemandHash_(data){
     versao_entidade:clean_(data.versao_entidade || "1"),
     titulo:clean_(data.titulo),
     descricao:clean_(data.descricao),
-    area_atual_id:clean_(data.area_atual_id),
-    cargo_atual_id:clean_(data.cargo_atual_id)
+    politica_assinatura:technicalNormalizeSignaturePolicy_(data.politica_assinatura),
+    areas_validadoras:technicalJsonArray_(data.areas_validadoras_json).sort(),
+    usuarios_validadores:technicalJsonArray_(data.usuarios_validadores_json).sort()
   }));
 }
 
@@ -432,6 +674,19 @@ function technicalNotify_(target, type, title, message, entityType, entityId, pr
   return users.length;
 }
 
+function technicalCloseDemandNotifications_(demandId){
+  rows_("notificacoes", true).filter(function(item){
+    return upper_(item.entidade_tipo) === "DEMANDAS_TECNICAS" &&
+      String(item.entidade_id) === String(demandId) &&
+      upper_(item.status) === "NAO_LIDA";
+  }).forEach(function(item){
+    update_("notificacoes", item.__rowIndex, {
+      status:"LIDA",
+      lida_em:now_()
+    });
+  });
+}
+
 function technicalAppendTransition_(demand, action, identity, target, decision, opinion, reason){
   var sequence = rows_("demanda_tramitacoes", true).filter(function(item){
     return String(item.demanda_id) === String(demand.id);
@@ -451,41 +706,42 @@ function adminDemandasTecnicasEnviar_(p, auth){
   technicalRequireAdmin_(auth);
   technicalEnsureSchema_();
   var data = Object.assign({}, p.demanda || p.dados || p);
-  req_(data, ["entidade_tipo","entidade_id","titulo","area_atual_id"]);
-  var area = technicalActiveArea_(data.area_atual_id);
+  req_(data, ["entidade_tipo","entidade_id","titulo"]);
+  var validationPolicy = technicalResolveValidationPolicy_(data);
+  var area = technicalActiveArea_(validationPolicy.area_primaria);
   technicalActiveRole_(data.cargo_atual_id, area.id);
   if(data.responsavel_atual_id){
     var targetUser = find_("usuarios", "id", data.responsavel_atual_id);
     if(!targetUser || upper_(targetUser.status) !== ST.ATIVO || upper_(targetUser.perfil) !== ROLE.GESTOR){
       err_("TECH_ASSIGNEE_INVALID", "Responsável técnico inexistente, inativo ou fora do perfil GESTOR.", 400);
     }
-    if(clean_(targetUser.area_id) && String(targetUser.area_id) !== String(area.id)){
-      err_("TECH_ASSIGNEE_AREA_MISMATCH", "O responsável não pertence à área de destino.", 400);
+    if(
+      validationPolicy.usuarios.indexOf(clean_(targetUser.id)) < 0 &&
+      validationPolicy.areas.indexOf(clean_(targetUser.area_id)) < 0
+    ){
+      err_("TECH_ASSIGNEE_POLICY_MISMATCH", "O responsável não pertence ao filtro de validação escolhido.", 400);
     }
   }
   var priority = upper_(data.prioridade || "MEDIA");
   var policy = technicalSlaPolicy_(data.tipo || data.entidade_tipo, priority, area.id);
-  var needsSignature = data.exige_assinatura === undefined
-    ? bool_(area.exige_assinatura_padrao)
-    : bool_(data.exige_assinatura);
   var separationRequired = data.exige_segregacao === undefined
-    ? bool_(configurationRuntimeValue_("workflow.tecnico.exige_segregacao_padrao", false))
+    ? bool_(configurationRuntimeValue_("workflow.tecnico.exige_segregacao_padrao", true))
     : bool_(data.exige_segregacao);
-  var defaultSignatures = Math.max(1, Math.min(5, num_(
-    configurationRuntimeValue_("workflow.tecnico.assinaturas_padrao", 1), 1
-  )));
   var demand = fit_("demandas_tecnicas", {
     id:uuid_("DMT"), tipo:upper_(data.tipo || "VALIDACAO_TECNICA"),
     entidade_tipo:upper_(data.entidade_tipo), entidade_id:clean_(data.entidade_id),
     origem_tipo:upper_(data.origem_tipo || "ADMIN"), origem_id:clean_(data.origem_id || auth.usuario_id),
     titulo:clean_(data.titulo), descricao:clean_(data.descricao), prioridade:priority,
-    status:needsSignature ? TECH_DEMAND_STATUS.AGUARDANDO_ASSINATURA : TECH_DEMAND_STATUS.EM_VALIDACAO,
-    area_origem_id:clean_(data.area_origem_id), area_atual_id:area.id,
+    status:TECH_DEMAND_STATUS.AGUARDANDO_ASSINATURA,
+    area_origem_id:clean_(data.area_origem_id), area_atual_id:validationPolicy.area_primaria,
     cargo_atual_id:clean_(data.cargo_atual_id), responsavel_atual_id:clean_(data.responsavel_atual_id),
     criado_por:auth.usuario_id, criado_perfil:auth.perfil,
-    exige_assinatura:needsSignature ? "SIM" : "NAO",
-    assinaturas_necessarias:needsSignature ? Math.max(1, num_(data.assinaturas_necessarias, defaultSignatures)) : 0,
+    exige_assinatura:"SIM",
+    assinaturas_necessarias:validationPolicy.assinaturas_necessarias,
     assinaturas_realizadas:0, exige_segregacao:separationRequired ? "SIM" : "NAO",
+    politica_assinatura:validationPolicy.politica,
+    areas_validadoras_json:JSON.stringify(validationPolicy.areas),
+    usuarios_validadores_json:JSON.stringify(validationPolicy.usuarios),
     prazo_primeira_resposta_em:technicalAddMinutesIso_(num_(data.resposta_minutos, policy && policy.resposta_minutos)),
     prazo_resolucao_em:technicalAddMinutesIso_(num_(data.resolucao_minutos, policy && policy.resolucao_minutos)),
     primeiro_atendimento_em:"", concluido_em:"", versao_entidade:clean_(data.versao_entidade || "1"),
@@ -496,7 +752,16 @@ function adminDemandasTecnicasEnviar_(p, auth){
   technicalAppendTransition_(demand, "ENVIADA_PELO_ADMIN", technicalIdentity_(auth), {
     area_id:demand.area_atual_id, cargo_id:demand.cargo_atual_id, usuario_id:demand.responsavel_atual_id
   }, "", data.parecer, data.motivo);
-  technicalNotify_({usuario_id:demand.responsavel_atual_id, area_id:demand.responsavel_atual_id ? "" : demand.area_atual_id, cargo_id:demand.cargo_atual_id}, "DEMANDA_TECNICA", demand.titulo, "Nova demanda técnica aguardando tratamento.", "demandas_tecnicas", demand.id, demand.prioridade);
+  if(demand.responsavel_atual_id){
+    technicalNotify_({usuario_id:demand.responsavel_atual_id}, "DEMANDA_TECNICA", demand.titulo, "Documento aguardando sua validação e assinatura.", "demandas_tecnicas", demand.id, demand.prioridade);
+  } else {
+    validationPolicy.areas.forEach(function(areaId){
+      technicalNotify_({area_id:areaId}, "DEMANDA_TECNICA", demand.titulo, "Documento aguardando validação e assinatura.", "demandas_tecnicas", demand.id, demand.prioridade);
+    });
+    validationPolicy.usuarios.forEach(function(userId){
+      technicalNotify_({usuario_id:userId}, "DEMANDA_TECNICA", demand.titulo, "Documento aguardando sua validação e assinatura.", "demandas_tecnicas", demand.id, demand.prioridade);
+    });
+  }
   audit_(auth, "TECH_DEMAND_SENT", "demandas_tecnicas", demand.id, null, demand, clean_(p.user_agent));
   return {sent:true, demanda:technicalDemandPublic_(demand)};
 }
@@ -505,9 +770,7 @@ function technicalDemandAccessible_(demand, identity){
   if(identity.perfil === ROLE.ADMIN) return true;
   if(identity.perfil !== ROLE.GESTOR) return false;
   if(clean_(demand.responsavel_atual_id)) return String(demand.responsavel_atual_id) === String(identity.usuario_id);
-  if(clean_(demand.area_atual_id) && clean_(identity.area_id) && String(demand.area_atual_id) !== String(identity.area_id)) return false;
-  if(clean_(demand.cargo_atual_id) && String(demand.cargo_atual_id) !== String(identity.cargo_id)) return false;
-  return !clean_(demand.area_atual_id) || String(demand.area_atual_id) === String(identity.area_id);
+  return technicalCanValidateDemand_(demand, identity);
 }
 
 function technicalRequireDemand_(id, identity){
@@ -535,6 +798,21 @@ function technicalDemandPublic_(demand){
   out.area_atual_nome = clean_(area && area.nome);
   out.cargo_atual_nome = clean_(role && role.nome);
   out.responsavel_atual_nome = clean_(assignee && assignee.nome);
+  var progress = technicalSignatureProgress_(demand);
+  out.politica_assinatura = progress.politica;
+  out.assinaturas_necessarias = progress.necessarias;
+  out.assinaturas_realizadas = progress.realizadas;
+  out.assinatura_concluida = progress.concluida;
+  out.areas_validadoras = technicalDemandValidatorAreaIds_(demand).map(function(id){
+    var validatorArea = find_("areas_tecnicas", "id", id);
+    return validatorArea ? {
+      id:clean_(validatorArea.id),
+      codigo:upper_(validatorArea.codigo),
+      nome:clean_(validatorArea.nome),
+      assinada:progress.areas_assinadas.indexOf(id) >= 0,
+      necessaria:!progress.concluida && progress.areas_pendentes.indexOf(id) >= 0
+    } : null;
+  }).filter(Boolean);
   out.sla_resposta_atrasado = !!(responseDeadline && !clean_(demand.primeiro_atendimento_em) && responseDeadline < now);
   out.sla_resolucao_atrasado = !!(resolutionDeadline && TECH_FINAL_STATUSES.indexOf(upper_(demand.status)) < 0 && resolutionDeadline < now);
   return out;
@@ -566,12 +844,25 @@ function gestorContextoTecnico_(p, auth){
   technicalRequireManager_(auth);
   technicalEnsureSchema_();
   var identity = technicalIdentity_(auth);
+  var canValidate = identity.perfil === ROLE.ADMIN || (
+    identity.pode_assinar &&
+    TECH_DEFAULT_VALIDATOR_CODES.indexOf(identity.area_codigo) >= 0
+  );
   return {
     identidade:identity,
     areas:rows_("areas_tecnicas", true).filter(function(item){ return upper_(item.status) === ST.ATIVO; }).map(strip_),
     cargos:rows_("cargos_tecnicos", true).filter(function(item){ return upper_(item.status) === ST.ATIVO; }).map(strip_),
-    pode_encaminhar:true,
-    pode_assinar:identity.perfil === ROLE.ADMIN || identity.pode_assinar
+    pode_encaminhar:false,
+    pode_assinar:identity.perfil === ROLE.ADMIN || identity.pode_assinar,
+    pode_validar:canValidate,
+    modo_trabalho:canValidate ? "VALIDACAO" : "ACOMPANHAMENTO",
+    politicas_assinatura:[
+      {codigo:TECH_SIGNATURE_POLICY.QUALIDADE_OU_SEGURANCA, nome:"Qualidade ou Segurança", assinaturas:1},
+      {codigo:TECH_SIGNATURE_POLICY.QUALIDADE, nome:"Somente Qualidade", assinaturas:1},
+      {codigo:TECH_SIGNATURE_POLICY.SEGURANCA, nome:"Somente Segurança", assinaturas:1},
+      {codigo:TECH_SIGNATURE_POLICY.QUALIDADE_E_SEGURANCA, nome:"Qualidade e Segurança", assinaturas:2},
+      {codigo:TECH_SIGNATURE_POLICY.PERSONALIZADA, nome:"Validador autorizado", assinaturas:1}
+    ]
   };
 }
 
@@ -582,7 +873,7 @@ function gestorDemandaDetalhe_(p, auth){
   var identity = technicalIdentity_(auth);
   var demand = technicalRequireDemand_(p.demanda_id, identity);
   var transitions = rows_("demanda_tramitacoes", true).filter(function(item){ return String(item.demanda_id) === String(demand.id); }).sort(function(a,b){ return num_(a.sequencia,0)-num_(b.sequencia,0); }).map(strip_);
-  var signatures = rows_("assinaturas_tecnicas", true).filter(function(item){ return String(item.demanda_id) === String(demand.id) && !clean_(item.revogado_em); }).map(strip_);
+  var signatures = technicalSignaturesForDemand_(demand).map(strip_);
   var analyses = rows_("analises_tecnicas", true).filter(function(item){ return String(item.demanda_id) === String(demand.id); }).map(strip_);
   return {demanda:technicalDemandPublic_(demand), tramitacoes:transitions, assinaturas:signatures, analises:analyses};
 }
@@ -593,7 +884,15 @@ function gestorDemandaAssumir_(p, auth){
   req_(p, ["demanda_id"]);
   var identity = technicalIdentity_(auth);
   var demand = technicalRequireDemand_(p.demanda_id, identity);
+  identity = technicalAssertValidationIdentity_(auth, demand);
   technicalAssertDemandOpen_(demand);
+  if(technicalNormalizeSignaturePolicy_(demand.politica_assinatura) !== TECH_SIGNATURE_POLICY.PERSONALIZADA){
+    return {
+      assumed:false,
+      shared_queue:true,
+      demanda:technicalDemandPublic_(demand)
+    };
+  }
   if(clean_(demand.responsavel_atual_id) && String(demand.responsavel_atual_id) !== String(identity.usuario_id)){
     err_("TECH_DEMAND_ALREADY_ASSIGNED", "A demanda já possui outro responsável.", 409);
   }
@@ -612,6 +911,13 @@ function gestorDemandaEncaminhar_(p, auth){
   var identity = technicalIdentity_(auth);
   var demand = technicalRequireDemand_(p.demanda_id, identity);
   technicalAssertDemandOpen_(demand);
+  if(clean_(demand.politica_assinatura)){
+    err_(
+      "TECH_VALIDATION_FORWARD_DISABLED",
+      "Este documento não pode sair do filtro de validação definido pelo Administrador.",
+      409
+    );
+  }
   var area = technicalActiveArea_(p.para_area_id);
   technicalActiveRole_(p.para_cargo_id, area.id);
   var targetUser = p.para_usuario_id ? find_("usuarios", "id", p.para_usuario_id) : null;
@@ -636,41 +942,149 @@ function gestorDemandaEncaminhar_(p, auth){
 }
 
 function gestorDemandaAssinar_(p, auth){
+  req_(p, ["demanda_id","declaracao"]);
+  var result = gestorDemandaValidar_({
+    demanda_id:p.demanda_id,
+    parecer:p.declaracao,
+    declaracao:p.declaracao,
+    relatorio_tecnico:p.relatorio_tecnico,
+    user_agent:p.user_agent
+  }, auth);
+  return {
+    signed:true,
+    already_signed:!!result.already_validated,
+    completed:!!result.completed,
+    assinatura:result.assinatura,
+    assinaturas_pendentes:result.assinaturas_pendentes || 0,
+    demanda:result.demanda,
+    relatorio_tecnico:result.relatorio_tecnico || null
+  };
+}
+
+function gestorDemandaValidar_(p, auth){
   technicalRequireManager_(auth);
   technicalEnsureSchema_();
-  req_(p, ["demanda_id","declaracao"]);
-  var identity = technicalIdentity_(auth);
-  if(identity.perfil !== ROLE.ADMIN && !identity.pode_assinar){
-    err_("TECH_SIGNATURE_NOT_ALLOWED", "Seu cargo técnico não possui permissão para assinar.", 403);
+  req_(p, ["demanda_id","parecer"]);
+  if(clean_(p.parecer).length < 5){
+    err_("TECH_OPINION_REQUIRED", "Registre um parecer técnico objetivo.", 400);
   }
-  var demand = technicalRequireDemand_(p.demanda_id, identity);
-  technicalAssertDemandOpen_(demand);
-  if(!bool_(demand.exige_assinatura)) err_("TECH_SIGNATURE_NOT_REQUIRED", "Esta demanda não exige assinatura.", 409);
-  if(bool_(demand.exige_segregacao) && String(demand.criado_por) === String(identity.usuario_id)){
-    err_("TECH_SIGNATURE_SEGREGATION", "O autor da demanda não pode assiná-la quando há segregação de funções.", 409);
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(15000)){
+    err_("TECH_VALIDATION_BUSY", "Outra assinatura está sendo registrada. Tente novamente.", 409);
   }
-  var duplicate = rows_("assinaturas_tecnicas", true).find(function(item){
-    return String(item.demanda_id) === String(demand.id) && String(item.usuario_id) === String(identity.usuario_id) && !clean_(item.revogado_em);
-  });
-  if(duplicate) return {signed:true, already_signed:true, assinatura:strip_(duplicate), demanda:technicalDemandPublic_(demand)};
-  var signature = fit_("assinaturas_tecnicas", {
-    id:uuid_("AST"), demanda_id:demand.id, entidade_tipo:demand.entidade_tipo,
-    entidade_id:demand.entidade_id, versao_entidade:demand.versao_entidade,
-    usuario_id:identity.usuario_id, perfil:identity.perfil, area_id:identity.area_id,
-    cargo_id:identity.cargo_id, significado:upper_(p.significado || "VALIDACAO_TECNICA"),
-    declaracao:clean_(p.declaracao), payload_hash:demand.payload_hash,
-    criado_em:now_(), revogado_em:"", motivo_revogacao:""
-  });
-  append_("assinaturas_tecnicas", signature);
-  var count = rows_("assinaturas_tecnicas", true).filter(function(item){
-    return String(item.demanda_id) === String(demand.id) && !clean_(item.revogado_em) && String(item.payload_hash) === String(demand.payload_hash);
-  }).length;
-  var patch = {assinaturas_realizadas:count, primeiro_atendimento_em:clean_(demand.primeiro_atendimento_em) || now_(), atualizado_em:now_()};
-  if(count >= num_(demand.assinaturas_necessarias, 1)) patch.status = TECH_DEMAND_STATUS.EM_VALIDACAO;
-  update_("demandas_tecnicas", demand.__rowIndex, patch);
-  technicalAppendTransition_(Object.assign({}, demand, patch), "ASSINADA", identity, identity, "ASSINAR", p.declaracao, "");
-  audit_(auth, "TECH_DEMAND_SIGNED", "assinaturas_tecnicas", signature.id, null, signature, clean_(p.user_agent));
-  return {signed:true, already_signed:false, assinatura:signature, demanda:technicalDemandPublic_(Object.assign({}, demand, patch))};
+  try{
+    var baseIdentity = technicalIdentity_(auth);
+    var demand = technicalRequireDemand_(p.demanda_id, baseIdentity);
+    var identity = technicalAssertValidationIdentity_(auth, demand);
+    var existingSignature = technicalSignaturesForDemand_(demand).find(function(item){
+      return String(item.usuario_id) === String(identity.usuario_id);
+    });
+    if(TECH_FINAL_STATUSES.indexOf(upper_(demand.status)) >= 0){
+      if(existingSignature){
+        return {
+          validated:true,
+          already_validated:true,
+          completed:true,
+          assinatura:strip_(existingSignature),
+          demanda:technicalDemandPublic_(demand)
+        };
+      }
+      err_("TECH_DEMAND_FINAL", "A demanda já foi encerrada.", 409);
+    }
+    if(bool_(demand.exige_segregacao) && String(demand.criado_por) === String(identity.usuario_id)){
+      err_("TECH_SIGNATURE_SEGREGATION", "O autor da demanda não pode assiná-la.", 409);
+    }
+    if(existingSignature){
+      var existingProgress = technicalSignatureProgress_(demand);
+      if(!existingProgress.concluida){
+        return {
+          validated:true,
+          already_validated:true,
+          completed:false,
+          assinatura:strip_(existingSignature),
+          assinaturas_pendentes:Math.max(0, existingProgress.necessarias - existingProgress.realizadas),
+          demanda:technicalDemandPublic_(demand)
+        };
+      }
+    }
+    var signature = existingSignature;
+    if(!signature){
+      signature = fit_("assinaturas_tecnicas", {
+        id:uuid_("AST"), demanda_id:demand.id, entidade_tipo:demand.entidade_tipo,
+        entidade_id:demand.entidade_id, versao_entidade:demand.versao_entidade,
+        usuario_id:identity.usuario_id, perfil:identity.perfil, area_id:identity.area_id,
+        cargo_id:identity.cargo_id, significado:"APROVACAO_TECNICA",
+        declaracao:clean_(p.declaracao || p.parecer), payload_hash:demand.payload_hash,
+        criado_em:now_(), revogado_em:"", motivo_revogacao:""
+      });
+      append_("assinaturas_tecnicas", signature);
+      audit_(auth, "TECH_DEMAND_SIGNED", "assinaturas_tecnicas", signature.id, null, signature, clean_(p.user_agent));
+    }
+    var progress = technicalSignatureProgress_(demand);
+    var basePatch = {
+      assinaturas_realizadas:progress.realizadas,
+      primeiro_atendimento_em:clean_(demand.primeiro_atendimento_em) || now_(),
+      atualizado_em:now_()
+    };
+    if(!progress.concluida){
+      var pendingAreaId = progress.areas_pendentes[0] || clean_(demand.area_atual_id);
+      var waitingPatch = Object.assign({}, basePatch, {
+        status:TECH_DEMAND_STATUS.AGUARDANDO_ASSINATURA,
+        area_atual_id:pendingAreaId,
+        cargo_atual_id:"",
+        responsavel_atual_id:""
+      });
+      update_("demandas_tecnicas", demand.__rowIndex, waitingPatch);
+      technicalAppendTransition_(Object.assign({}, demand, waitingPatch), "ASSINADA_PARCIALMENTE", identity, {
+        area_id:pendingAreaId
+      }, "ASSINAR", p.parecer, "");
+      progress.areas_pendentes.forEach(function(areaId){
+        if(String(areaId) === String(identity.area_id)) return;
+        technicalNotify_({area_id:areaId}, "ASSINATURA_PENDENTE", demand.titulo, "A primeira validação foi concluída. Falta a assinatura da sua área.", "demandas_tecnicas", demand.id, demand.prioridade);
+      });
+      return {
+        validated:true,
+        already_validated:!!existingSignature,
+        completed:false,
+        assinatura:strip_(signature),
+        assinaturas_pendentes:Math.max(0, progress.necessarias - progress.realizadas),
+        demanda:technicalDemandPublic_(Object.assign({}, demand, waitingPatch))
+      };
+    }
+
+    var isOperationalOrder = upper_(demand.entidade_tipo) === "ORDEM_SERVICO_RASCUNHO";
+    var technicalBrief = isOperationalOrder
+      ? technicalAttachBriefToDemandEntity_(demand, p.relatorio_tecnico, p.parecer)
+      : null;
+    technicalApplyApprovedEntity_(demand, identity);
+    var finalPatch = Object.assign({}, basePatch, {
+      status:isOperationalOrder ? TECH_DEMAND_STATUS.LIBERADA_OPERACAO : TECH_DEMAND_STATUS.APROVADA,
+      concluido_em:now_()
+    });
+    update_("demandas_tecnicas", demand.__rowIndex, finalPatch);
+    technicalCloseDemandNotifications_(demand.id);
+    technicalAppendTransition_(Object.assign({}, demand, finalPatch), "VALIDADA_E_ASSINADA", identity, {}, "APROVAR", p.parecer, "");
+    technicalNotify_(
+      {perfil:ROLE.ADMIN},
+      "DECISAO_TECNICA",
+      demand.titulo,
+      "Validação concluída com todas as assinaturas obrigatórias.",
+      demand.entidade_tipo,
+      demand.entidade_id,
+      demand.prioridade
+    );
+    audit_(auth, "TECH_DEMAND_VALIDATED", "demandas_tecnicas", demand.id, strip_(demand), Object.assign({}, strip_(demand), finalPatch, {relatorio_tecnico:technicalBrief}), clean_(p.user_agent));
+    return {
+      validated:true,
+      already_validated:!!existingSignature,
+      completed:true,
+      assinatura:strip_(signature),
+      demanda:technicalDemandPublic_(Object.assign({}, demand, finalPatch)),
+      relatorio_tecnico:technicalBrief
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function technicalApplyApprovedEntity_(demand, identity){
@@ -682,6 +1096,13 @@ function technicalApplyApprovedEntity_(demand, identity){
         workflow_status:ST.VALIDADO, validado_gestao:"SIM", validado_por:identity.usuario_id,
         validado_em:now_(), status:ST.ATIVO, atualizado_em:now_()
       });
+      if(typeof adminIntervencaoCriarDaOcorrenciaAprovada_ === "function"){
+        adminIntervencaoCriarDaOcorrenciaAprovada_(Object.assign({}, plan, {
+          workflow_status:ST.VALIDADO,
+          validado_gestao:"SIM",
+          status:ST.ATIVO
+        }), demand, identity);
+      }
     }
   }
   if(type === "ORDEM_SERVICO_RASCUNHO" && typeof adminIntervencaoLiberarOperacao_ === "function"){
@@ -720,6 +1141,7 @@ function gestorDemandaDecidir_(p, auth){
   req_(p, ["demanda_id","decisao","parecer"]);
   var identity = technicalIdentity_(auth);
   var demand = technicalRequireDemand_(p.demanda_id, identity);
+  identity = technicalAssertValidationIdentity_(auth, demand);
   technicalAssertDemandOpen_(demand);
   var decision = upper_(p.decisao);
   if(["APROVAR","DEVOLVER_ADMIN","LIBERAR_OPERACAO"].indexOf(decision) < 0){
@@ -729,7 +1151,7 @@ function gestorDemandaDecidir_(p, auth){
   if(bool_(demand.exige_segregacao) && String(demand.criado_por) === String(identity.usuario_id)){
     err_("TECH_DECISION_SEGREGATION", "O autor não pode aprovar a própria demanda.", 409);
   }
-  if(decision !== "DEVOLVER_ADMIN" && bool_(demand.exige_assinatura) && num_(demand.assinaturas_realizadas,0) < num_(demand.assinaturas_necessarias,1)){
+  if(decision !== "DEVOLVER_ADMIN" && bool_(demand.exige_assinatura) && !technicalSignatureProgress_(demand).concluida){
     err_("TECH_SIGNATURES_PENDING", "Ainda existem assinaturas técnicas obrigatórias pendentes.", 409);
   }
   var status = decision === "DEVOLVER_ADMIN"
@@ -744,6 +1166,7 @@ function gestorDemandaDecidir_(p, auth){
     : null;
   if(decision !== "DEVOLVER_ADMIN") technicalApplyApprovedEntity_(demand, identity);
   update_("demandas_tecnicas", demand.__rowIndex, patch);
+  technicalCloseDemandNotifications_(demand.id);
   technicalAppendTransition_(Object.assign({}, demand, patch), "DECIDIDA", identity, {}, decision, p.parecer, p.motivo);
   if(decision === "DEVOLVER_ADMIN") technicalApplyReturnedEntity_(demand, identity);
   technicalNotify_(
@@ -791,7 +1214,12 @@ function gestorAnaliseSalvar_(p, auth){
     })
   }));
   if(old) update_("analises_tecnicas", old.__rowIndex, saved); else append_("analises_tecnicas", saved);
-  update_("ocorrencias_operacionais", occurrence.__rowIndex, {status:"EM_ANALISE_TECNICA", atualizado_em:now_()});
+  update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+    status:"EM_ANALISE_TECNICA",
+    analise_tecnica_id:saved.id,
+    tratamento_status:"EM_ANALISE_TECNICA",
+    atualizado_em:now_()
+  });
   audit_(auth, old ? "TECH_ANALYSIS_UPDATED" : "TECH_ANALYSIS_CREATED", "analises_tecnicas", saved.id, old && strip_(old), saved, clean_(p.user_agent));
   return {saved:true, analise:saved};
 }
@@ -884,7 +1312,12 @@ function gestorAnaliseEnviarAdmin_(p, auth){
   var patch = {status:"ENVIADA_ADMIN", enviado_admin_em:now_(), atualizado_em:now_()};
   update_("analises_tecnicas", analysis.__rowIndex, patch);
   var occurrence = find_("ocorrencias_operacionais", "id", analysis.ocorrencia_id);
-  if(occurrence) update_("ocorrencias_operacionais", occurrence.__rowIndex, {status:"ANALISADA_TECNICAMENTE", atualizado_em:now_()});
+  if(occurrence) update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+    status:"EM_TRATAMENTO_ADMIN",
+    analise_tecnica_id:analysis.id,
+    tratamento_status:"AGUARDANDO_ADMIN",
+    atualizado_em:now_()
+  });
   technicalNotify_({perfil:ROLE.ADMIN}, "ANALISE_TECNICA", analysis.titulo, "Análise técnica recebida com recomendação para decisão administrativa.", "analises_tecnicas", analysis.id, analysis.prioridade);
   audit_(auth, "TECH_ANALYSIS_SENT_ADMIN", "analises_tecnicas", analysis.id, strip_(analysis), Object.assign({}, strip_(analysis), patch), clean_(p.user_agent));
   return {sent:true, already_sent:false, analise:Object.assign({}, strip_(analysis), patch)};
@@ -912,8 +1345,21 @@ function adminAnaliseConverterChecklist_(p, auth){
   plan.componente_id = clean_(plan.componente_id || analysis.componente_id);
   plan.nome = clean_(plan.nome || analysis.titulo);
   plan.analise_tecnica_json = clean_(analysis.relatorio_tecnico_json);
+  plan.analise_origem_id = analysis.id;
+  plan.ocorrencia_origem_id = clean_(analysis.ocorrencia_id);
   var saved = adminSalvarModeloChecklist_({plano:plan, itens:p.itens, __auth:auth});
   update_("analises_tecnicas", analysis.__rowIndex, {status:"CONVERTIDA_CHECKLIST", atualizado_em:now_()});
+  var occurrence = analysis.ocorrencia_id
+    ? find_("ocorrencias_operacionais", "id", analysis.ocorrencia_id)
+    : null;
+  if(occurrence){
+    update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+      status:"EM_PREPARACAO_CHECKLIST",
+      analise_tecnica_id:analysis.id,
+      tratamento_status:"CHECKLIST_EM_PREPARACAO",
+      atualizado_em:now_()
+    });
+  }
   audit_(auth, "TECH_ANALYSIS_CONVERTED_CHECKLIST", "analises_tecnicas", analysis.id, strip_(analysis), {status:"CONVERTIDA_CHECKLIST", plano_id:saved.plano.id}, clean_(p.user_agent));
   return {converted:true, analise_id:analysis.id, plano:saved.plano, itens:saved.itens};
 }

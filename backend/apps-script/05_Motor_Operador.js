@@ -622,6 +622,15 @@ function operadorIniciarAcao_(p){
     modo_parada_manutencao:policy.modo_configurado,
     atualizado_em:startedAt
   });
+  rows_("ocorrencias_operacionais", true).filter(function(occurrence){
+    return String(occurrence.acao_id) === String(acao.id);
+  }).forEach(function(occurrence){
+    update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+      status:"EM_EXECUCAO",
+      tratamento_status:"EM_EXECUCAO",
+      atualizado_em:startedAt
+    });
+  });
 
   var os = acao.os_id ? find_("ordens_servico","id",acao.os_id) : null;
   if(os && upper_(os.status) === ST.ABERTA){

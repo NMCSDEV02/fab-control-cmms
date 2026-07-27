@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { listTechnicalAreas, listTechnicalRoles } from '../services/api/admin'
+import { listAdminUsers, listTechnicalRoles } from '../services/api/admin'
 import { actionAdminEntity, listAdminEntity } from '../services/api/catalog'
 import {
   createAdminChecklistRevision,
@@ -9,9 +9,10 @@ import {
   sendAdminChecklistForValidation,
 } from '../services/api/checklists'
 import { isGestorAuthenticationError } from '../services/api/gestor'
-import type { AdminNotificationTarget, TechnicalArea, TechnicalRole } from '../types/admin'
+import type { AdminNotificationTarget, AdminUser, TechnicalRole } from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminChecklistItem, AdminChecklistPlan, ChecklistResponseType } from '../types/checklists'
+import type { ValidationRouteDraft } from '../types/validation'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -30,6 +31,7 @@ import {
   TrashIcon,
   WrenchIcon,
 } from './Icons'
+import { ValidationPolicySelector } from './ValidationPolicySelector'
 
 interface AdminChecklistBuilderProps {
   onSessionExpired: () => void
@@ -164,7 +166,7 @@ export function AdminChecklistBuilder({
   const [models, setModels] = useState<AdminChecklistPlan[]>([])
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
   const [components, setComponents] = useState<AdminEntityRecord[]>([])
-  const [areas, setAreas] = useState<TechnicalArea[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [roles, setRoles] = useState<TechnicalRole[]>([])
   const [plan, setPlan] = useState<AdminChecklistPlan>(emptyPlan)
   const [items, setItems] = useState<AdminChecklistItem[]>([emptyItem(1)])
@@ -179,9 +181,12 @@ export function AdminChecklistBuilder({
   const [routingOpen, setRoutingOpen] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [routing, setRouting] = useState({
-    area_atual_id: '', cargo_atual_id: '', comentario: '', exige_assinatura: 'SIM',
-    assinaturas_necessarias: 1, exige_segregacao: 'SIM',
+  const [routing, setRouting] = useState<ValidationRouteDraft>({
+    politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+    comentario: '',
+    exige_segregacao: 'SIM',
+    responsavel_atual_id: '',
+    usuarios_validadores: [] as string[],
   })
 
   const handleFailure = useCallback((cause: unknown, fallback: string) => {
@@ -193,14 +198,14 @@ export function AdminChecklistBuilder({
   }, [onSessionExpired])
 
   const loadWorkspace = useCallback(async (signal?: AbortSignal) => {
-    const [nextModels, assetList, componentList, nextAreas, nextRoles] = await Promise.all([
+    const [nextModels, assetList, componentList, nextUsers, nextRoles] = await Promise.all([
       listAdminChecklistModels(signal), listAdminEntity('ativos', signal), listAdminEntity('componentes', signal),
-      listTechnicalAreas(signal), listTechnicalRoles('', signal),
+      listAdminUsers({ perfil: 'GESTOR', status: 'ATIVO' }, signal), listTechnicalRoles('', signal),
     ])
     setModels(nextModels)
     setAssets(assetList.rows)
     setComponents(componentList.rows)
-    setAreas(nextAreas)
+    setUsers(nextUsers)
     setRoles(nextRoles)
   }, [])
 
@@ -228,10 +233,6 @@ export function AdminChecklistBuilder({
       && (isAvailable(component) || String(component.id) === String(plan.componente_id))
     )),
     [components, plan.ativo_id, plan.componente_id],
-  )
-  const availableRoles = useMemo(
-    () => roles.filter((role) => String(role.area_id) === String(routing.area_atual_id)),
-    [roles, routing.area_atual_id],
   )
   const canEdit = ['RASCUNHO', 'DEVOLVIDO_CORRECAO', ''].includes(String(plan.workflow_status ?? '').toUpperCase())
   const canCreateRevision = normalizedWorkflow(plan.workflow_status) === 'VALIDADO'
@@ -406,8 +407,11 @@ export function AdminChecklistBuilder({
   }
 
   async function sendForValidation() {
-    if (!routing.area_atual_id) {
-      setError('Selecione a área técnica que fará a primeira validação.')
+    if (
+      routing.politica_assinatura === 'PERSONALIZADA' &&
+      !routing.responsavel_atual_id
+    ) {
+      setError('Selecione a pessoa autorizada que fará a validação.')
       return
     }
     if (!routing.comentario.trim()) {
@@ -422,10 +426,9 @@ export function AdminChecklistBuilder({
       await sendAdminChecklistForValidation({
         plano_id: saved.id,
         comentario: routing.comentario.trim(),
-        area_atual_id: routing.area_atual_id,
-        cargo_atual_id: routing.cargo_atual_id,
-        exige_assinatura: routing.exige_assinatura,
-        assinaturas_necessarias: Number(routing.assinaturas_necessarias || 1),
+        politica_assinatura: routing.politica_assinatura,
+        responsavel_atual_id: routing.responsavel_atual_id,
+        usuarios_validadores: routing.usuarios_validadores,
         exige_segregacao: routing.exige_segregacao,
       })
       const nextModels = await listAdminChecklistModels()
@@ -433,7 +436,7 @@ export function AdminChecklistBuilder({
       const sent = nextModels.find((model) => model.id === saved.id)
       setPlan(sent ?? { ...saved, workflow_status: 'EM_VALIDACAO_GESTAO' })
       setRoutingOpen(false)
-      setNotice('Checklist enviado ao filtro técnico. O Operador ainda não recebeu esta programação.')
+      setNotice('Checklist enviado para assinatura de Qualidade/Segurança. O Operador receberá somente após a validação.')
     } catch (cause) {
       handleFailure(cause, 'Não foi possível enviar o checklist para validação.')
     } finally {
@@ -631,7 +634,7 @@ export function AdminChecklistBuilder({
               </section>
 
               <footer className="admin-checklist-actions">
-                <span><CheckIcon /><small>Salvar mantém o modelo em rascunho inativo. Somente a aprovação do Gestor libera ao Operador.</small></span>
+                <span><CheckIcon /><small>Salvar mantém o modelo em rascunho. A assinatura técnica libera esta versão.</small></span>
                 {canEdit ? <div><button type="button" disabled={saving || sending} onClick={() => void saveModel()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button><button className="primary-button" type="button" disabled={saving || sending} onClick={() => { setError(''); setRoutingOpen(true) }}>Enviar para validação</button></div> : canCreateRevision ? <div><button className="primary-button" type="button" disabled={libraryBusy} onClick={() => void createRevision(plan.id)}>{libraryBusy ? 'Criando revisão…' : 'Criar nova revisão'}</button></div> : null}
               </footer>
             </>
@@ -656,13 +659,10 @@ export function AdminChecklistBuilder({
               <button type="button" disabled={sending} aria-label="Fechar" onClick={() => setRoutingOpen(false)}>×</button>
             </header>
             <div className="admin-checklist-routing">
-              <header><ShieldIcon /><span><strong>Quem deve validar primeiro?</strong><small>O Gestor da área poderá assumir, assinar ou encaminhar a solicitação.</small></span></header>
+              <header><ShieldIcon /><span><strong>Filtro de assinatura</strong><small>Somente os validadores escolhidos poderão aprovar esta versão.</small></span></header>
               {error ? <div className="dashboard-error" role="alert"><strong>Revise o envio.</strong><span>{error}</span></div> : null}
               <div>
-                <label><span>Área responsável *</span><select value={routing.area_atual_id} onChange={(event) => setRouting((current) => ({ ...current, area_atual_id: event.target.value, cargo_atual_id: '' }))}><option value="">Selecione a área…</option>{areas.map((area) => <option value={area.id} key={area.id}>{area.codigo} · {area.nome}</option>)}</select></label>
-                <label><span>Cargo técnico</span><select value={routing.cargo_atual_id} onChange={(event) => setRouting((current) => ({ ...current, cargo_atual_id: event.target.value }))}><option value="">Qualquer gestor da área</option>{availableRoles.map((role) => <option value={role.id} key={role.id}>{role.nome}{String(role.pode_assinar).toUpperCase() === 'SIM' ? ' · pode assinar' : ''}</option>)}</select></label>
-                <label><span>Exigir assinatura</span><select value={routing.exige_assinatura} onChange={(event) => setRouting((current) => ({ ...current, exige_assinatura: event.target.value }))}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-                <label><span>Quantidade de assinaturas</span><select disabled={routing.exige_assinatura !== 'SIM'} value={routing.assinaturas_necessarias} onChange={(event) => setRouting((current) => ({ ...current, assinaturas_necessarias: Number(event.target.value) }))}><option value="1">1 assinatura</option><option value="2">2 assinaturas</option><option value="3">3 assinaturas</option></select></label>
+                <ValidationPolicySelector value={routing} users={users} roles={roles} onChange={setRouting} />
                 <label><span>Separar criador e aprovador</span><select value={routing.exige_segregacao} onChange={(event) => setRouting((current) => ({ ...current, exige_segregacao: event.target.value }))}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
                 <label className="is-wide"><span>Orientação ao Gestor *</span><textarea rows={3} value={routing.comentario} onChange={(event) => setRouting((current) => ({ ...current, comentario: event.target.value }))} placeholder="Explique o risco, o objetivo e os pontos que precisam ser validados." /></label>
               </div>

@@ -39,6 +39,7 @@ function gestorDetalheAcao_(p){
 function gestorValidarAcao_(p){
   req_(p,["acao_id","decisao"]);
   var auth = p.__auth || {};
+  technicalAssertValidationIdentity_(auth);
   var acao = find_("os_acoes","id",p.acao_id);
   if(!acao) err_("ACTION_NOT_FOUND","Ação não encontrada.",404);
 
@@ -65,6 +66,17 @@ function gestorValidarAcao_(p){
   var novo = dec === "APROVAR" ? ST.CONCLUIDA : ST.PENDENTE;
   update_("os_acoes", acao.__rowIndex, {status:novo, atualizado_em:now_()});
   acao.status = novo;
+  if(dec === "APROVAR"){
+    rows_("ocorrencias_operacionais", true).filter(function(occurrence){
+      return String(occurrence.acao_id) === String(acao.id);
+    }).forEach(function(occurrence){
+      update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+        status:ST.FINALIZADA,
+        tratamento_status:"FINALIZADA",
+        atualizado_em:now_()
+      });
+    });
+  }
   refreshPlanoControleStatus_(acao);
   syncOsStatus_(acao.os_id);
   releaseLocksForAction_(acao.id, "VALIDACAO_GESTOR");

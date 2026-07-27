@@ -11,12 +11,13 @@ export interface AppNavigationProps {
   active: GestorSection
   validationCount: number
   showAdmin: boolean
+  canValidate: boolean
   onNavigate: (section: GestorSection) => void
 }
 
 const ITEMS = [
-  { id: 'home' as const, label: 'Fila', Icon: ValidationIcon },
-  { id: 'validations' as const, label: 'Indicadores', Icon: ChartIcon },
+  { id: 'home' as const, label: 'Validar', Icon: ValidationIcon },
+  { id: 'validations' as const, label: 'Acompanhar', Icon: ChartIcon },
   { id: 'assets' as const, label: 'Ativos', Icon: AssetIcon },
   { id: 'admin' as const, label: 'Admin', Icon: UsersIcon },
   { id: 'more' as const, label: 'Conta', Icon: UsersIcon },
@@ -26,9 +27,14 @@ export function AppNavigation({
   active,
   validationCount,
   showAdmin,
+  canValidate,
   onNavigate,
 }: AppNavigationProps) {
-  const visibleItems = ITEMS.filter((item) => item.id !== 'admin' || showAdmin)
+  const visibleItems = ITEMS.filter((item) => {
+    if (item.id === 'admin') return showAdmin
+    if (item.id === 'home') return canValidate
+    return true
+  })
   return (
     <nav className={`app-navigation app-navigation--${visibleItems.length}`} aria-label="Navegação principal do gestor">
       {visibleItems.map(({ id, label, Icon }) => (

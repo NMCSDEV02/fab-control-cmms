@@ -44,16 +44,19 @@ vm.runInContext(
         usuarios: [
           {id:'USR-ADMIN',nome:'Admin',perfil:'ADMIN',status:'ATIVO',area_id:'',cargo_id:'',__rowIndex:2},
           {id:'USR-QUALIDADE',nome:'Gestora Qualidade',perfil:'GESTOR',status:'ATIVO',area_id:'AREA-QUALIDADE',cargo_id:'CARGO-QUALIDADE',__rowIndex:3},
-          {id:'USR-MANUTENCAO',nome:'Gestor Manutencao',perfil:'GESTOR',status:'ATIVO',area_id:'AREA-MANUTENCAO',cargo_id:'CARGO-MANUTENCAO',__rowIndex:4},
-          {id:'USR-OPERADOR',nome:'Operador',perfil:'OPERADOR',status:'ATIVO',area_id:'',cargo_id:'',__rowIndex:5}
+          {id:'USR-SEGURANCA',nome:'Gestor Seguranca',perfil:'GESTOR',status:'ATIVO',area_id:'AREA-SEGURANCA',cargo_id:'CARGO-SEGURANCA',__rowIndex:4},
+          {id:'USR-MANUTENCAO',nome:'Gestor Manutencao',perfil:'GESTOR',status:'ATIVO',area_id:'AREA-MANUTENCAO',cargo_id:'CARGO-MANUTENCAO',__rowIndex:5},
+          {id:'USR-OPERADOR',nome:'Operador',perfil:'OPERADOR',status:'ATIVO',area_id:'',cargo_id:'',__rowIndex:6}
         ],
         areas_tecnicas: [
           {id:'AREA-QUALIDADE',codigo:'QUALIDADE',nome:'Qualidade',status:'ATIVO',exige_assinatura_padrao:'SIM',__rowIndex:2},
-          {id:'AREA-MANUTENCAO',codigo:'MANUTENCAO',nome:'Manutencao',status:'ATIVO',exige_assinatura_padrao:'NAO',__rowIndex:3}
+          {id:'AREA-SEGURANCA',codigo:'SEGURANCA',nome:'Seguranca',status:'ATIVO',exige_assinatura_padrao:'SIM',__rowIndex:3},
+          {id:'AREA-MANUTENCAO',codigo:'MANUTENCAO',nome:'Manutencao',status:'ATIVO',exige_assinatura_padrao:'NAO',__rowIndex:4}
         ],
         cargos_tecnicos: [
           {id:'CARGO-QUALIDADE',area_id:'AREA-QUALIDADE',nome:'Inspetor',status:'ATIVO',pode_assinar:'SIM',__rowIndex:2},
-          {id:'CARGO-MANUTENCAO',area_id:'AREA-MANUTENCAO',nome:'Tecnico',status:'ATIVO',pode_assinar:'SIM',__rowIndex:3}
+          {id:'CARGO-SEGURANCA',area_id:'AREA-SEGURANCA',nome:'Tecnico de Seguranca',status:'ATIVO',pode_assinar:'SIM',__rowIndex:3},
+          {id:'CARGO-MANUTENCAO',area_id:'AREA-MANUTENCAO',nome:'Tecnico',status:'ATIVO',pode_assinar:'NAO',__rowIndex:4}
         ],
         sla_politicas: [{id:'SLA-ALTA',tipo_demanda:'',prioridade:'ALTA',area_id:'',resposta_minutos:30,resolucao_minutos:240,status:'ATIVO',__rowIndex:2}],
         demandas_tecnicas: [], demanda_tramitacoes: [], assinaturas_tecnicas: [],
@@ -87,22 +90,54 @@ vm.runInContext(
 const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
   var admin = {usuario_id:'USR-ADMIN',perfil:'ADMIN',nome:'Admin'};
   var quality = {usuario_id:'USR-QUALIDADE',perfil:'GESTOR',nome:'Gestora Qualidade'};
+  var safety = {usuario_id:'USR-SEGURANCA',perfil:'GESTOR',nome:'Gestor Seguranca'};
   var maintenance = {usuario_id:'USR-MANUTENCAO',perfil:'GESTOR',nome:'Gestor Manutencao'};
 
   var sent = adminDemandasTecnicasEnviar_({demanda:{
     tipo:'VALIDACAO_CHECKLIST', entidade_tipo:'CHECKLIST_MODELO', entidade_id:'PLN-1',
-    titulo:'Validar inspecao critica', descricao:'Requer assinatura da qualidade', prioridade:'ALTA',
-    area_atual_id:'AREA-QUALIDADE', cargo_atual_id:'CARGO-QUALIDADE', exige_segregacao:true,
+    titulo:'Validar inspecao critica', descricao:'Requer qualidade e seguranca', prioridade:'ALTA',
+    politica_assinatura:'QUALIDADE_E_SEGURANCA', exige_segregacao:true,
     versao_entidade:'2'
   },__auth:admin}, admin);
   var demandId = sent.demanda.id;
   var qualityQueueBefore = gestorDemandasListar_({}, quality).demandas;
+  var safetyQueueBefore = gestorDemandasListar_({}, safety).demandas;
   var maintenanceQueueBefore = gestorDemandasListar_({}, maintenance).demandas;
-  gestorDemandaAssumir_({demanda_id:demandId}, quality);
-  gestorDemandaAssinar_({demanda_id:demandId,declaracao:'Conformidade de qualidade verificada.'}, quality);
-  gestorDemandaEncaminhar_({demanda_id:demandId,para_area_id:'AREA-MANUTENCAO',para_cargo_id:'CARGO-MANUTENCAO',motivo:'Liberacao final pela manutencao.'}, quality);
-  var maintenanceQueueAfter = gestorDemandasListar_({}, maintenance).demandas;
-  var decision = gestorDemandaDecidir_({demanda_id:demandId,decisao:'LIBERAR_OPERACAO',parecer:'Checklist seguro e tecnicamente executavel.'}, maintenance);
+  var sharedClaim = gestorDemandaAssumir_({demanda_id:demandId}, quality);
+  var safetyQueueAfterSharedClaim = gestorDemandasListar_({}, safety).demandas;
+  var forwardError = '';
+  try{
+    gestorDemandaEncaminhar_({
+      demanda_id:demandId,
+      para_area_id:'AREA-MANUTENCAO',
+      para_cargo_id:'CARGO-MANUTENCAO',
+      motivo:'Tentativa de retirar o documento do filtro.'
+    }, quality);
+  } catch(error){
+    forwardError = error.code || error.message;
+  }
+  var maintenanceValidationError = '';
+  try{
+    gestorDemandaValidar_({demanda_id:demandId,parecer:'Tentativa indevida da manutencao.'}, maintenance);
+  } catch(error){
+    maintenanceValidationError = error.code || error.message;
+  }
+  var qualityValidation = gestorDemandaValidar_({
+    demanda_id:demandId,
+    parecer:'Conformidade e criterios de qualidade verificados.'
+  }, quality);
+  var planAfterFirstSignature = Object.assign({}, find_('planos_manutencao','id','PLN-1'));
+  var duplicateQualityValidation = gestorDemandaValidar_({
+    demanda_id:demandId,
+    parecer:'Conformidade e criterios de qualidade verificados.'
+  }, quality);
+  var signatureCountAfterDuplicate = rows_('assinaturas_tecnicas').length;
+  var safetyValidation = gestorDemandaValidar_({
+    demanda_id:demandId,
+    parecer:'Riscos, bloqueios e requisitos de seguranca verificados.'
+  }, safety);
+  var qualityQueueAfter = gestorDemandasListar_({}, quality).demandas;
+  var safetyQueueAfter = gestorDemandasListar_({}, safety).demandas;
 
   var analysis = gestorAnaliseSalvar_({analise:{
     ocorrencia_id:'OCR-1',titulo:'Analise de vibracao',diagnostico:'Desalinhamento provavel',
@@ -120,8 +155,8 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
       evidencias_requeridas:['Leitura final'],
       criterio_aceite:'Vibracao dentro da faixa aprovada.'
     }
-  }}, quality);
-  gestorAnaliseEnviarAdmin_({analise_id:analysis.analise.id}, quality);
+  }}, maintenance);
+  gestorAnaliseEnviarAdmin_({analise_id:analysis.analise.id}, maintenance);
 
   var interventionSaved = adminIntervencaoSalvar_({dados:{
     ativo_id:'ATV-1',componente_id:'CMP-1',plano_id:'PLN-1',tipo:'CORRETIVA',titulo:'Corrigir vibracao',
@@ -130,12 +165,13 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
   }}, admin);
   var actionsBeforeRelease = rows_('os_acoes').length;
   var interventionSent = adminIntervencaoEnviarValidacao_({
-    intervencao_id:interventionSaved.intervencao.id,area_atual_id:'AREA-MANUTENCAO',
-    cargo_atual_id:'CARGO-MANUTENCAO',comentario:'Validar risco e liberar execucao.',
-    exige_assinatura:'NAO',exige_segregacao:'SIM'
+    intervencao_id:interventionSaved.intervencao.id,
+    politica_assinatura:'QUALIDADE',
+    comentario:'Validar conformidade e liberar execucao.',
+    exige_segregacao:'SIM'
   }, admin);
-  var interventionDecision = gestorDemandaDecidir_({
-    demanda_id:interventionSent.demanda.id,decisao:'LIBERAR_OPERACAO',
+  var interventionDecision = gestorDemandaValidar_({
+    demanda_id:interventionSent.demanda.id,
     parecer:'Intervencao segura e liberada para o operador.',
     relatorio_tecnico:{
       situacao:'Vibracao elevada no acoplamento',
@@ -153,16 +189,26 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
       evidencias_requeridas:['Medicao antes e depois'],
       criterio_aceite:'Vibracao dentro do limite tecnico.'
     }
-  }, maintenance);
+  }, quality);
   var interventionOrder = find_('ordens_servico','id',interventionSaved.intervencao.id);
   var interventionAction = rows_('os_acoes').find(function(item){ return String(item.os_id) === String(interventionOrder.id); });
 
   return {
     demandId:demandId,
     qualityQueueBefore:qualityQueueBefore.length,
+    safetyQueueBefore:safetyQueueBefore.length,
     maintenanceQueueBefore:maintenanceQueueBefore.length,
-    maintenanceQueueAfter:maintenanceQueueAfter.length,
-    decision:decision,
+    sharedClaim:sharedClaim,
+    safetyQueueAfterSharedClaim:safetyQueueAfterSharedClaim.length,
+    forwardError:forwardError,
+    maintenanceValidationError:maintenanceValidationError,
+    qualityValidation:qualityValidation,
+    duplicateQualityValidation:duplicateQualityValidation,
+    signatureCountAfterDuplicate:signatureCountAfterDuplicate,
+    safetyValidation:safetyValidation,
+    qualityQueueAfter:qualityQueueAfter.length,
+    safetyQueueAfter:safetyQueueAfter.length,
+    planAfterFirstSignature:planAfterFirstSignature,
     demand:find_('demandas_tecnicas','id',demandId),
     plan:find_('planos_manutencao','id','PLN-1'),
     signatures:rows_('assinaturas_tecnicas'),
@@ -178,16 +224,30 @@ const result = JSON.parse(vm.runInContext(`JSON.stringify((function(){
 })())`, context))
 
 assert(result.qualityQueueBefore === 1, 'Qualidade não recebeu a demanda do administrador')
-assert(result.maintenanceQueueBefore === 0, 'Manutenção viu demanda antes do encaminhamento')
-assert(result.maintenanceQueueAfter === 1, 'Manutenção não recebeu a demanda encaminhada')
-assert(result.signatures.length === 1, 'assinatura técnica não foi persistida')
+assert(result.safetyQueueBefore === 1, 'Segurança não recebeu a demanda do administrador')
+assert(result.maintenanceQueueBefore === 0, 'Manutenção recebeu documento reservado aos validadores')
+assert(result.sharedClaim.shared_queue === true, 'uma pessoa conseguiu reservar uma validação compartilhada')
+assert(result.safetyQueueAfterSharedClaim === 1, 'assumir a demanda ocultou a fila da outra área obrigatória')
+assert(result.forwardError === 'TECH_VALIDATION_FORWARD_DISABLED', 'documento saiu do filtro definido pelo Administrador')
+assert(
+  ['TECH_DEMAND_FORBIDDEN', 'TECH_VALIDATOR_NOT_ALLOWED'].includes(result.maintenanceValidationError),
+  'Manutenção conseguiu assinar um documento técnico',
+)
+assert(result.qualityValidation.completed === false, 'primeira assinatura liberou uma política que exige ambas')
+assert(result.duplicateQualityValidation.already_validated === true, 'repetição da assinatura não foi idempotente')
+assert(result.signatureCountAfterDuplicate === 1, 'repetição criou uma segunda assinatura')
+assert(result.planAfterFirstSignature.status === 'INATIVO', 'checklist foi ativado antes de todas as assinaturas')
+assert(result.safetyValidation.completed === true, 'assinatura de Segurança não concluiu a validação')
+assert(result.qualityQueueAfter === 0 && result.safetyQueueAfter === 0, 'documento finalizado permaneceu na fila')
+assert(result.signatures.length === 3, 'assinaturas permanentes dos dois documentos não foram persistidas')
 assert(result.signatures[0].payload_hash === result.demand.payload_hash, 'assinatura não corresponde à versão/hash da demanda')
-assert(result.transitions.length === 5, 'trilha deveria conter envio, aceite, assinatura, encaminhamento e decisão')
-assert(result.demand.status === 'LIBERADA_OPERACAO', 'demanda não foi liberada ao operador')
+assert(result.transitions.length === 3, 'trilha deveria conter apenas envio, assinatura parcial e assinatura final')
+assert(result.demand.status === 'APROVADA_TECNICAMENTE', 'checklist não foi aprovado pelo filtro técnico')
 assert(result.plan.status === 'ATIVO' && result.plan.workflow_status === 'VALIDADO', 'plano não foi ativado após aprovação')
 assert(result.analysis.status === 'ENVIADA_ADMIN', 'análise de ocorrência não chegou ao administrador')
 assert(JSON.parse(result.analysis.relatorio_tecnico_json).etapas.length === 1, 'análise estruturada não foi persistida')
-assert(result.occurrence.status === 'ANALISADA_TECNICAMENTE', 'ocorrência não foi encerrada pela análise')
+assert(result.occurrence.status === 'EM_TRATAMENTO_ADMIN', 'ocorrência não sinalizou tratamento administrativo')
+assert(result.occurrence.tratamento_status === 'AGUARDANDO_ADMIN', 'operador não recebeu o estado de tratamento da ocorrência')
 assert(result.adminNotifications.length >= 2, 'administrador não recebeu decisão e análise')
 assert(result.actionsBeforeRelease === 0, 'rascunho administrativo apareceu ao Operador antes da validação')
 assert(result.interventionDecision.demanda.status === 'LIBERADA_OPERACAO', 'intervenção não recebeu liberação técnica')
@@ -199,6 +259,6 @@ assert(JSON.parse(result.interventionOrder.analise_tecnica_json).etapas.length =
 assert(result.interventionAction.analise_tecnica_json === result.interventionOrder.analise_tecnica_json, 'briefing não chegou à ação do Operador')
 
 console.log('FLUXO TÉCNICO E2E EM MEMÓRIA APROVADO')
-console.log('ADMIN → QUALIDADE (assinatura) → MANUTENÇÃO (liberação) → OPERADOR')
-console.log('OPERADOR (ocorrência) → GESTOR (análise) → ADMIN')
-console.log('ADMIN (intervenção) → GESTOR (liberação) → OPERADOR (ação pendente)')
+console.log('ADMIN → QUALIDADE + SEGURANÇA (assinaturas permanentes) → CHECKLIST APROVADO')
+console.log('OPERADOR (ocorrência) → PERFIL TÉCNICO (análise) → ADMIN')
+console.log('ADMIN (intervenção) → QUALIDADE (assinatura) → OPERADOR (ação pendente)')

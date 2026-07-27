@@ -13,6 +13,7 @@ const workspace = read('frontend-gestor/src/components/AdminWorkspace.tsx')
 const page = read('frontend-gestor/src/pages/AdminPage.tsx')
 const catalog = read('frontend-gestor/src/components/AdminCatalogWorkspace.tsx')
 const checklist = read('frontend-gestor/src/components/AdminChecklistBuilder.tsx')
+const validationPolicy = read('frontend-gestor/src/components/ValidationPolicySelector.tsx')
 const checklistApi = read('frontend-gestor/src/services/api/checklists.ts')
 const catalogApi = read('frontend-gestor/src/services/api/catalog.ts')
 const adminApi = read('frontend-gestor/src/services/api/admin.ts')
@@ -81,10 +82,15 @@ assert(styles.includes('.admin-status-plan') && styles.includes('.admin-command-
 assert(styles.includes('.admin-desktop-window-layer') && styles.includes('pointer-events: none'), 'camada vazia das janelas bloqueia os botoes iniciais')
 assert(styles.includes('.admin-app-window') && styles.includes('pointer-events: auto'), 'janelas perderam interacao ao liberar o canvas inicial')
 
-for (const moduleId of ['structure', 'assets', 'checklists', 'maintenance', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup', 'imports', 'configuration', 'users', 'permissions']) {
+for (const moduleId of ['structure', 'assets', 'checklists', 'inventory', 'workforce', 'operations', 'analytics', 'documents', 'governance', 'backup', 'imports', 'configuration', 'users', 'permissions']) {
   assert(workspace.includes(`id: '${moduleId}'`), `módulo ausente na navegação: ${moduleId}`)
   assert(page.includes(`tab === '${moduleId}'`), `módulo sem conteúdo: ${moduleId}`)
 }
+assert(
+  workspace.includes("module === 'maintenance' ? 'operations' : module") &&
+    page.includes("tab === 'operations' || tab === 'maintenance'"),
+  'atalhos legados de manutenção não são redirecionados para a área unificada',
+)
 
 for (const desktopContract of ['admin-desktop-shell', 'admin-desktop-command', 'admin-desktop-rail', 'admin-app-window', 'admin-window-manager', 'admin-command-palette']) {
   assert(workspace.includes(desktopContract), `shell desktop sem ${desktopContract}`)
@@ -105,7 +111,7 @@ assert(!workspace.includes('vFinal Enterprise'), 'tela inicial ainda exibe marca
 assert(workspace.includes('CENTRAL DE AJUDA'), 'ajuda nao possui apresentacao de produto final')
 assert(workspace.includes('Em caso de dúvida, acesse a Central de Ajuda'), 'tela inicial nao direciona duvidas ao botao de ajuda')
 const railIcons = [...workspace.matchAll(/id: '[^']+'.+?Icon: (\w+)Icon/g)].map((match) => match[1])
-assert(railIcons.length === 16, 'catálogo do rail não contém os 16 módulos esperados')
+assert(railIcons.length === 15, 'catálogo do rail não contém os 15 módulos unificados esperados')
 assert(new Set(railIcons).size === railIcons.length, 'rail repete ícones entre módulos')
 assert(styles.includes('.admin-desktop-workspace'), 'canvas do Workspace não foi estilizado')
 assert(styles.includes('resize: both'), 'janelas administrativas não podem ser redimensionadas')
@@ -161,11 +167,17 @@ assert(catalog.includes('Selecione o campo anterior…'), 'dropdown dependente n
 for (const action of ['admin.listar_modelos_checklist', 'admin.detalhe_modelo_checklist', 'admin.salvar_modelo_checklist', 'admin.enviar_modelo_checklist_validacao', 'admin.criar_revisao_modelo_checklist']) {
   assert(checklistApi.includes(`'${action}'`), `cliente de checklist não usa ${action}`)
 }
-for (const assistedField of ['Ativo *', 'Componente', 'Tipo de resposta', 'Área responsável *', 'Cargo técnico', 'Exigir assinatura']) {
+for (const assistedField of ['Ativo *', 'Componente', 'Tipo de resposta']) {
   assert(checklist.includes(assistedField), `campo assistido ausente: ${assistedField}`)
 }
+assert(checklist.includes('<ValidationPolicySelector'), 'checklist não oferece política assistida de validação')
 assert(checklist.includes('availableComponents'), 'componentes não são filtrados pelo ativo')
-assert(checklist.includes('availableRoles'), 'cargos não são filtrados pela área')
+assert(
+  validationPolicy.includes("role.pode_assinar") &&
+    validationPolicy.includes("user.perfil === 'GESTOR'") &&
+    validationPolicy.includes("user.status === 'ATIVO'"),
+  'validador personalizado não é filtrado por cargo, perfil e status',
+)
 assert(checklist.includes('saveModel()'), 'envio não garante rascunho salvo')
 assert(checklist.includes('Nova revisão') && checklist.includes('Criar nova revisão'), 'biblioteca não oferece revisão formal')
 assert(checklist.includes('Excluir rascunho'), 'biblioteca não oferece exclusão protegida de rascunho')
@@ -180,14 +192,15 @@ for (const action of ['admin.intervencoes.listar', 'admin.intervencoes.salvar', 
   assert(interventionsApi.includes(`'${action}'`), `cliente de intervenção não usa ${action}`)
   assert(router.includes(`case "${action}"`), `rota de intervenção ausente: ${action}`)
 }
-assert(interventions.includes('Área responsável *'), 'intervenção não usa dropdown de área')
-assert(interventions.includes('routeRoles'), 'cargo da intervenção não é filtrado pela área')
+assert(interventions.includes('<ValidationPolicySelector'), 'intervenção não oferece política assistida de validação')
+assert(interventions.includes('politica_assinatura'), 'intervenção não envia a política de assinatura')
 assert(interventionsBackend.includes('O rascunho não cria os_acoes'), 'rascunho pode vazar ao Operador')
 assert(interventionsBackend.indexOf('append_("os_acoes"') > interventionsBackend.indexOf('adminIntervencaoLiberarOperacao_'), 'ação não está restrita à liberação')
 assert(analyticsApi.includes("'cmms.kpis_tecnicos'"), 'painel administrativo não consulta KPIs técnicos')
-for (const metric of ['MTTR', 'MTBF', 'Lead time de OS', 'SLA resposta', 'OEE']) {
+for (const metric of ['MTTR', 'MTBF', 'Lead time de OS', 'SLA resposta', 'CONFIABILIDADE']) {
   assert(analytics.includes(metric), `indicador ausente no Admin: ${metric}`)
 }
+assert(!analytics.includes('>OEE</span>'), 'Admin exibe OEE sem base de produção')
 assert(analytics.includes('Sem amostra'), 'ausência de dados pode ser confundida com zero')
 assert(analytics.includes('Exportar CSV'), 'relatório exportável ausente')
 for (const action of ['admin.documentos.listar', 'admin.documentos.detalhe', 'admin.documentos.upload', 'admin.documentos.atualizar', 'admin.auditoria.listar', 'admin.monitoramento.estado', 'admin.backups.listar', 'admin.backups.criar', 'admin.backups.preparar_restauracao', 'admin.backups.confirmar_restauracao']) {
@@ -215,4 +228,4 @@ assert(styles.includes('.admin-governance-table'), 'governança sem layout de Co
 
 console.log('CONTRATO DO COMMAND WORKSPACE APROVADO')
 console.log('15 módulos funcionais, cadastros assistidos, documentos, backup, intervenções e KPI conferidos')
-console.log('Vínculos, concorrência, auditoria e workflow Admin -> Gestor -> Operador protegidos')
+console.log('Vínculos, concorrência, auditoria e workflow Admin -> Validador -> Operador protegidos')

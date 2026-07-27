@@ -1,4 +1,5 @@
 import type { AdminEntityRecord } from './catalog'
+import type { ValidationRouteDraft } from './validation'
 
 export type ChecklistResponseType =
   | 'CONFIRMACAO'
@@ -77,14 +78,8 @@ export interface AdminChecklistSaveResult {
   workflow_status: string
 }
 
-export interface AdminChecklistSendInput {
+export interface AdminChecklistSendInput extends ValidationRouteDraft {
   plano_id: string
-  comentario: string
-  area_atual_id: string
-  cargo_atual_id?: string
-  exige_assinatura: string
-  assinaturas_necessarias: number
-  exige_segregacao: string
 }
 
 export interface AdminChecklistSendResult {

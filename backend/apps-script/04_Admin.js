@@ -77,7 +77,7 @@ const ADMIN_PERMISSION_CAPABILITIES = [
     descricao:"Assume, encaminha, assina e decide demandas conforme área, cargo e escopo.",
     perfis:[ROLE.GESTOR],
     padrao:[ROLE.GESTOR],
-    acoes:["gestor.contexto_tecnico","gestor.demandas.listar","gestor.demandas.detalhe","gestor.demandas.assumir","gestor.demandas.encaminhar","gestor.demandas.assinar","gestor.demandas.decidir","gestor.notificacoes.listar","gestor.notificacoes.marcar_lida"]
+    acoes:["gestor.contexto_tecnico","gestor.demandas.listar","gestor.demandas.detalhe","gestor.demandas.assumir","gestor.demandas.encaminhar","gestor.demandas.assinar","gestor.demandas.validar","gestor.demandas.decidir","gestor.notificacoes.listar","gestor.notificacoes.marcar_lida"]
   },
   {
     id:"EMITIR_ANALISE_TECNICA",

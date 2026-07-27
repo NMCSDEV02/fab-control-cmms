@@ -23,6 +23,7 @@ import {
   type GestorSession,
 } from '../services/api/auth'
 import {
+  getGestorTechnicalContext,
   getUnreadNotificationCount,
   isGestorAuthenticationError,
 } from '../services/api/gestor'
@@ -36,6 +37,7 @@ import {
 } from '../services/auth/session'
 import type {
   GestorNotification,
+  GestorTechnicalContext,
   GestorWorkView,
 } from '../types/gestor'
 
@@ -55,6 +57,8 @@ export function App() {
   const [notificationOpen, setNotificationOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [workspaceReady, setWorkspaceReady] = useState(hasCompletedStartup)
+  const [technicalContext, setTechnicalContext] =
+    useState<GestorTechnicalContext | null>(null)
   const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
   const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
 
@@ -90,6 +94,21 @@ export function App() {
   }, [expireSession, isAdmin, isSystem, session, workspaceReady])
 
   useEffect(() => {
+    if (!session || isAdmin || isSystem || !workspaceReady) return
+    const controller = new AbortController()
+    void getGestorTechnicalContext(controller.signal)
+      .then((context) => {
+        setTechnicalContext(context)
+        if (!context.pode_validar) setSection('validations')
+      })
+      .catch((cause) => {
+        if (controller.signal.aborted) return
+        if (isGestorAuthenticationError(cause)) expireSession()
+      })
+    return () => controller.abort()
+  }, [expireSession, isAdmin, isSystem, session, workspaceReady])
+
+  useEffect(() => {
     if (!session) return
 
     const remaining = session.expiresAt - Date.now()
@@ -119,6 +138,7 @@ export function App() {
     setAnalyticsFocusAsset('')
     setAnalyticsFocusOccurrence('')
     setNotificationCount(0)
+    setTechnicalContext(null)
     setWorkspaceReady(false)
   }
 
@@ -198,6 +218,7 @@ export function App() {
       setSection('home')
       setNotificationOpen(false)
       setNotificationCount(0)
+      setTechnicalContext(null)
       setWorkspaceReady(false)
       if (systemSession) leaveMaintenanceEntry()
       setLoggingOut(false)
@@ -258,7 +279,11 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">FC</span>
           <div>
             <strong>Fab Control</strong>
-            <span>Workspace do gestor</span>
+            <span>
+              {technicalContext?.pode_validar
+                ? `Validação · ${technicalContext.identidade.area_nome}`
+                : `Acompanhamento · ${technicalContext?.identidade.area_nome || 'Área técnica'}`}
+            </span>
           </div>
         </div>
 
@@ -315,14 +340,16 @@ export function App() {
             focusAssetId={analyticsFocusAsset}
             focusOccurrenceId={analyticsFocusOccurrence}
             onOpenDecision={(kind, id) => {
+              if (kind === 'occurrence') {
+                handleOpenAnalytics('', id)
+                return
+              }
               const view: GestorWorkView =
                 kind === 'action'
                   ? 'actions'
                   : kind === 'model'
                     ? 'models'
-                    : kind === 'occurrence'
-                      ? 'operations'
-                      : 'demands'
+                    : 'demands'
               handleOpenDecision(view, { kind, id })
             }}
             onSessionExpired={expireSession}
@@ -340,6 +367,7 @@ export function App() {
         active={section}
         validationCount={validationCount}
         showAdmin={false}
+        canValidate={technicalContext?.pode_validar ?? false}
         onNavigate={handleNavigate}
       />
 

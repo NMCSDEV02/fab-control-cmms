@@ -224,6 +224,24 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const openOccurrences = context?.ocorrencias_abertas ?? []
   const visibleOccurrences = openOccurrences.slice(0, visibleOccurrenceCount)
   const hasMoreOccurrences = visibleOccurrenceCount < openOccurrences.length
+
+  function occurrenceTreatmentLabel(status?: string, treatmentStatus?: string): string {
+    const value = String(treatmentStatus || status || '').trim().toUpperCase()
+    const labels: Record<string, string> = {
+      AGUARDANDO_ANALISE: 'Enviada para análise',
+      EM_ANALISE_TECNICA: 'Em análise técnica',
+      AGUARDANDO_ADMIN: 'Em tratamento pelo Admin',
+      EM_TRATAMENTO_ADMIN: 'Em tratamento pelo Admin',
+      CHECKLIST_EM_PREPARACAO: 'Checklist em preparação',
+      EM_PREPARACAO_CHECKLIST: 'Checklist em preparação',
+      AGUARDANDO_ASSINATURA: 'Aguardando validação',
+      EM_VALIDACAO_TECNICA: 'Aguardando validação',
+      LIBERADA_OPERACAO: 'Ação liberada',
+      EM_EXECUCAO: 'Execução em andamento',
+      FINALIZADA: 'Tratamento concluído',
+    }
+    return labels[value] || 'Tratamento registrado'
+  }
   const availableActions = useMemo(() => {
     const candidates = context?.acoes_pendentes?.length
       ? context.acoes_pendentes
@@ -1136,8 +1154,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         <section className="content-section occurrence-compact">
           <div className="section-heading occurrence-compact__heading">
             <div>
-              <h2>Ocorrências aguardando análise</h2>
-              <p>Registros enviados para gestão e administração.</p>
+              <h2>Ocorrências registradas</h2>
+              <p>Acompanhe o tratamento sem precisar registrar novamente.</p>
             </div>
             <span>{openOccurrences.length}</span>
           </div>
@@ -1157,9 +1175,14 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
                 <article className="occurrence-compact__card" key={item.id}>
                   <div className="occurrence-compact__top">
                     <strong>{item.titulo}</strong>
-                    <span className={`occurrence-compact__severity occurrence-compact__severity--${String(item.severidade || 'MEDIA').toLowerCase()}`}>
-                      {displayName(item.severidade || 'MEDIA')}
-                    </span>
+                    <div>
+                      <span className="occurrence-compact__treatment">
+                        {occurrenceTreatmentLabel(item.status, item.tratamento_status)}
+                      </span>
+                      <span className={`occurrence-compact__severity occurrence-compact__severity--${String(item.severidade || 'MEDIA').toLowerCase()}`}>
+                        {displayName(item.severidade || 'MEDIA')}
+                      </span>
+                    </div>
                   </div>
 
                   <p className={expanded ? 'occurrence-compact__description is-expanded' : 'occurrence-compact__description'}>

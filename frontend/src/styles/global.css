@@ -5413,3 +5413,34 @@ p {
   color: #60747f;
   background: #f7fafb;
 }
+
+.occurrence-compact__top > div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.occurrence-compact__treatment {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #155ab2;
+  background: #eaf3ff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 540px) {
+  .occurrence-compact__top {
+    align-items: flex-start;
+  }
+
+  .occurrence-compact__top > div {
+    justify-content: flex-start;
+  }
+}

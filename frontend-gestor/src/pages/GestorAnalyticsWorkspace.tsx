@@ -20,12 +20,14 @@ import {
   isGestorAuthenticationError,
 } from '../services/api/gestor'
 import { ActionReviewDialog } from '../components/ActionReviewDialog'
+import { TechnicalAnalysisDialog } from '../components/TechnicalAnalysisDialog'
 import type {
   GestorAction,
   GestorAsset,
   GestorAssetCatalog,
   GestorAssetJourney,
   GestorOverview,
+  GestorOccurrence,
   GestorTechnicalKpis,
 } from '../types/gestor'
 
@@ -155,6 +157,8 @@ export function GestorAnalyticsWorkspace({
   const [search, setSearch] = useState('')
   const [selectedHistoryAction, setSelectedHistoryAction] =
     useState<GestorAction | null>(null)
+  const [selectedOccurrence, setSelectedOccurrence] =
+    useState<GestorOccurrence | null>(null)
   const [treatingStopId, setTreatingStopId] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -226,7 +230,10 @@ export function GestorAnalyticsWorkspace({
     const occurrence = overview.occurrences.find(
       (item) => item.id === focusOccurrenceId,
     )
-    if (occurrence?.ativo_id) setAssetId(occurrence.ativo_id)
+    if (occurrence) {
+      if (occurrence.ativo_id) setAssetId(occurrence.ativo_id)
+      setSelectedOccurrence(occurrence)
+    }
     setView('critical')
   }, [focusOccurrenceId, overview])
 
@@ -398,7 +405,7 @@ export function GestorAnalyticsWorkspace({
     setError('')
     try {
       const result = await createGestorStopTreatment(stopId)
-      onOpenDecision('occurrence', result.occurrence.id)
+      setSelectedOccurrence(result.occurrence)
     } catch (cause) {
       if (isGestorAuthenticationError(cause)) {
         onSessionExpired()
@@ -765,7 +772,7 @@ export function GestorAnalyticsWorkspace({
                   <button
                     type="button"
                     key={occurrence.id}
-                    onClick={() => onOpenDecision('occurrence', occurrence.id)}
+                    onClick={() => setSelectedOccurrence(occurrence)}
                   >
                     <AlertIcon />
                     <span>
@@ -805,7 +812,7 @@ export function GestorAnalyticsWorkspace({
                             disabled={!treatmentPending}
                             onClick={() => {
                               if (treatmentPending) {
-                                onOpenDecision('occurrence', treatment.id)
+                                setSelectedOccurrence(treatment)
                               }
                             }}
                           >
@@ -886,6 +893,16 @@ export function GestorAnalyticsWorkspace({
           onClose={() => setSelectedHistoryAction(null)}
           onDecisionComplete={() => undefined}
           onSessionExpired={onSessionExpired}
+        />
+      ) : null}
+      {selectedOccurrence ? (
+        <TechnicalAnalysisDialog
+          occurrence={selectedOccurrence}
+          onClose={() => setSelectedOccurrence(null)}
+          onChanged={async () => {
+            setSelectedOccurrence(null)
+            await load(undefined, true)
+          }}
         />
       ) : null}
     </main>

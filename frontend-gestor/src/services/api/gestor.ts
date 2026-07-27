@@ -410,6 +410,25 @@ export function signGestorTechnicalDemand(
   })
 }
 
+export function validateGestorTechnicalDemand(
+  demandId: string,
+  opinion: string,
+  technicalBrief?: GestorTechnicalBrief,
+): Promise<{
+  validated: boolean
+  already_validated?: boolean
+  completed: boolean
+  assinaturas_pendentes?: number
+  demanda: GestorTechnicalDemand
+}> {
+  return writeGestorData('gestor.demandas.validar', {
+    demanda_id: demandId,
+    parecer: opinion,
+    declaracao: opinion,
+    relatorio_tecnico: technicalBrief,
+  })
+}
+
 export function decideGestorTechnicalDemand(
   demandId: string,
   decision: 'APROVAR' | 'DEVOLVER_ADMIN' | 'LIBERAR_OPERACAO',

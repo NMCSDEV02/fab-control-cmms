@@ -571,6 +571,9 @@ export interface OperatorOccurrenceData {
   perfil?: string
   os_id?: string
   acao_id?: string
+  demanda_tecnica_id?: string
+  analise_tecnica_id?: string
+  tratamento_status?: string
   criado_em?: string
   atualizado_em?: string
 }

@@ -2,19 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActionReviewDialog } from '../components/ActionReviewDialog'
 import { ChecklistModelReviewDialog } from '../components/ChecklistModelReviewDialog'
 import {
-  AlertIcon,
   CheckIcon,
   ChevronRightIcon,
   RefreshIcon,
   SearchIcon,
   ShieldIcon,
 } from '../components/Icons'
-import { TechnicalAnalysisDialog } from '../components/TechnicalAnalysisDialog'
 import { TechnicalDemandDialog } from '../components/TechnicalDemandDialog'
 import {
   getGestorActions,
   getGestorChecklistModels,
-  getGestorOccurrences,
   getGestorTechnicalContext,
   getGestorTechnicalDemands,
   isGestorAuthenticationError,
@@ -24,14 +21,13 @@ import type {
   GestorChecklistModel,
   GestorChecklistModelDecisionResult,
   GestorDecisionResult,
-  GestorOccurrence,
   GestorTechnicalContext,
   GestorTechnicalDemand,
   GestorWorkView,
 } from '../types/gestor'
 
 export interface GestorDecisionFocus {
-  kind?: 'demand' | 'action' | 'model' | 'occurrence'
+  kind?: 'demand' | 'action' | 'model'
   id?: string
 }
 
@@ -65,7 +61,6 @@ interface DecisionItem {
     | GestorTechnicalDemand
     | GestorAction
     | GestorChecklistModel
-    | GestorOccurrence
 }
 
 const PRIORITY_SCORE: Record<string, number> = {
@@ -103,12 +98,6 @@ function formatDate(value?: string): string {
 }
 
 function demandNextStep(demand: GestorTechnicalDemand) {
-  if (!demand.responsavel_atual_id) {
-    return {
-      label: 'Assumir e analisar',
-      detail: 'Confirme a responsabilidade para iniciar o atendimento.',
-    }
-  }
   const pending = Math.max(
     0,
     Number(demand.assinaturas_necessarias ?? 0) -
@@ -116,8 +105,10 @@ function demandNextStep(demand: GestorTechnicalDemand) {
   )
   if (pending > 0) {
     return {
-      label: 'Concluir assinaturas',
-      detail: `${pending} assinatura(s) técnica(s) ainda pendente(s).`,
+      label: 'Revisar e assinar',
+      detail: pending === 1
+        ? 'Sua assinatura pode concluir o filtro técnico.'
+        : `${pending} assinaturas técnicas ainda são necessárias.`,
     }
   }
   if (
@@ -165,7 +156,6 @@ export function GestorDecisionWorkspace({
   const [demands, setDemands] = useState<GestorTechnicalDemand[]>([])
   const [actions, setActions] = useState<GestorAction[]>([])
   const [models, setModels] = useState<GestorChecklistModel[]>([])
-  const [occurrences, setOccurrences] = useState<GestorOccurrence[]>([])
   const [technicalContext, setTechnicalContext] =
     useState<GestorTechnicalContext | null>(null)
   const [activeView, setActiveView] = useState<QueueFilter>('all')
@@ -182,19 +172,16 @@ export function GestorDecisionWorkspace({
   const [selectedAction, setSelectedAction] = useState<GestorAction | null>(null)
   const [selectedModel, setSelectedModel] =
     useState<GestorChecklistModel | null>(null)
-  const [selectedOccurrence, setSelectedOccurrence] =
-    useState<GestorOccurrence | null>(null)
 
   const load = useCallback(async (signal?: AbortSignal, background = false) => {
     if (background) setRefreshing(true)
     else setLoading(true)
     setError('')
     try {
-      const [actionData, modelData, occurrenceData, demandData, contextData] =
+      const [actionData, modelData, demandData, contextData] =
         await Promise.all([
           getGestorActions(signal),
           getGestorChecklistModels(signal),
-          getGestorOccurrences(signal),
           getGestorTechnicalDemands(signal),
           getGestorTechnicalContext(signal),
         ])
@@ -216,14 +203,12 @@ export function GestorDecisionWorkspace({
       )
       setActions(validationActions)
       setModels(standaloneModels)
-      setOccurrences(occurrenceData)
       setDemands(demandData)
       setTechnicalContext(contextData)
       onQueueCountChange(
         demandData.length +
         validationActions.length +
-        standaloneModels.length +
-        occurrenceData.length,
+        standaloneModels.length,
       )
     } catch (cause) {
       if (signal?.aborted) return
@@ -317,26 +302,7 @@ export function GestorDecisionWorkspace({
       createdAt: model.enviado_validacao_em || model.atualizado_em,
       raw: model,
     }))
-    const occurrenceItems = occurrences.map((occurrence): DecisionItem => ({
-      id: occurrence.id,
-      kind: 'occurrence',
-      view: 'operations',
-      title: occurrence.titulo || 'Ocorrência operacional',
-      category: 'Ocorrência',
-      context: occurrence.ativo_id || 'Ativo não informado',
-      description:
-        occurrence.descricao || 'Ocorrência aguardando análise técnica.',
-      priority: upper(occurrence.severidade || 'MEDIA'),
-      status: occurrence.status,
-      nextAction: 'Analisar ocorrência',
-      nextDetail: 'Veja o histórico do ativo e gere uma recomendação assistida.',
-      overdue: false,
-      assetId: occurrence.ativo_id,
-      createdAt: occurrence.criado_em,
-      raw: occurrence,
-    }))
-
-    return [...demandItems, ...actionItems, ...modelItems, ...occurrenceItems]
+    return [...demandItems, ...actionItems, ...modelItems]
       .sort((left, right) => {
         if (left.overdue !== right.overdue) return left.overdue ? -1 : 1
         const priorityDifference =
@@ -347,13 +313,12 @@ export function GestorDecisionWorkspace({
           String(right.createdAt ?? ''),
         )
       })
-  }, [actions, demands, models, occurrences])
+  }, [actions, demands, models])
 
   const counts = useMemo(() => ({
     demands: items.filter((item) => item.view === 'demands').length,
     actions: items.filter((item) => item.view === 'actions').length,
     models: items.filter((item) => item.view === 'models').length,
-    operations: items.filter((item) => item.view === 'operations').length,
   }), [items])
 
   const filteredItems = useMemo(() => items.filter((item) => {
@@ -389,11 +354,25 @@ export function GestorDecisionWorkspace({
     (item) => item.overdue || ['CRITICA', 'CRÍTICA'].includes(item.priority),
   ).length
 
+  if (technicalContext && !technicalContext.pode_validar) {
+    return (
+      <main className="content manager-decision-workspace">
+        <section className="manager-decision-empty">
+          <ShieldIcon />
+          <strong>Perfil de acompanhamento técnico</strong>
+          <span>
+            As assinaturas ficam com Qualidade e Segurança. Use Acompanhar para
+            investigar ativos, parâmetros, paradas e ocorrências.
+          </span>
+        </section>
+      </main>
+    )
+  }
+
   async function changed(message: string) {
     setSelectedDemand(null)
     setSelectedAction(null)
     setSelectedModel(null)
-    setSelectedOccurrence(null)
     setNotice(message)
     await load(undefined, true)
   }
@@ -406,9 +385,6 @@ export function GestorDecisionWorkspace({
     if (item.kind === 'model') {
       setSelectedModel(item.raw as GestorChecklistModel)
     }
-    if (item.kind === 'occurrence') {
-      setSelectedOccurrence(item.raw as GestorOccurrence)
-    }
   }
 
   return (
@@ -416,12 +392,12 @@ export function GestorDecisionWorkspace({
       <main className="content manager-decision-workspace">
         <section className="manager-workspace-heading">
           <div>
-            <span className="eyebrow">MODO DECISÃO</span>
-            <h1>Decisões de hoje</h1>
-            <p>Comece pelo primeiro item. O sistema já organizou o restante.</p>
+            <span className="eyebrow">VALIDAÇÃO TÉCNICA</span>
+            <h1>Documentos para validar</h1>
+            <p>Revise o primeiro documento, assine ou solicite uma correção.</p>
           </div>
           <div className="manager-workspace-heading__status">
-            <span><strong>{items.length}</strong> para decidir</span>
+            <span><strong>{items.length}</strong> pendentes</span>
             <span className={criticalCount ? 'is-critical' : ''}>
               <strong>{criticalCount}</strong> críticos
             </span>
@@ -456,7 +432,7 @@ export function GestorDecisionWorkspace({
               <SearchIcon />
               <input
                 value={search}
-                placeholder="Buscar uma decisão"
+              placeholder="Buscar documento"
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
@@ -484,7 +460,6 @@ export function GestorDecisionWorkspace({
                     <option value="demands">Solicitações ({counts.demands})</option>
                     <option value="actions">Execuções ({counts.actions})</option>
                     <option value="models">Checklists ({counts.models})</option>
-                    <option value="operations">Ocorrências ({counts.operations})</option>
                   </select>
                 </label>
                 <label>
@@ -524,8 +499,8 @@ export function GestorDecisionWorkspace({
           {!loading && !selected ? (
             <div className="manager-decision-empty">
               <CheckIcon />
-              <strong>Nada para decidir agora</strong>
-              <span>Quando algo exigir sua atenção, aparecerá aqui.</span>
+              <strong>Nenhum documento pendente</strong>
+              <span>Quando o Administrador solicitar uma assinatura, aparecerá aqui.</span>
             </div>
           ) : null}
 
@@ -533,7 +508,7 @@ export function GestorDecisionWorkspace({
             <article className="manager-now-card">
               <header>
                 <div>
-                  <span className="manager-now-label">AGORA</span>
+                  <span className="manager-now-label">PRIMEIRO</span>
                   <small>{selected.category}</small>
                 </div>
                 <b className={selected.overdue ? 'is-overdue' : ''}>
@@ -570,9 +545,7 @@ export function GestorDecisionWorkspace({
                     type="button"
                     onClick={() => openDecision(selected)}
                   >
-                    {selected.kind === 'occurrence'
-                      ? <AlertIcon />
-                      : <ShieldIcon />}
+                    <ShieldIcon />
                     {selected.nextAction}
                   </button>
                 </div>
@@ -584,8 +557,8 @@ export function GestorDecisionWorkspace({
             <aside className="manager-later-queue" aria-label="Próximas decisões">
               <header>
                 <div>
-                  <small>DEPOIS</small>
-                  <strong>Próximas decisões</strong>
+                  <small>EM SEGUIDA</small>
+                  <strong>Próximos documentos</strong>
                 </div>
                 <span>{remainingItems.length}</span>
               </header>
@@ -651,13 +624,6 @@ export function GestorDecisionWorkspace({
           }}
           onChanged={changed}
           onSessionExpired={onSessionExpired}
-        />
-      ) : null}
-      {selectedOccurrence ? (
-        <TechnicalAnalysisDialog
-          occurrence={selectedOccurrence}
-          onClose={() => setSelectedOccurrence(null)}
-          onChanged={changed}
         />
       ) : null}
     </>

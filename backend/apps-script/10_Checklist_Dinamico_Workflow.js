@@ -136,27 +136,40 @@ function adminEnviarModeloChecklistValidacao_(p){
   }));
 
   hist_({ativo_id:plano.ativo_id, componente_id:plano.componente_id, evento:"MODELO_CHECKLIST_ENVIADO_GESTAO", descricao:"Modelo enviado para validação da gestão.", usuario_id:auth.usuario_id||"", perfil:auth.perfil||ROLE.ADMIN});
-  var technicalDemand = null;
-  if(clean_(p.area_atual_id)){
-    technicalDemand = adminDemandasTecnicasEnviar_({
-      demanda:{
-        tipo:"VALIDACAO_CHECKLIST",
-        entidade_tipo:"CHECKLIST_MODELO",
-        entidade_id:plano.id,
-        titulo:"Validar checklist: " + clean_(plano.nome),
-        descricao:clean_(p.comentario),
-        prioridade:upper_(plano.criticidade || "MEDIA"),
-        area_atual_id:clean_(p.area_atual_id),
-        cargo_atual_id:clean_(p.cargo_atual_id),
-        responsavel_atual_id:clean_(p.responsavel_atual_id),
-        exige_assinatura:p.exige_assinatura,
-        assinaturas_necessarias:p.assinaturas_necessarias,
-        exige_segregacao:p.exige_segregacao,
-        versao_entidade:num_(plano.revisao,1)
-      },
-      __auth:auth,
-      user_agent:p.user_agent
-    }, auth).demanda;
+  var technicalDemand = adminDemandasTecnicasEnviar_({
+    demanda:{
+      tipo:"VALIDACAO_CHECKLIST",
+      entidade_tipo:"CHECKLIST_MODELO",
+      entidade_id:plano.id,
+      origem_tipo:plano.ocorrencia_origem_id ? "OCORRENCIA" : "",
+      origem_id:clean_(plano.ocorrencia_origem_id),
+      titulo:"Validar checklist: " + clean_(plano.nome),
+      descricao:clean_(p.comentario),
+      prioridade:upper_(plano.criticidade || "MEDIA"),
+      area_atual_id:clean_(p.area_atual_id),
+      cargo_atual_id:clean_(p.cargo_atual_id),
+      responsavel_atual_id:clean_(p.responsavel_atual_id),
+      politica_assinatura:clean_(p.politica_assinatura),
+      areas_validadoras:p.areas_validadoras,
+      usuarios_validadores:p.usuarios_validadores,
+      exige_assinatura:"SIM",
+      assinaturas_necessarias:p.assinaturas_necessarias,
+      exige_segregacao:p.exige_segregacao,
+      versao_entidade:num_(plano.revisao,1)
+    },
+    __auth:auth,
+    user_agent:p.user_agent
+  }, auth).demanda;
+  if(plano.ocorrencia_origem_id){
+    var occurrence = find_("ocorrencias_operacionais", "id", plano.ocorrencia_origem_id);
+    if(occurrence){
+      update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+        status:"EM_VALIDACAO_TECNICA",
+        demanda_tecnica_id:technicalDemand.id,
+        tratamento_status:"AGUARDANDO_ASSINATURA",
+        atualizado_em:now_()
+      });
+    }
   }
   invalidateRuntimeCache_();
   return {sent:true, plano_id:plano.id, workflow_status:ST.EM_VALIDACAO_GESTAO, demanda_tecnica:technicalDemand};
@@ -296,6 +309,7 @@ function detalheModeloChecklist_(p){
 function gestorValidarModeloChecklist_(p){
   req_(p,["plano_id","decisao"]);
   var auth = p.__auth || {};
+  technicalAssertValidationIdentity_(auth);
   var pl = find_("planos_manutencao","id",p.plano_id);
   if(!pl) err_("PLAN_NOT_FOUND","Plano/checklist não encontrado.",404);
   var routedDemand = sheetExists_("demandas_tecnicas") ? rows_("demandas_tecnicas", true).find(function(demand){

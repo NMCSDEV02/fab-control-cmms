@@ -91,6 +91,8 @@ export interface GestorTechnicalIdentity {
   cargo_id: string
   cargo_nome: string
   pode_assinar: boolean
+  area_codigo?: string
+  validador_padrao?: boolean
   especialidades: string[]
   escopo_ids: string[]
 }
@@ -117,6 +119,13 @@ export interface GestorTechnicalContext {
   cargos: GestorTechnicalRole[]
   pode_encaminhar: boolean
   pode_assinar: boolean
+  pode_validar: boolean
+  modo_trabalho: 'VALIDACAO' | 'ACOMPANHAMENTO'
+  politicas_assinatura?: Array<{
+    codigo: string
+    nome: string
+    assinaturas: number
+  }>
 }
 
 export interface GestorTechnicalDemand {
@@ -135,8 +144,17 @@ export interface GestorTechnicalDemand {
   responsavel_atual_id?: string
   responsavel_atual_nome?: string
   exige_assinatura?: string
+  politica_assinatura?: string
   assinaturas_necessarias?: number
   assinaturas_realizadas?: number
+  assinatura_concluida?: boolean
+  areas_validadoras?: Array<{
+    id: string
+    codigo?: string
+    nome?: string
+    assinada: boolean
+    necessaria?: boolean
+  }>
   prazo_primeira_resposta_em?: string
   prazo_resolucao_em?: string
   sla_resposta_atrasado?: boolean

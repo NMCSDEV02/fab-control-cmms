@@ -80,6 +80,7 @@ const requiredActions = [
   'gestor.demandas.assumir',
   'gestor.demandas.encaminhar',
   'gestor.demandas.assinar',
+  'gestor.demandas.validar',
   'gestor.demandas.decidir',
   'gestor.paradas.criar_tratamento',
   'gestor.analises.salvar',
@@ -101,11 +102,12 @@ for (const action of requiredActions.filter((action) => action.startsWith('gesto
   assert(gestorApi.includes(`'${action}'`), `cliente gestor não usa ${action}`)
 }
 
-assert(decisions.includes('Decisões de hoje'), 'modo Decisão não apresenta a fila técnica única')
+assert(decisions.includes('Documentos para validar'), 'área de validação não apresenta os documentos pendentes')
 assert(decisions.includes('PRÓXIMO PASSO'), 'fila não orienta a próxima decisão')
-assert(decisions.includes('<option value="demands">Solicitações') && decisions.includes('<option value="operations">Ocorrências'), 'categorias da fila não estão unificadas')
-assert(navigation.includes("label: 'Fila'"), 'navegação não expõe a fila técnica')
-assert(navigation.includes("label: 'Indicadores'"), 'navegação não expõe os indicadores')
+assert(decisions.includes('<option value="demands">Solicitações') && decisions.includes('<option value="models">Checklists'), 'categorias de documentos não estão organizadas')
+assert(!decisions.includes('<option value="operations">Ocorrências'), 'ocorrências ainda concorrem com documentos na área de assinatura')
+assert(navigation.includes("label: 'Validar'"), 'navegação não expõe a validação técnica')
+assert(navigation.includes("label: 'Acompanhar'"), 'navegação não expõe o acompanhamento técnico')
 assert(navigation.includes("label: 'Conta'") && !navigation.includes("label: 'Mais'"), 'navegação mantém uma aba genérica')
 assert(!gestorApp.includes('manager-mode-switch'), 'cabeçalho repete a navegação inferior')
 assert(
@@ -114,19 +116,44 @@ assert(
     gestorStyles.includes('.manager-decision-queue::-webkit-scrollbar'),
   'workspace não controla altura e rolagem interna invisível',
 )
-assert(decisions.includes('setSelectedOccurrence'), 'ocorrência não abre análise técnica')
-assert(demandDialog.includes('Assumir e continuar'), 'fluxo não orienta o primeiro aceite')
-assert(demandDialog.includes('Assinaturas concluídas'), 'fluxo não evidencia o gate de assinatura')
-assert(demandDialog.includes('O QUE VOCÊ PRECISA FAZER AGORA'), 'decisão técnica não possui orientação')
-assert(demandDialog.includes('RESUMO PARA O OPERADOR'), 'liberação não revisa o briefing do Operador')
-assert(demandDialog.includes('Pedir ajuste') && demandDialog.includes('Adicionar observação'), 'alternativas da decisão simples estão ausentes')
+assert(!decisions.includes('setSelectedOccurrence'), 'ocorrência ainda abre no fluxo reservado à assinatura')
+assert(analytics.includes('setSelectedOccurrence'), 'ocorrência não abre no acompanhamento técnico')
+assert(demandDialog.includes('Assinaturas desta versão'), 'fluxo não evidencia as assinaturas permanentes')
+assert(demandDialog.includes('O ADMINISTRADOR SOLICITOU'), 'validação não apresenta a solicitação do Administrador')
+assert(demandDialog.includes('Assinar e aprovar'), 'ação principal de validação está ausente')
+assert(demandDialog.includes('Solicitar correção') && demandDialog.includes('Devolver ao Administrador'), 'alternativa de correção está ausente')
 assert(
   demandDialog.includes('getGestorChecklistModelDetail') &&
-    demandDialog.includes('CHECKLIST ENVIADO PELO ADMINISTRADOR') &&
-    demandDialog.includes('checklistDetail.itens.map') &&
-    demandDialog.includes('simple-checklist-detail-dialog') &&
-    demandDialog.includes('Concluir leitura'),
+    demandDialog.includes('CONTEÚDO PARA CONFERÊNCIA') &&
+    demandDialog.includes('visibleItems?.map') &&
+    demandDialog.includes('Ver todas as'),
   'Gestor não consegue abrir as etapas do checklist roteado pelo Administrador',
+)
+assert(
+  workflow.includes('TECH_DEFAULT_VALIDATOR_CODES = ["QUALIDADE","SEGURANCA"]') &&
+    workflow.includes('QUALIDADE_E_SEGURANCA') &&
+    workflow.includes('technicalSignaturesForDemand_') &&
+    workflow.includes('entidade_id:demand.entidade_id') &&
+    workflow.includes('versao_entidade:demand.versao_entidade') &&
+    workflow.includes('payload_hash:demand.payload_hash'),
+  'filtro Qualidade/Segurança ou persistência da assinatura por documento/versão está incompleto',
+)
+assert(
+  workflow.includes('function gestorDemandaValidar_') &&
+    gestorApi.includes("'gestor.demandas.validar'") &&
+    demandDialog.includes('validateGestorTechnicalDemand'),
+  'validação atômica com assinatura não está conectada ao frontend',
+)
+assert(
+  workflow.includes('shared_queue:true') &&
+    workflow.includes('TECH_VALIDATION_FORWARD_DISABLED'),
+  'fila compartilhada pode ser reservada ou encaminhada para fora do filtro',
+)
+assert(
+  gestorApp.includes('technicalContext?.pode_validar') &&
+    navigation.includes("if (item.id === 'home') return canValidate") &&
+    decisions.includes('Perfil de acompanhamento técnico'),
+  'interface não separa validadores de perfis apenas analíticos',
 )
 assert(
   workflow.includes(
