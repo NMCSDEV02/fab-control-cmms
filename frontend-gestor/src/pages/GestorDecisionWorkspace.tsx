@@ -165,7 +165,6 @@ export function GestorDecisionWorkspace({
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [selectedDemand, setSelectedDemand] =
@@ -206,7 +205,6 @@ export function GestorDecisionWorkspace({
       setModels(standaloneModels)
       setDemands(demandData)
       setTechnicalContext(contextData)
-      setLastSyncedAt(new Date())
       onQueueCountChange(
         demandData.length +
         validationActions.length +
@@ -407,16 +405,6 @@ export function GestorDecisionWorkspace({
             <span><strong>{items.length}</strong> pendentes</span>
             <span className={criticalCount ? 'is-critical' : ''}>
               <strong>{criticalCount}</strong> críticos
-            </span>
-            <span
-              className={`manager-live-sync manager-live-sync--compact${refreshing ? ' is-syncing' : ''}`}
-              title={lastSyncedAt
-                ? `Sincronizado às ${lastSyncedAt.toLocaleTimeString('pt-BR')}`
-                : 'Aguardando sincronização'}
-              role="status"
-            >
-              <i aria-hidden="true" />
-              {refreshing ? 'Sincronizando' : 'Ao vivo'}
             </span>
           </div>
         </section>

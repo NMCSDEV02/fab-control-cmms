@@ -96,6 +96,14 @@ const ADMIN_PERMISSION_CAPABILITIES = [
     acoes:["admin.listar","admin.obter"]
   },
   {
+    id:"REGISTRAR_LEITURAS_TECNICAS",
+    nome:"Registrar leituras técnicas",
+    descricao:"Registra parâmetros de equipamentos e componentes durante a inspeção em campo.",
+    perfis:[ROLE.GESTOR],
+    padrao:[ROLE.GESTOR],
+    acoes:["gestor.registrar_parametro"]
+  },
+  {
     id:"VER_INDICADORES",
     nome:"Visualizar indicadores",
     descricao:"Exibe KPIs operacionais disponíveis no contrato atual.",

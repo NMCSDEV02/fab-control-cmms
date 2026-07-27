@@ -19,7 +19,9 @@ interface AssetJourneyPanelProps {
   components: GestorAssetCatalog['components']
   current: GestorTechnicalKpis | null
   journey: GestorAssetJourney | null
+  componentId: string
   loading: boolean
+  onComponentChange: (componentId: string) => void
   onOpenDecision: (
     kind: 'demand' | 'action' | 'model' | 'occurrence',
     id: string,
@@ -39,7 +41,7 @@ function humanize(value: unknown): string {
     .toLocaleLowerCase('pt-BR')
   return normalized
     ? normalized.charAt(0).toLocaleUpperCase('pt-BR') + normalized.slice(1)
-    : 'Não informado'
+    : 'Sem registro'
 }
 
 function formatPercent(value: number | null | undefined): string {
@@ -60,7 +62,7 @@ function formatDuration(value: number | null | undefined): string {
 }
 
 function formatDate(value?: string): string {
-  if (!value) return 'Não informado'
+  if (!value) return 'Sem data'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat('pt-BR', {
@@ -74,16 +76,17 @@ export function AssetJourneyPanel({
   components,
   current,
   journey,
+  componentId,
   loading,
+  onComponentChange,
   onOpenDecision,
 }: AssetJourneyPanelProps) {
   const [tab, setTab] = useState<JourneyTab>('status')
-  const [componentId, setComponentId] = useState('')
 
   useEffect(() => {
     setTab('status')
-    setComponentId('')
-  }, [asset?.id])
+    onComponentChange('')
+  }, [asset?.id, onComponentChange])
 
   if (!asset) {
     return (
@@ -112,6 +115,8 @@ export function AssetJourneyPanel({
   const history = (journey?.historico_recente ?? []).filter(
     (item) => !componentId || item.componente_id === componentId,
   )
+  const selectedComponent =
+    components.find((component) => component.id === componentId) ?? null
   const operationalState = journey?.parada_ativa
     ? 'Em parada'
     : (journey?.acoes_pendentes ?? []).some(
@@ -135,6 +140,9 @@ export function AssetJourneyPanel({
         <b>{operationalState}</b>
       </header>
 
+      <div className="manager-asset-vitals-label">
+        {selectedComponent ? 'Indicadores do componente' : 'Indicadores do equipamento'}
+      </div>
       <dl className="manager-asset-vitals">
         <div>
           <dt>Saúde</dt>
@@ -252,7 +260,7 @@ export function AssetJourneyPanel({
           {components.length > 0 ? (
             <select
               value={componentId}
-              onChange={(event) => setComponentId(event.target.value)}
+              onChange={(event) => onComponentChange(event.target.value)}
               aria-label="Filtrar parâmetros por componente"
             >
               <option value="">Equipamento completo</option>
@@ -344,6 +352,42 @@ export function AssetJourneyPanel({
 
       {!loading && tab === 'components' ? (
         <div className="manager-asset-component-view">
+          {selectedComponent ? (
+            <section className="manager-component-detail">
+              <header>
+                <button type="button" onClick={() => onComponentChange('')}>
+                  ← Equipamento
+                </button>
+                <div>
+                  <small>{selectedComponent.tag || selectedComponent.id}</small>
+                  <h3>{selectedComponent.nome || 'Componente'}</h3>
+                  <p>{humanize(selectedComponent.status)}</p>
+                </div>
+              </header>
+              <dl>
+                <div><dt>Fabricante</dt><dd>{selectedComponent.fabricante || 'Sem cadastro'}</dd></div>
+                <div><dt>Modelo</dt><dd>{selectedComponent.modelo || 'Sem cadastro'}</dd></div>
+                <div><dt>Tipo</dt><dd>{humanize(selectedComponent.tipo)}</dd></div>
+                <div><dt>Criticidade</dt><dd>{humanize(selectedComponent.criticidade)}</dd></div>
+                <div><dt>Horas acumuladas</dt><dd>{selectedComponent.horas_acumuladas ?? 'Sem leitura'}</dd></div>
+                <div><dt>Vida útil</dt><dd>
+                  {selectedComponent.vida_util_horas
+                    ? `${selectedComponent.vida_util_horas} h`
+                    : selectedComponent.vida_util_dias
+                      ? `${selectedComponent.vida_util_dias} dias`
+                      : 'Sem cadastro'}
+                </dd></div>
+              </dl>
+              <div>
+                <button type="button" onClick={() => setTab('parameters')}>
+                  Ver parâmetros ({parameters.length})
+                </button>
+                <button type="button" onClick={() => setTab('history')}>
+                  Ver histórico ({history.length})
+                </button>
+              </div>
+            </section>
+          ) : null}
           {components.map((component) => {
             const readings = (journey?.parametros_atuais ?? []).filter(
               (parameter) => parameter.componente_id === component.id,
@@ -367,11 +411,10 @@ export function AssetJourneyPanel({
                 <button
                   type="button"
                   onClick={() => {
-                    setComponentId(component.id)
-                    setTab('parameters')
+                    onComponentChange(component.id)
                   }}
                 >
-                  Ver parâmetros
+                  Abrir componente
                 </button>
               </article>
             )

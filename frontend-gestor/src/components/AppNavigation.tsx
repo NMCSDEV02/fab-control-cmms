@@ -1,24 +1,25 @@
 import {
-  AssetIcon,
+  CameraIcon,
   ChartIcon,
   UsersIcon,
   ValidationIcon,
 } from './Icons'
 
-export type GestorSection = 'home' | 'validations' | 'assets' | 'admin' | 'more'
+export type GestorSection = 'home' | 'validations' | 'scan' | 'admin' | 'more'
 
 export interface AppNavigationProps {
   active: GestorSection
   validationCount: number
   showAdmin: boolean
   canValidate: boolean
+  compactDevice: boolean
   onNavigate: (section: GestorSection) => void
 }
 
 const ITEMS = [
   { id: 'home' as const, label: 'Validar', Icon: ValidationIcon },
   { id: 'validations' as const, label: 'Acompanhar', Icon: ChartIcon },
-  { id: 'assets' as const, label: 'Ativos', Icon: AssetIcon },
+  { id: 'scan' as const, label: 'Ler QR', Icon: CameraIcon },
   { id: 'admin' as const, label: 'Admin', Icon: UsersIcon },
   { id: 'more' as const, label: 'Conta', Icon: UsersIcon },
 ]
@@ -28,11 +29,13 @@ export function AppNavigation({
   validationCount,
   showAdmin,
   canValidate,
+  compactDevice,
   onNavigate,
 }: AppNavigationProps) {
   const visibleItems = ITEMS.filter((item) => {
     if (item.id === 'admin') return showAdmin
     if (item.id === 'home') return canValidate
+    if (item.id === 'scan') return compactDevice
     return true
   })
   return (

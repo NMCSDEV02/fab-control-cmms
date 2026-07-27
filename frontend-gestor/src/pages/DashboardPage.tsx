@@ -433,7 +433,7 @@ export function DashboardPage({
             <span className="eyebrow">SITUAÇÃO DA FÁBRICA</span>
             <h2>Operação em tempo real</h2>
           </div>
-          <button type="button" onClick={() => onNavigate('assets')}>
+          <button type="button" onClick={() => onNavigate('validations')}>
             <AssetIcon /> Consultar ativos
           </button>
         </header>

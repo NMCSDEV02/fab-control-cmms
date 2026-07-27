@@ -865,7 +865,8 @@ export function AdminWorkspace({
     if (
       entityType === 'ORDEM_SERVICO_RASCUNHO' ||
       entityType === 'ORDENS_SERVICO' ||
-      entityType === 'OS_ACOES'
+      entityType === 'OS_ACOES' ||
+      entityType === 'OCORRENCIAS_OPERACIONAIS'
     ) {
       openModule('operations')
       return

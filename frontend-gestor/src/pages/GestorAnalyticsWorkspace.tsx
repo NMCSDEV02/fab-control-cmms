@@ -11,7 +11,6 @@ import {
 } from '../components/Icons'
 import { AssetJourneyPanel } from '../components/AssetJourneyPanel'
 import {
-  createGestorStopTreatment,
   getGestorAssetCatalog,
   getGestorAssetJourney,
   getGestorOverview,
@@ -28,15 +27,18 @@ import type {
   GestorAssetJourney,
   GestorOverview,
   GestorOccurrence,
+  GestorTechnicalContext,
   GestorTechnicalKpis,
 } from '../types/gestor'
 
-type AnalyticsView = 'indicators' | 'monitoring' | 'history' | 'critical' | 'library'
+type AnalyticsView = 'indicators' | 'monitoring' | 'history' | 'library'
 type MonitoringFilter = 'all' | 'executing' | 'pending' | 'blocked' | 'stopped'
 
 interface GestorAnalyticsWorkspaceProps {
   focusAssetId?: string
   focusOccurrenceId?: string
+  technicalContext: GestorTechnicalContext | null
+  onOpenNotifications: () => void
   onOpenDecision: (
     kind: 'demand' | 'action' | 'model' | 'occurrence',
     id: string,
@@ -116,7 +118,7 @@ function metricTrend(
   current: number | null | undefined,
   previous: number | null | undefined,
   lowerIsBetter = false,
-): { label: string; tone: string } {
+): { label: string; tone: string; compared: boolean } {
   if (
     current === null ||
     current === undefined ||
@@ -125,15 +127,18 @@ function metricTrend(
     !Number.isFinite(current) ||
     !Number.isFinite(previous)
   ) {
-    return { label: 'Sem comparação', tone: 'neutral' }
+    return { label: 'Sem base anterior', tone: 'neutral', compared: false }
   }
   const delta = current - previous
-  if (Math.abs(delta) < 0.05) return { label: 'Estável', tone: 'neutral' }
+  if (Math.abs(delta) < 0.05) {
+    return { label: 'Estável', tone: 'neutral', compared: true }
+  }
   const good = lowerIsBetter ? delta < 0 : delta > 0
   const prefix = delta > 0 ? '+' : ''
   return {
     label: `${prefix}${delta.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}`,
     tone: good ? 'good' : 'bad',
+    compared: true,
   }
 }
 
@@ -151,37 +156,42 @@ function isWithinPeriod(value: string | undefined, days: number): boolean {
 export function GestorAnalyticsWorkspace({
   focusAssetId,
   focusOccurrenceId,
+  technicalContext,
+  onOpenNotifications,
   onOpenDecision,
   onSessionExpired,
 }: GestorAnalyticsWorkspaceProps) {
   const [view, setView] = useState<AnalyticsView>('indicators')
   const [periodDays, setPeriodDays] = useState(30)
   const [assetId, setAssetId] = useState(focusAssetId ?? '')
+  const [componentId, setComponentId] = useState('')
   const [catalog, setCatalog] = useState<GestorAssetCatalog>(EMPTY_CATALOG)
   const [journey, setJourney] = useState<GestorAssetJourney | null>(null)
   const [overview, setOverview] = useState<GestorOverview | null>(null)
   const [current, setCurrent] = useState<GestorTechnicalKpis | null>(null)
   const [previous, setPrevious] = useState<GestorTechnicalKpis | null>(null)
   const [search, setSearch] = useState('')
+  const [assetLookup, setAssetLookup] = useState('')
   const [monitoringFilter, setMonitoringFilter] =
     useState<MonitoringFilter>('all')
   const [selectedHistoryAction, setSelectedHistoryAction] =
     useState<GestorAction | null>(null)
   const [selectedOccurrence, setSelectedOccurrence] =
     useState<GestorOccurrence | null>(null)
-  const [treatingStopId, setTreatingStopId] = useState('')
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [error, setError] = useState('')
 
   const load = useCallback(async (signal?: AbortSignal, background = false) => {
-    if (background) setRefreshing(true)
-    else setLoading(true)
+    if (!background) setLoading(true)
     setError('')
     const currentRange = periodRange(periodDays)
     const previousRange = periodRange(periodDays, 1)
-    const filters = assetId ? { ativo_id: assetId } : {}
+    const filters = assetId
+      ? {
+        ativo_id: assetId,
+        ...(componentId ? { componente_id: componentId } : {}),
+      }
+      : {}
 
     try {
       const [overviewData, catalogData, currentData, previousData, journeyData] =
@@ -205,7 +215,6 @@ export function GestorAnalyticsWorkspace({
       setCurrent(currentData)
       setPrevious(previousData)
       setJourney(journeyData)
-      setLastSyncedAt(new Date())
     } catch (cause) {
       if (signal?.aborted) return
       if (isGestorAuthenticationError(cause)) {
@@ -220,10 +229,9 @@ export function GestorAnalyticsWorkspace({
     } finally {
       if (!signal?.aborted) {
         setLoading(false)
-        setRefreshing(false)
       }
     }
-  }, [assetId, onSessionExpired, periodDays])
+  }, [assetId, componentId, onSessionExpired, periodDays])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -243,6 +251,10 @@ export function GestorAnalyticsWorkspace({
   }, [focusAssetId])
 
   useEffect(() => {
+    setComponentId('')
+  }, [assetId])
+
+  useEffect(() => {
     if (!focusOccurrenceId || !overview) return
     const occurrence = overview.occurrences.find(
       (item) => item.id === focusOccurrenceId,
@@ -251,7 +263,7 @@ export function GestorAnalyticsWorkspace({
       if (occurrence.ativo_id) setAssetId(occurrence.ativo_id)
       setSelectedOccurrence(occurrence)
     }
-    setView('critical')
+    setView('library')
   }, [focusOccurrenceId, overview])
 
   const selectedAsset =
@@ -266,6 +278,38 @@ export function GestorAnalyticsWorkspace({
     )
     : []
 
+  useEffect(() => {
+    if (!selectedAsset) {
+      if (!assetId) setAssetLookup('')
+      return
+    }
+    setAssetLookup(
+      `${selectedAsset.tag || selectedAsset.id} · ${selectedAsset.nome || 'Sem nome'}`,
+    )
+  }, [assetId, selectedAsset])
+
+  function selectAssetFromLookup(value: string) {
+    setAssetLookup(value)
+    const normalized = value.trim().toLocaleLowerCase('pt-BR')
+    if (!normalized) {
+      setAssetId('')
+      return
+    }
+    const match = catalog.assets.find((asset) => {
+      const label = `${asset.tag || asset.id} · ${asset.nome || 'Sem nome'}`
+      return [
+        asset.id,
+        asset.tag,
+        asset.nome,
+        label,
+      ].some(
+        (candidate) =>
+          String(candidate ?? '').trim().toLocaleLowerCase('pt-BR') === normalized,
+      )
+    })
+    if (match) setAssetId(match.id)
+  }
+
   const metrics = useMemo(() => {
     if (!current) return []
     return [
@@ -273,7 +317,7 @@ export function GestorAnalyticsWorkspace({
         label: 'Disponibilidade',
         value: formatPercent(current.disponibilidade_pct),
         trend: metricTrend(current.disponibilidade_pct, previous?.disponibilidade_pct),
-        hint: 'Tempo disponível para operar',
+        hint: 'Percentual do período observado sem parada registrada. Uma falha só reduz este índice quando gera tempo de parada.',
       },
       {
         label: 'Falhas não planejadas',
@@ -289,13 +333,21 @@ export function GestorAnalyticsWorkspace({
         label: 'MTTR',
         value: formatDuration(current.mttr_segundos),
         trend: metricTrend(current.mttr_segundos, previous?.mttr_segundos, true),
-        hint: 'Tempo médio para reparar',
+        hint: componentId
+          ? 'Tempo médio para reparar o componente selecionado, considerando falhas e intervenções vinculadas a ele.'
+          : assetId
+            ? 'Tempo médio para reparar o equipamento selecionado.'
+          : 'Tempo médio para reparar os equipamentos no escopo selecionado.',
       },
       {
         label: 'MTBF',
         value: formatDuration(current.mtbf_segundos),
         trend: metricTrend(current.mtbf_segundos, previous?.mtbf_segundos),
-        hint: 'Tempo médio entre falhas',
+        hint: componentId
+          ? 'Tempo médio de operação do componente selecionado entre falhas não planejadas vinculadas.'
+          : assetId
+            ? 'Tempo médio de operação do equipamento selecionado entre falhas não planejadas.'
+          : 'Tempo médio de operação entre falhas não planejadas no escopo.',
       },
       {
         label: 'Lead time',
@@ -314,7 +366,7 @@ export function GestorAnalyticsWorkspace({
         hint: `${current.sla_resposta_amostra} demanda(s) avaliadas`,
       },
     ]
-  }, [current, previous])
+  }, [assetId, componentId, current, previous])
 
   const monitoredActions = useMemo(() => {
     const normalized = search.trim().toLocaleLowerCase('pt-BR')
@@ -357,14 +409,6 @@ export function GestorAnalyticsWorkspace({
         ].some((value) => String(value ?? '').toLocaleLowerCase('pt-BR').includes(normalized))
       })
   }, [assetId, overview?.completedActions, search])
-
-  const treatmentByStop = useMemo(() => {
-    const treatments = new Map<string, GestorOverview['occurrences'][number]>()
-    for (const occurrence of overview?.occurrenceHistory ?? []) {
-      if (occurrence.parada_id) treatments.set(occurrence.parada_id, occurrence)
-    }
-    return treatments
-  }, [overview?.occurrenceHistory])
 
   const monitoringCounts = useMemo(() => ({
     executing: monitoredActions.filter(
@@ -554,65 +598,50 @@ export function GestorAnalyticsWorkspace({
     ].some((value) => String(value ?? '').toLocaleLowerCase('pt-BR').includes(normalized)))
   }, [catalog.assets, search])
 
-  async function handleStopTreatment(stopId: string) {
-    if (treatingStopId) return
-    setTreatingStopId(stopId)
-    setError('')
-    try {
-      const result = await createGestorStopTreatment(stopId)
-      setSelectedOccurrence(result.occurrence)
-    } catch (cause) {
-      if (isGestorAuthenticationError(cause)) {
-        onSessionExpired()
-        return
-      }
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Não foi possível iniciar o tratamento da parada.',
-      )
-    } finally {
-      setTreatingStopId('')
-    }
-  }
-
   const views: Array<{
     id: AnalyticsView
     label: string
     count?: number
   }> = [
-    { id: 'indicators', label: 'Indicadores' },
-    { id: 'monitoring', label: 'Acompanhamento', count: monitoredActions.length },
-    { id: 'history', label: 'Concluídas', count: completedActions.length },
-    {
-      id: 'critical',
-      label: 'Críticos',
-      count: (overview?.occurrences.length ?? 0) + (overview?.openStops.length ?? 0),
-    },
-    { id: 'library', label: 'Biblioteca', count: catalog.assets.length },
+    { id: 'indicators', label: 'Visão geral' },
+    { id: 'monitoring', label: 'Em campo', count: monitoredActions.length },
+    { id: 'history', label: 'Histórico', count: completedActions.length },
+    { id: 'library', label: 'Ativos', count: catalog.assets.length },
   ]
 
   return (
     <main className="content manager-analytics-workspace">
       <section className="manager-workspace-heading">
         <div>
-          <span className="eyebrow">MODO ANALÍTICO</span>
+          <span className="eyebrow">
+            {technicalContext?.pode_validar ? 'QUALIDADE E SEGURANÇA' : 'PCM E CONFIABILIDADE'}
+          </span>
           <h1>Centro técnico</h1>
-          <p>Analise desempenho, acompanhe execuções e investigue ativos.</p>
+          <p>
+            {technicalContext?.pode_validar
+              ? 'Acompanhe a operação e abra a fila de validação quando houver documentos destinados ao seu perfil.'
+              : 'Acompanhe confiabilidade, trabalho em campo e o histórico completo dos ativos.'}
+          </p>
         </div>
         <div className="manager-analytics-filters">
-          <select
-            value={assetId}
-            onChange={(event) => setAssetId(event.target.value)}
-            aria-label="Filtrar por ativo"
-          >
-            <option value="">Todos os ativos</option>
-            {catalog.assets.map((asset) => (
-              <option value={asset.id} key={asset.id}>
-                {asset.tag || asset.id} · {asset.nome || 'Sem nome'}
-              </option>
-            ))}
-          </select>
+          <label className="manager-asset-lookup">
+            <SearchIcon />
+            <input
+              list="manager-assets-list"
+              value={assetLookup}
+              placeholder="Pesquisar TAG ou equipamento"
+              aria-label="Pesquisar e filtrar por ativo"
+              onChange={(event) => selectAssetFromLookup(event.target.value)}
+            />
+            <datalist id="manager-assets-list">
+              {catalog.assets.map((asset) => (
+                <option
+                  value={`${asset.tag || asset.id} · ${asset.nome || 'Sem nome'}`}
+                  key={asset.id}
+                />
+              ))}
+            </datalist>
+          </label>
           <select
             value={periodDays}
             onChange={(event) => setPeriodDays(Number(event.target.value))}
@@ -621,22 +650,11 @@ export function GestorAnalyticsWorkspace({
             <option value={7}>7 dias</option>
             <option value={30}>30 dias</option>
             <option value={90}>90 dias</option>
+            <option value={180}>6 meses</option>
+            <option value={365}>12 meses</option>
+            <option value={730}>24 meses</option>
+            <option value={1825}>5 anos</option>
           </select>
-          <span
-            className={`manager-live-sync${refreshing ? ' is-syncing' : ''}`}
-            role="status"
-            aria-live="polite"
-            title={lastSyncedAt
-              ? `Última sincronização às ${lastSyncedAt.toLocaleTimeString('pt-BR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-              })}`
-              : 'Aguardando primeira sincronização'}
-          >
-            <i aria-hidden="true" />
-            {refreshing ? 'Sincronizando' : 'Atualização automática'}
-          </span>
         </div>
       </section>
 
@@ -667,6 +685,27 @@ export function GestorAnalyticsWorkspace({
       <section className="manager-analytics-stage">
         {view === 'indicators' ? (
           <div className="manager-analytics-indicators">
+            {(overview?.occurrences.length ?? 0) + (overview?.openStops.length ?? 0) > 0 ? (
+              <button
+                className="manager-critical-callout"
+                type="button"
+                onClick={onOpenNotifications}
+              >
+                <span><AlertIcon /></span>
+                <div>
+                  <small>ATENÇÃO TÉCNICA</small>
+                  <strong>
+                    {(overview?.occurrences.length ?? 0) + (overview?.openStops.length ?? 0)}
+                    {' '}
+                    {(overview?.occurrences.length ?? 0) + (overview?.openStops.length ?? 0) === 1
+                      ? 'situação requer tratamento'
+                      : 'situações requerem tratamento'}
+                  </strong>
+                  <p>Ocorrências e paradas são tratadas pela Central de Notificações.</p>
+                </div>
+                <b>Abrir central</b>
+              </button>
+            ) : null}
             <div className="manager-analytics-kpis" aria-busy={loading}>
               {loading ? <p className="panel-state">Calculando indicadores…</p> : null}
               {!loading && metrics.map((metric) => (
@@ -682,7 +721,11 @@ export function GestorAnalyticsWorkspace({
                   <strong>{metric.value}</strong>
                   <footer>
                     <span className={`is-${metric.trend.tone}`}>{metric.trend.label}</span>
-                    <small>vs. período anterior</small>
+                    <small>
+                      {metric.trend.compared
+                        ? 'comparado ao período anterior'
+                        : 'aguardando período comparável'}
+                    </small>
                   </footer>
                 </article>
               ))}
@@ -885,7 +928,11 @@ export function GestorAnalyticsWorkspace({
                         ? 'Execuções acompanhadas'
                         : monitoringFilter === 'stopped'
                           ? 'Equipamentos parados'
-                          : `Execuções · ${humanize(monitoringFilter)}`}
+                          : monitoringFilter === 'pending'
+                            ? 'Execuções · Aguardando início'
+                            : monitoringFilter === 'executing'
+                              ? 'Execuções · Em andamento'
+                              : 'Execuções · Bloqueadas'}
                     </h3>
                   </div>
                   <span>
@@ -1047,85 +1094,6 @@ export function GestorAnalyticsWorkspace({
           </div>
         ) : null}
 
-        {view === 'critical' ? (
-          <div className="manager-critical-view">
-            <section>
-              <header>
-                <div><span className="eyebrow">ANORMALIDADES</span><h2>Exigem análise</h2></div>
-                <span>{overview?.occurrences.length ?? 0}</span>
-              </header>
-              <div>
-                {(overview?.occurrences ?? []).map((occurrence) => (
-                  <button
-                    type="button"
-                    key={occurrence.id}
-                    onClick={() => setSelectedOccurrence(occurrence)}
-                  >
-                    <AlertIcon />
-                    <span>
-                      <small>{occurrence.ativo_id || 'Ativo não informado'} · {humanize(occurrence.severidade)}</small>
-                      <strong>{occurrence.titulo || 'Ocorrência operacional'}</strong>
-                      <p>{occurrence.descricao || 'Sem descrição.'}</p>
-                    </span>
-                    <b>Analisar</b>
-                  </button>
-                ))}
-                {!overview?.occurrences.length ? <p className="panel-state">Nenhuma anormalidade sem análise.</p> : null}
-              </div>
-            </section>
-            <section>
-              <header>
-                <div><span className="eyebrow">PARADAS</span><h2>Equipamentos indisponíveis</h2></div>
-                <span>{overview?.openStops.length ?? 0}</span>
-              </header>
-              <div>
-                {(overview?.openStops ?? []).map((stop) => {
-                  const treatment = treatmentByStop.get(stop.id)
-                  const treatmentPending =
-                    upper(treatment?.status) === 'AGUARDANDO_ANALISE'
-                  return (
-                    <article className="manager-stop-treatment" key={stop.id}>
-                      <StopIcon />
-                      <span>
-                        <small>{humanize(stop.status)} · {formatDate(stop.iniciada_em)}</small>
-                        <strong>{stop.ativo_id}</strong>
-                        <p>{stop.motivo_parada || 'Motivo não informado.'}</p>
-                      </span>
-                      <div>
-                        <b>{stop.elapsed_seconds ? formatDuration(stop.elapsed_seconds) : 'Em aberto'}</b>
-                        {treatment ? (
-                          <button
-                            type="button"
-                            disabled={!treatmentPending}
-                            onClick={() => {
-                              if (treatmentPending) {
-                                setSelectedOccurrence(treatment)
-                              }
-                            }}
-                          >
-                            {treatmentPending ? 'Abrir tratamento' : 'Tratamento enviado'}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={Boolean(treatingStopId)}
-                            onClick={() => void handleStopTreatment(stop.id)}
-                          >
-                            {treatingStopId === stop.id
-                              ? 'Preparando…'
-                              : 'Criar tratamento'}
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  )
-                })}
-                {!overview?.openStops.length ? <p className="panel-state">Nenhuma parada aberta.</p> : null}
-              </div>
-            </section>
-          </div>
-        ) : null}
-
         {view === 'library' ? (
           <div className="manager-library-view">
             <header className="manager-stage-toolbar">
@@ -1166,7 +1134,9 @@ export function GestorAnalyticsWorkspace({
                 components={selectedComponents}
                 current={current}
                 journey={journey}
+                componentId={componentId}
                 loading={loading}
+                onComponentChange={setComponentId}
                 onOpenDecision={onOpenDecision}
               />
             </div>
@@ -1202,14 +1172,18 @@ function AssetAnalyticDetail({
   components,
   current,
   journey,
+  componentId,
   loading,
+  onComponentChange,
   onOpenDecision,
 }: {
   asset: GestorAsset | null
   components: GestorAssetCatalog['components']
   current: GestorTechnicalKpis | null
   journey: GestorAssetJourney | null
+  componentId: string
   loading: boolean
+  onComponentChange: (componentId: string) => void
   onOpenDecision: (
     kind: 'demand' | 'action' | 'model' | 'occurrence',
     id: string,
@@ -1221,7 +1195,9 @@ function AssetAnalyticDetail({
       components={components}
       current={current}
       journey={journey}
+      componentId={componentId}
       loading={loading}
+      onComponentChange={onComponentChange}
       onOpenDecision={onOpenDecision}
     />
   )

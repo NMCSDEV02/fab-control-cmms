@@ -23,6 +23,7 @@ const gestorApi = read('frontend-gestor/src/services/api/gestor.ts')
 const decisions = read('frontend-gestor/src/pages/GestorDecisionWorkspace.tsx')
 const analytics = read('frontend-gestor/src/pages/GestorAnalyticsWorkspace.tsx')
 const assetJourney = read('frontend-gestor/src/components/AssetJourneyPanel.tsx')
+const qrWorkspace = read('frontend-gestor/src/pages/GestorQrWorkspace.tsx')
 const checklistBuilder = read('frontend-gestor/src/components/AdminChecklistBuilder.tsx')
 const notifications = read('frontend-gestor/src/components/NotificationCenter.tsx')
 const gestorApp = read('frontend-gestor/src/app/App.tsx')
@@ -85,6 +86,7 @@ const requiredActions = [
   'gestor.paradas.criar_tratamento',
   'gestor.analises.salvar',
   'gestor.analises.enviar_admin',
+  'gestor.registrar_parametro',
   'gestor.notificacoes.listar',
   'gestor.notificacoes.marcar_lida',
 ]
@@ -203,17 +205,42 @@ assert(
   'painel do Admin ainda publica OEE sem base de produção',
 )
 assert(analytics.includes('período anterior'), 'painel não compara tendências')
-assert(analytics.includes('Todos os ativos'), 'painel não permite recorte por ativo')
+assert(
+  analytics.includes('Pesquisar TAG ou equipamento') &&
+    analytics.includes('manager-assets-list'),
+  'painel não permite pesquisar e recortar por ativo',
+)
 assert(
   analytics.includes("'monitoring'") &&
     analytics.includes("'history'") &&
-    analytics.includes("'critical'") &&
-    analytics.includes("'library'"),
-  'áreas analíticas e histórico concluído não estão separados em abas',
+    analytics.includes("'library'") &&
+    !analytics.includes("{ id: 'critical'"),
+  'centro técnico não separa campo, histórico e ativos ou ainda duplica críticos fora das notificações',
 )
 assert(gestorApi.includes('getGestorTechnicalKpisForPeriod'), 'cliente não envia período e ativo aos KPIs')
 assert(gestorApi.includes('getGestorAssetJourney') && gestorApi.includes("'operador.contexto_qr'"), 'ficha do ativo não usa o contexto técnico real')
 assert(assetJourney.includes('Faixas configuradas') && assetJourney.includes('Últimas alterações') && assetJourney.includes('Histórico'), 'jornada completa do ativo está incompleta')
+assert(
+  qrWorkspace.includes('BarcodeDetector') &&
+    qrWorkspace.includes('getGestorAssetJourney') &&
+    qrWorkspace.includes('registerGestorParameter') &&
+    qrWorkspace.includes('Código do equipamento ou componente'),
+  'Gestor móvel não possui leitura QR, busca manual e registro técnico rastreável',
+)
+assert(
+  workflow.includes('function gestorRegistrarParametro_') &&
+    workflow.includes('COMPONENT_ASSET_MISMATCH') &&
+    workflow.includes('GESTOR_PARAMETER_RECORDED') &&
+    workflow.includes('componente_id:componentId'),
+  'backend não protege o registro de parâmetros nem calcula indicadores por componente',
+)
+assert(
+  navigation.includes("id: 'scan'") &&
+    navigation.includes('compactDevice') &&
+    assetJourney.includes('Indicadores do componente') &&
+    assetJourney.includes('Abrir componente'),
+  'navegação adaptativa ou ficha profunda dos componentes está incompleta',
+)
 assert(checklistBuilder.includes('QUICK_ITEM_TYPES') && checklistBuilder.includes('admin-checklist-quick-types'), 'construtor não possui criação rápida por tipo')
 assert(
   checklistBuilder.includes('admin-checklist-routing-dialog') &&
@@ -254,7 +281,7 @@ assert(
     notifications.includes('Buscar por ativo, ocorrência ou decisão') &&
     notifications.includes('Todos os contextos') &&
     notifications.includes('markAllAsRead') &&
-    notifications.includes('Marcar todas como lidas'),
+    notifications.includes('Marcar mensagens como lidas'),
   'central de notificações não oferece priorização, busca, filtros e leitura em lote',
 )
 assert(
@@ -275,7 +302,7 @@ assert(
   'notificação administrativa não resolve o registro técnico real antes de navegar',
 )
 assert(
-  notifications.includes('await onOpenNotification(notification)') &&
+  notifications.includes('await onOpenNotification(destination)') &&
     notifications.includes('openingId') &&
     notifications.includes('Abrindo…'),
   'central marca a notificação como lida antes de confirmar a abertura do destino',
@@ -320,10 +347,10 @@ assert(
   'Operador ainda recebe ou mantém ações concluídas na fila operacional',
 )
 assert(
-  config.includes('"parada_id"') &&
+    config.includes('"parada_id"') &&
     workflow.includes('function gestorParadaCriarTratamento_') &&
     workflow.includes('TRATAMENTO_PARADA_CRIADO') &&
-    analytics.includes('Criar tratamento') &&
+    notifications.includes('Tratar parada') &&
     gestorApi.includes("'gestor.paradas.criar_tratamento'"),
   'parada técnica aberta não cria uma ocorrência rastreável para tratamento',
 )

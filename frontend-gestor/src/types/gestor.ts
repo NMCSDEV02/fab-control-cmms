@@ -53,6 +53,7 @@ export interface GestorKpiBase {
 
 export interface GestorTechnicalKpis {
   ativo_id: string
+  componente_id?: string
   inicio_em: string
   fim_em: string
   ativos_considerados: number

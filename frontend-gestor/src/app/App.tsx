@@ -8,7 +8,7 @@ import { BellIcon } from '../components/Icons'
 import { NotificationCenter } from '../components/NotificationCenter'
 import { PlatformMotorWorkspace } from '../components/PlatformMotorWorkspace'
 import { WorkspaceStartupGate } from '../components/WorkspaceStartupGate'
-import { AssetsPage } from '../pages/AssetsPage'
+import { useAdaptiveDevice } from '../hooks/useAdaptiveDevice'
 import type { AdminModule } from '../pages/AdminPage'
 import { GestorAnalyticsWorkspace } from '../pages/GestorAnalyticsWorkspace'
 import {
@@ -18,6 +18,7 @@ import {
 import { LoginPage } from '../pages/LoginPage'
 import { MaintenanceAccessPage } from '../pages/MaintenanceAccessPage'
 import { MorePage } from '../pages/MorePage'
+import { GestorQrWorkspace } from '../pages/GestorQrWorkspace'
 import {
   revokeGestorSession,
   type GestorSession,
@@ -61,6 +62,7 @@ export function App() {
     useState<GestorTechnicalContext | null>(null)
   const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
   const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
+  const compactDevice = useAdaptiveDevice()
 
   const expireSession = useCallback(() => {
     markExpiredGestorSession()
@@ -284,14 +286,13 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="topbar__identity">
-          <span className="brand-mark" aria-hidden="true">FC</span>
+        <div className="topbar__identity topbar__identity--manager">
           <div>
             <strong>Fab Control</strong>
             <span>
               {technicalContext?.pode_validar
-                ? `Validação · ${technicalContext.identidade.area_nome}`
-                : `Acompanhamento · ${technicalContext?.identidade.area_nome || 'Área técnica'}`}
+                ? `Validação técnica · ${technicalContext.identidade.area_nome || 'Qualidade e segurança'}`
+                : `${technicalContext?.identidade.cargo_nome || 'Acompanhamento técnico'} · ${technicalContext?.identidade.area_nome || 'Área técnica'}`}
             </span>
           </div>
         </div>
@@ -348,6 +349,8 @@ export function App() {
           <GestorAnalyticsWorkspace
             focusAssetId={analyticsFocusAsset}
             focusOccurrenceId={analyticsFocusOccurrence}
+            technicalContext={technicalContext}
+            onOpenNotifications={() => setNotificationOpen(true)}
             onOpenDecision={(kind, id) => {
               if (kind === 'occurrence') {
                 handleOpenAnalytics('', id)
@@ -364,8 +367,11 @@ export function App() {
             onSessionExpired={expireSession}
           />
         ) : null}
-        {section === 'assets' ? (
-          <AssetsPage onSessionExpired={expireSession} />
+        {section === 'scan' ? (
+          <GestorQrWorkspace
+            onOpenAsset={(assetId) => handleOpenAnalytics(assetId)}
+            onSessionExpired={expireSession}
+          />
         ) : null}
         {section === 'more' ? (
           <MorePage session={session} />
@@ -377,6 +383,7 @@ export function App() {
         validationCount={validationCount}
         showAdmin={false}
         canValidate={technicalContext?.pode_validar ?? false}
+        compactDevice={compactDevice}
         onNavigate={handleNavigate}
       />
 

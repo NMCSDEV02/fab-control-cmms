@@ -6,6 +6,7 @@ import type {
   GestorAssetCatalog,
   GestorAssetHistory,
   GestorAssetJourney,
+  GestorAssetParameter,
   GestorAssetParameterRule,
   GestorChecklistModel,
   GestorChecklistModelDecision,
@@ -239,14 +240,38 @@ export async function createGestorStopTreatment(
 export async function getUnreadNotificationCount(
   signal?: AbortSignal,
 ): Promise<number> {
-  const data = await readGestorData<NotificationListData>(
-    'gestor.notificacoes.listar',
-    { status: 'NAO_LIDA', limite: 1 },
-    signal,
+  const [data, overview] = await Promise.all([
+    readGestorData<NotificationListData>(
+      'gestor.notificacoes.listar',
+      { status: 'NAO_LIDA', limite: 200 },
+      signal,
+    ),
+    getGestorOverview(signal),
+  ])
+  const notifications = Array.isArray(data.notificacoes)
+    ? data.notificacoes
+    : []
+  const entities = new Set(
+    notifications.map((item) => (
+      `${normalizedStatus(item.entidade_tipo)}:${item.entidade_id ?? ''}`
+    )),
   )
-
-  const total = Number(data.total)
-  return Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : 0
+  const treatmentByStop = new Map(
+    overview.occurrenceHistory
+      .filter((item) => item.parada_id)
+      .map((item) => [String(item.parada_id), item]),
+  )
+  const occurrenceCount = overview.occurrences.filter(
+    (item) => !entities.has(`OCORRENCIAS_OPERACIONAIS:${item.id}`),
+  ).length
+  const stopCount = overview.openStops.filter((stop) => {
+    const treatment = treatmentByStop.get(stop.id)
+    const key = treatment
+      ? `OCORRENCIAS_OPERACIONAIS:${treatment.id}`
+      : `PARADAS_EQUIPAMENTO:${stop.id}`
+    return !entities.has(key)
+  }).length
+  return notifications.length + occurrenceCount + stopCount
 }
 
 export async function getGestorNotifications(
@@ -338,6 +363,7 @@ export async function getGestorTechnicalKpis(
 
 export interface GestorTechnicalKpiFilters {
   ativo_id?: string
+  componente_id?: string
   inicio_em?: string
   fim_em?: string
 }
@@ -516,15 +542,18 @@ export async function getGestorAssetCatalog(
 }
 
 export async function getGestorAssetJourney(
-  assetId: string,
+  qrPayload: string,
   signal?: AbortSignal,
 ): Promise<GestorAssetJourney> {
-  const [context, history, planData, itemData] = await Promise.all([
-    readGestorData<GestorAssetJourney>(
-      'operador.contexto_qr',
-      { qr_payload: assetId, motor: false },
-      signal,
-    ),
+  const context = await readGestorData<GestorAssetJourney>(
+    'operador.contexto_qr',
+    { qr_payload: qrPayload, motor: false },
+    signal,
+  )
+  const assetId = String(context.ativo?.id ?? '').trim()
+  if (!context.found || !assetId) return context
+
+  const [history, planData, itemData] = await Promise.all([
     readGestorData<AssetHistoryListData>(
       'operador.historico_qr',
       { ativo_id: assetId, limite: 100 },
@@ -593,6 +622,23 @@ export async function getGestorAssetJourney(
       : [],
     regras_parametros,
   }
+}
+
+export function registerGestorParameter(input: {
+  ativo_id: string
+  componente_id?: string
+  parametro: string
+  valor: number
+  unidade?: string
+}): Promise<{
+  saved: boolean
+  parametro: GestorAssetParameter
+}> {
+  return writeGestorData('gestor.registrar_parametro', {
+    ...input,
+    origem: 'GESTOR_QR',
+    user_agent: navigator.userAgent,
+  })
 }
 
 export async function getGestorActionDetail(

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  createGestorStopTreatment,
   getGestorNotifications,
+  getGestorOverview,
   isGestorAuthenticationError,
   markGestorNotificationRead,
 } from '../services/api/gestor'
-import type { GestorNotification } from '../types/gestor'
+import type { GestorNotification, GestorOverview } from '../types/gestor'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import {
   AlertIcon,
@@ -15,7 +17,7 @@ import {
 } from './Icons'
 
 type NotificationAudience = 'manager' | 'admin'
-type NotificationScope = 'unread' | 'all'
+type NotificationScope = 'unread' | 'today' | 'critical' | 'all'
 type NotificationCategory = 'all' | 'technical' | 'operation' | 'system'
 
 interface NotificationCenterProps {
@@ -83,6 +85,15 @@ function metadataOf(notification: GestorNotification): NotificationMetadata {
   const type = upper(notification.tipo)
   const entity = upper(notification.entidade_tipo)
 
+  if (type === 'PARADA_TECNICA' || entity === 'PARADAS_EQUIPAMENTO') {
+    return {
+      category: 'operation',
+      typeLabel: 'Parada técnica',
+      actionLabel: 'Tratar parada',
+      entityLabel: 'Equipamento indisponível',
+    }
+  }
+
   if (type === 'ANALISE_TECNICA' || entity === 'ANALISES_TECNICAS') {
     return {
       category: 'technical',
@@ -137,6 +148,62 @@ function metadataOf(notification: GestorNotification): NotificationMetadata {
   }
 }
 
+function operationalNotifications(
+  overview: GestorOverview,
+  existing: GestorNotification[],
+): GestorNotification[] {
+  const existingEntities = new Set(
+    existing.map((item) => `${upper(item.entidade_tipo)}:${item.entidade_id}`),
+  )
+  const treatmentByStop = new Map(
+    overview.occurrenceHistory
+      .filter((item) => item.parada_id)
+      .map((item) => [String(item.parada_id), item]),
+  )
+  const generated: GestorNotification[] = []
+
+  for (const occurrence of overview.occurrences) {
+    const entityKey = `OCORRENCIAS_OPERACIONAIS:${occurrence.id}`
+    if (existingEntities.has(entityKey)) continue
+    generated.push({
+      id: `virtual-occurrence-${occurrence.id}`,
+      tipo: 'OCORRENCIA_CRITICA',
+      titulo: occurrence.titulo || 'Ocorrência exige análise técnica',
+      mensagem: occurrence.descricao || 'Abra o registro e defina o tratamento necessário.',
+      entidade_tipo: 'OCORRENCIAS_OPERACIONAIS',
+      entidade_id: occurrence.id,
+      prioridade: occurrence.severidade || 'ALTA',
+      status: 'NAO_LIDA',
+      criado_em: occurrence.criado_em,
+    })
+  }
+
+  for (const stop of overview.openStops) {
+    const treatment = treatmentByStop.get(stop.id)
+    const entityType = treatment
+      ? 'OCORRENCIAS_OPERACIONAIS'
+      : 'PARADAS_EQUIPAMENTO'
+    const entityId = treatment?.id || stop.id
+    const entityKey = `${entityType}:${entityId}`
+    if (existingEntities.has(entityKey)) continue
+    generated.push({
+      id: `virtual-stop-${stop.id}`,
+      tipo: 'PARADA_TECNICA',
+      titulo: treatment
+        ? `Continuar tratamento · ${stop.ativo_id}`
+        : `Tratar parada · ${stop.ativo_id}`,
+      mensagem: stop.motivo_parada || 'Equipamento indisponível aguardando análise técnica.',
+      entidade_tipo: entityType,
+      entidade_id: entityId,
+      prioridade: 'CRITICA',
+      status: 'NAO_LIDA',
+      criado_em: stop.iniciada_em,
+    })
+  }
+
+  return generated
+}
+
 export function NotificationCenter({
   open,
   audience = 'manager',
@@ -150,21 +217,23 @@ export function NotificationCenter({
   const [category, setCategory] = useState<NotificationCategory>('all')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const [markingAll, setMarkingAll] = useState(false)
   const [openingId, setOpeningId] = useState('')
   const [error, setError] = useState('')
 
   const load = useCallback(async (signal?: AbortSignal, background = false) => {
-    if (background) setRefreshing(true)
-    else setLoading(true)
+    if (!background) setLoading(true)
     setError('')
 
     try {
-      const data = await getGestorNotifications(signal)
-      setNotifications(data)
-      setLastSyncedAt(new Date())
+      const [data, overview] = await Promise.all([
+        getGestorNotifications(signal),
+        getGestorOverview(signal),
+      ])
+      setNotifications([
+        ...operationalNotifications(overview, data),
+        ...data,
+      ])
     } catch (cause) {
       if (signal?.aborted) return
       if (isGestorAuthenticationError(cause)) {
@@ -179,7 +248,6 @@ export function NotificationCenter({
     } finally {
       if (!signal?.aborted) {
         setLoading(false)
-        setRefreshing(false)
       }
     }
   }, [onSessionExpired])
@@ -198,6 +266,9 @@ export function NotificationCenter({
 
   const summary = useMemo(() => ({
     unread: notifications.filter(isUnread).length,
+    readableUnread: notifications.filter(
+      (item) => isUnread(item) && !item.id.startsWith('virtual-'),
+    ).length,
     critical: notifications.filter((item) => isUnread(item) && isCritical(item)).length,
     today: notifications.filter((item) => isToday(item.criado_em)).length,
   }), [notifications])
@@ -212,6 +283,8 @@ export function NotificationCenter({
     return notifications.filter((item) => {
       const metadata = metadataOf(item)
       if (scope === 'unread' && !isUnread(item)) return false
+      if (scope === 'today' && !isToday(item.criado_em)) return false
+      if (scope === 'critical' && !isCritical(item)) return false
       if (category !== 'all' && metadata.category !== category) return false
       if (!normalizedQuery) return true
 
@@ -246,8 +319,19 @@ export function NotificationCenter({
     setOpeningId(notification.id)
     setError('')
     try {
-      await onOpenNotification(notification)
-      if (isUnread(notification)) {
+      let destination = notification
+      if (upper(notification.entidade_tipo) === 'PARADAS_EQUIPAMENTO') {
+        const treatment = await createGestorStopTreatment(
+          String(notification.entidade_id ?? ''),
+        )
+        destination = {
+          ...notification,
+          entidade_tipo: 'OCORRENCIAS_OPERACIONAIS',
+          entidade_id: treatment.occurrence.id,
+        }
+      }
+      await onOpenNotification(destination)
+      if (isUnread(notification) && !notification.id.startsWith('virtual-')) {
         await markGestorNotificationRead(notification.id)
         updateNotificationAsRead(notification.id)
       }
@@ -268,7 +352,9 @@ export function NotificationCenter({
   }
 
   async function markAllAsRead() {
-    const pending = notifications.filter(isUnread)
+    const pending = notifications.filter(
+      (item) => isUnread(item) && !item.id.startsWith('virtual-'),
+    )
     if (!pending.length || markingAll) return
 
     setMarkingAll(true)
@@ -279,7 +365,9 @@ export function NotificationCenter({
       }
       const readAt = new Date().toISOString()
       setNotifications((current) => current.map((item) => (
-        isUnread(item) ? { ...item, status: 'LIDA', lida_em: readAt } : item
+        isUnread(item) && !item.id.startsWith('virtual-')
+          ? { ...item, status: 'LIDA', lida_em: readAt }
+          : item
       )))
       setScope('all')
     } catch (cause) {
@@ -320,33 +408,47 @@ export function NotificationCenter({
             <p>{audienceDescription}</p>
           </div>
           <div>
-            <span
-              className={`manager-live-sync manager-live-sync--compact${refreshing ? ' is-syncing' : ''}`}
-              role="status"
-              title={lastSyncedAt
-                ? `Sincronizado às ${lastSyncedAt.toLocaleTimeString('pt-BR')}`
-                : 'Aguardando sincronização'}
-            >
-              <i aria-hidden="true" />
-              {refreshing ? 'Sincronizando' : 'Ao vivo'}
-            </span>
             <button type="button" onClick={onClose} aria-label="Fechar notificações">×</button>
           </div>
         </header>
 
         <section className="manager-notification-summary" aria-label="Resumo dos alertas">
-          <article>
+          <button
+            type="button"
+            className={scope === 'unread' ? 'is-active' : ''}
+            aria-pressed={scope === 'unread'}
+            onClick={() => setScope('unread')}
+          >
             <span>Não lidas</span>
             <strong>{summary.unread}</strong>
-          </article>
-          <article>
+          </button>
+          <button
+            type="button"
+            className={scope === 'today' ? 'is-active' : ''}
+            aria-pressed={scope === 'today'}
+            onClick={() => setScope('today')}
+          >
             <span>Hoje</span>
             <strong>{summary.today}</strong>
-          </article>
-          <article className={summary.critical > 0 ? 'is-critical' : ''}>
+          </button>
+          <button
+            type="button"
+            className={`${scope === 'critical' ? 'is-active ' : ''}${summary.critical > 0 ? 'is-critical' : ''}`}
+            aria-pressed={scope === 'critical'}
+            onClick={() => setScope('critical')}
+          >
             <span>Críticas</span>
             <strong>{summary.critical}</strong>
-          </article>
+          </button>
+          <button
+            type="button"
+            className={scope === 'all' ? 'is-active' : ''}
+            aria-pressed={scope === 'all'}
+            onClick={() => setScope('all')}
+          >
+            <span>Todas</span>
+            <strong>{notifications.length}</strong>
+          </button>
         </section>
 
         <section className="manager-notification-tools" aria-label="Filtros da central">
@@ -361,22 +463,6 @@ export function NotificationCenter({
             />
           </label>
           <div>
-            <div className="manager-notification-scope" role="group" aria-label="Situação">
-              <button
-                type="button"
-                className={scope === 'unread' ? 'is-active' : ''}
-                onClick={() => setScope('unread')}
-              >
-                Pendentes
-              </button>
-              <button
-                type="button"
-                className={scope === 'all' ? 'is-active' : ''}
-                onClick={() => setScope('all')}
-              >
-                Todas
-              </button>
-            </div>
             <select
               value={category}
               onChange={(event) => setCategory(event.target.value as NotificationCategory)}
@@ -443,11 +529,11 @@ export function NotificationCenter({
           </span>
           <button
             type="button"
-            disabled={!summary.unread || markingAll}
+            disabled={!summary.readableUnread || markingAll}
             onClick={() => void markAllAsRead()}
           >
             <CheckIcon />
-            {markingAll ? 'Confirmando…' : 'Marcar todas como lidas'}
+            {markingAll ? 'Confirmando…' : 'Marcar mensagens como lidas'}
           </button>
         </footer>
       </aside>

@@ -194,6 +194,71 @@ function technicalRequireManager_(auth){
   }
 }
 
+function gestorRegistrarParametro_(p, auth){
+  technicalRequireManager_(auth);
+  req_(p, ["ativo_id", "parametro", "valor"]);
+
+  var ativo = find_("ativos", "id", p.ativo_id);
+  if(!ativo) err_("ASSET_NOT_FOUND", "Equipamento não encontrado para registrar parâmetro.", 404);
+
+  var componente = null;
+  if(clean_(p.componente_id)){
+    componente = find_("componentes", "id", p.componente_id);
+    if(!componente || String(componente.ativo_id) !== String(ativo.id)){
+      err_("COMPONENT_ASSET_MISMATCH", "Componente não pertence ao equipamento informado.", 400);
+    }
+  }
+
+  var parametroNome = upper_(p.parametro);
+  var valor = Number(String(p.valor).replace(",", "."));
+  if(!isFinite(valor)) err_("PARAMETER_VALUE_INVALID", "Valor do parâmetro deve ser numérico.", 400);
+
+  var row;
+  var horimetro = null;
+  if(parametroNome === "HORIMETRO" && typeof registrarParametroHorimetro116_ === "function"){
+    var resultHorimetro = registrarParametroHorimetro116_(
+      ativo,
+      valor,
+      p.origem || "GESTOR_QR",
+      auth || {},
+      componente ? componente.id : ""
+    );
+    row = resultHorimetro.parametro;
+    horimetro = resultHorimetro.horimetro;
+  } else {
+    row = fit_("parametros", {
+      id:uuid_("PAR"),
+      ativo_id:ativo.id,
+      componente_id:componente ? componente.id : "",
+      parametro:parametroNome,
+      valor:valor,
+      unidade:clean_(p.unidade),
+      origem:clean_(p.origem || "GESTOR_QR"),
+      registrado_por:clean_(auth && auth.usuario_id),
+      registrado_em:now_(),
+      criado_em:now_()
+    });
+    append_("parametros", row);
+  }
+
+  var recalculo = cmmsMotorRecalcular_({ativo_id:ativo.id, __auth:auth});
+  audit_(
+    auth || {},
+    "GESTOR_PARAMETER_RECORDED",
+    "parametros",
+    row.id,
+    null,
+    strip_(row),
+    clean_(p.user_agent)
+  );
+  return {
+    saved:true,
+    parametro:strip_(row),
+    horimetro:horimetro,
+    recalculo:recalculo
+  };
+}
+
 function technicalIdentity_(auth){
   var user = auth && auth.usuario_id ? find_("usuarios", "id", auth.usuario_id) : null;
   var area = user && user.area_id ? find_("areas_tecnicas", "id", user.area_id) : null;
@@ -1453,12 +1518,22 @@ function cmmsKpisTecnicos_(p, auth){
   var startMs = clean_(p.inicio_em) ? new Date(clean_(p.inicio_em)).getTime() : endMs - defaultWindowDays * 86400000;
   if(!startMs || !endMs || startMs >= endMs) err_("KPI_PERIOD_INVALID", "Período de indicadores inválido.", 400);
   var assetId = clean_(p.ativo_id);
+  var componentId = clean_(p.componente_id);
+  if(componentId){
+    var component = find_("componentes", "id", componentId);
+    if(!component) err_("COMPONENT_NOT_FOUND", "Componente não encontrado para calcular indicadores.", 404);
+    if(assetId && String(component.ativo_id) !== String(assetId)){
+      err_("COMPONENT_ASSET_MISMATCH", "Componente não pertence ao equipamento filtrado.", 400);
+    }
+    assetId = clean_(component.ativo_id);
+  }
   var activeAssets = rows_("ativos", true).filter(function(asset){
     return (!assetId || String(asset.id) === String(assetId)) && upper_(asset.status || ST.ATIVO) !== ST.INATIVO;
   });
   var assetCount = Math.max(1, activeAssets.length);
   var stops = rows_("paradas_equipamento", true).filter(function(stop){
     if(assetId && String(stop.ativo_id) !== String(assetId)) return false;
+    if(componentId && String(stop.componente_id) !== String(componentId)) return false;
     var started = new Date(clean_(stop.iniciada_em)).getTime();
     return started && started >= startMs && started <= endMs;
   });
@@ -1474,10 +1549,12 @@ function cmmsKpisTecnicos_(p, auth){
   },0);
   var orders = rows_("ordens_servico", true).filter(function(order){
     if(assetId && String(order.ativo_id) !== String(assetId)) return false;
+    if(componentId && String(order.componente_id) !== String(componentId)) return false;
     var closed = new Date(clean_(order.finalizada_em)).getTime();
     return closed && closed >= startMs && closed <= endMs;
   });
   var demands = rows_("demandas_tecnicas", true).filter(function(demand){
+    if(componentId && String(demand.componente_id) !== String(componentId)) return false;
     var closed = new Date(clean_(demand.concluido_em)).getTime();
     return closed && closed >= startMs && closed <= endMs;
   });
@@ -1492,7 +1569,7 @@ function cmmsKpisTecnicos_(p, auth){
     var actual = new Date(clean_(demand.concluido_em)).getTime();
     return {eligible:!!deadline && (!!actual || deadline < nowMs), met:!!actual && actual <= deadline};
   });
-  var production = rows_("apontamentos_producao", true).filter(function(row){
+  var production = (componentId ? [] : rows_("apontamentos_producao", true)).filter(function(row){
     if(assetId && String(row.ativo_id) !== String(assetId)) return false;
     var started = new Date(clean_(row.inicio_em)).getTime();
     return started && started >= startMs && started <= endMs;
@@ -1509,12 +1586,14 @@ function cmmsKpisTecnicos_(p, auth){
     production:production
   });
   return Object.assign({
-    ativo_id:assetId || "TODOS", inicio_em:iso_(new Date(startMs)), fim_em:iso_(new Date(endMs)),
+    ativo_id:assetId || "TODOS", componente_id:componentId, inicio_em:iso_(new Date(startMs)), fim_em:iso_(new Date(endMs)),
     ativos_considerados:activeAssets.length,
     metas:{
       disponibilidade_pct:num_(configurationRuntimeValue_("kpi.meta.disponibilidade_pct", 90), 90),
       oee_pct:num_(configurationRuntimeValue_("kpi.meta.oee_pct", 75), 75)
     },
-    metodologia:"MTBF/MTTR por falhas não planejadas; OEE somente com apontamento de produção."
+    metodologia:componentId
+      ? "MTBF/MTTR do componente por falhas não planejadas vinculadas; OEE não se aplica ao componente."
+      : "MTBF/MTTR por falhas não planejadas; OEE somente com apontamento de produção."
   }, metrics);
 }
