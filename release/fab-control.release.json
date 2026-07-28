@@ -19,11 +19,11 @@
   },
   "target": {
     "environment": "homologation",
-    "backendSourceSha256": "08892BC96F4707FBA665CCDEE9EAEECC326E170017B4CBCD639F5C2910355C80",
-    "immutableAppsScriptVersion": 37,
+    "backendSourceSha256": "0373B084E3ABEDAC8DA7CDA3F87BBD7EB83AA537C777A212BB74CADF38DCA451",
+    "immutableAppsScriptVersion": 38,
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "a75b47f"
+    "sourceGitCommit": "f6e0d0b"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -157,7 +157,10 @@
     "adminChecklistRequestPrefill": "approved-notification-routes-to-prefilled-builder",
     "managerNotificationFilters": "approved-unread-today-critical-context",
     "notificationReadPersistence": "approved-user-context-idempotent",
-    "managerResponsiveAssetWorkspace": "approved-single-search-horizontal-catalog-full-width-detail-mobile-tablet",
+    "managerResponsiveAssetWorkspace": "approved-contract-single-search-progressive-catalog-full-width-detail-mobile-tablet",
+    "managerSearchableAssetSelector": "approved-progressive-twenty-item-batches-keyboard-accessible",
+    "managerFieldWorkFilters": "approved-responsible-location-start-window-and-search",
+    "managerHorizontalOverflowGuard": "approved-contract-mobile-tablet-desktop",
     "managerFlexibleTechnicalPeriods": "approved-minutes-hours-days-months",
     "managerQueueSummaryFilters": "approved-pending-and-critical-actionable",
     "completedActionEvidencePreview": "approved-per-checklist-openable-preview",
@@ -167,9 +170,9 @@
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
-    "backendSourceSha256": "08892BC96F4707FBA665CCDEE9EAEECC326E170017B4CBCD639F5C2910355C80",
-    "immutableAppsScriptVersion": 37,
-    "sourceGitCommit": "a75b47f",
+    "backendSourceSha256": "0373B084E3ABEDAC8DA7CDA3F87BBD7EB83AA537C777A212BB74CADF38DCA451",
+    "immutableAppsScriptVersion": 38,
+    "sourceGitCommit": "f6e0d0b",
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
@@ -228,6 +231,9 @@
       "technicalSchemaSeeded": "approved",
       "continuousLiveRefreshContract": "approved",
       "managerResponsiveFinalContract": "approved",
+      "managerSearchableAssetSelector": "approved",
+      "managerFieldWorkFilters": "approved",
+      "completedEvidenceDriveFallback": "approved",
       "managerTechnicalRankings": "approved",
       "completedActionReadOnlyAudit": "approved",
       "canaryAdminRecovery": "approved-first-access-required",
