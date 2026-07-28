@@ -284,8 +284,9 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
+    <div className="manager-app-stage">
+      <div className="app-shell app-shell--manager">
+        <header className="topbar">
         <div className="topbar__identity topbar__identity--manager">
           <div>
             <strong>Fab Control</strong>
@@ -333,68 +334,69 @@ export function App() {
             {loggingOut ? 'Saindo…' : 'Sair'}
           </button>
         </div>
-      </header>
+        </header>
 
-      <div className="app-content">
-        {section === 'home' ? (
-          <GestorDecisionWorkspace
-            initialView={decisionView}
-            focus={decisionFocus}
-            onQueueCountChange={setValidationCount}
-            onOpenAnalytics={(assetId) => handleOpenAnalytics(assetId)}
-            onSessionExpired={expireSession}
-          />
-        ) : null}
-        {section === 'validations' ? (
-          <GestorAnalyticsWorkspace
-            focusAssetId={analyticsFocusAsset}
-            focusOccurrenceId={analyticsFocusOccurrence}
-            technicalContext={technicalContext}
-            onOpenNotifications={() => setNotificationOpen(true)}
-            onOpenDecision={(kind, id) => {
-              if (kind === 'occurrence') {
-                handleOpenAnalytics('', id)
-                return
-              }
-              const view: GestorWorkView =
-                kind === 'action'
-                  ? 'actions'
-                  : kind === 'model'
-                    ? 'models'
-                    : 'demands'
-              handleOpenDecision(view, { kind, id })
-            }}
-            onSessionExpired={expireSession}
-          />
-        ) : null}
-        {section === 'scan' ? (
-          <GestorQrWorkspace
-            onOpenAsset={(assetId) => handleOpenAnalytics(assetId)}
-            onSessionExpired={expireSession}
-          />
-        ) : null}
-        {section === 'more' ? (
-          <MorePage session={session} />
-        ) : null}
+        <div className="app-content">
+          {section === 'home' ? (
+            <GestorDecisionWorkspace
+              initialView={decisionView}
+              focus={decisionFocus}
+              onQueueCountChange={setValidationCount}
+              onOpenAnalytics={(assetId) => handleOpenAnalytics(assetId)}
+              onSessionExpired={expireSession}
+            />
+          ) : null}
+          {section === 'validations' ? (
+            <GestorAnalyticsWorkspace
+              focusAssetId={analyticsFocusAsset}
+              focusOccurrenceId={analyticsFocusOccurrence}
+              technicalContext={technicalContext}
+              onOpenNotifications={() => setNotificationOpen(true)}
+              onOpenDecision={(kind, id) => {
+                if (kind === 'occurrence') {
+                  handleOpenAnalytics('', id)
+                  return
+                }
+                const view: GestorWorkView =
+                  kind === 'action'
+                    ? 'actions'
+                    : kind === 'model'
+                      ? 'models'
+                      : 'demands'
+                handleOpenDecision(view, { kind, id })
+              }}
+              onSessionExpired={expireSession}
+            />
+          ) : null}
+          {section === 'scan' ? (
+            <GestorQrWorkspace
+              onOpenAsset={(assetId) => handleOpenAnalytics(assetId)}
+              onSessionExpired={expireSession}
+            />
+          ) : null}
+          {section === 'more' ? (
+            <MorePage session={session} />
+          ) : null}
+        </div>
+
+        <AppNavigation
+          active={section}
+          validationCount={validationCount}
+          showAdmin={false}
+          canValidate={technicalContext?.pode_validar ?? false}
+          compactDevice={compactDevice}
+          onNavigate={handleNavigate}
+        />
+
+        <NotificationCenter
+          open={notificationOpen}
+          audience="manager"
+          onClose={() => setNotificationOpen(false)}
+          onOpenNotification={handleOpenNotification}
+          onUnreadChange={setNotificationCount}
+          onSessionExpired={expireSession}
+        />
       </div>
-
-      <AppNavigation
-        active={section}
-        validationCount={validationCount}
-        showAdmin={false}
-        canValidate={technicalContext?.pode_validar ?? false}
-        compactDevice={compactDevice}
-        onNavigate={handleNavigate}
-      />
-
-      <NotificationCenter
-        open={notificationOpen}
-        audience="manager"
-        onClose={() => setNotificationOpen(false)}
-        onOpenNotification={handleOpenNotification}
-        onUnreadChange={setNotificationCount}
-        onSessionExpired={expireSession}
-      />
     </div>
   )
 }
