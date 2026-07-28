@@ -94,6 +94,24 @@ function metadataOf(notification: GestorNotification): NotificationMetadata {
     }
   }
 
+  if (type === 'SOLICITACAO_CHECKLIST') {
+    return {
+      category: 'technical',
+      typeLabel: 'Checklist solicitado',
+      actionLabel: 'Compor checklist',
+      entityLabel: 'Solicitação do Gestor',
+    }
+  }
+
+  if (type === 'SOLICITACAO_INTERVENCAO') {
+    return {
+      category: 'technical',
+      typeLabel: 'Inspeção solicitada',
+      actionLabel: 'Planejar intervenção',
+      entityLabel: 'Leitura técnica',
+    }
+  }
+
   if (type === 'ANALISE_TECNICA' || entity === 'ANALISES_TECNICAS') {
     return {
       category: 'technical',

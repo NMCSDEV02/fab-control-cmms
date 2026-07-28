@@ -259,6 +259,427 @@ function gestorRegistrarParametro_(p, auth){
   };
 }
 
+function technicalNullableNumber_(value){
+  if(value === undefined || value === null || clean_(value) === "") return null;
+  var parsed = Number(String(value).replace(",", "."));
+  return isFinite(parsed) ? parsed : null;
+}
+
+function technicalParameterStatus_(value, minimum, maximum){
+  var reading = technicalNullableNumber_(value);
+  var min = technicalNullableNumber_(minimum);
+  var max = technicalNullableNumber_(maximum);
+  if(reading === null) return "SEM_LEITURA";
+  if(min !== null && reading < min) return "ABAIXO_LIMITE";
+  if(max !== null && reading > max) return "ACIMA_LIMITE";
+  return min === null && max === null ? "SEM_LIMITE" : "NORMAL";
+}
+
+function technicalManagerParameterSummaries_(context){
+  var assetId = clean_(context && context.ativo && context.ativo.id);
+  var selectedComponentId = clean_(context && context.componente && context.componente.id);
+  if(!assetId) return [];
+
+  var plans = rows_("planos_manutencao", true).filter(function(plan){
+    if(String(plan.ativo_id) !== String(assetId)) return false;
+    if(selectedComponentId && clean_(plan.componente_id) && String(plan.componente_id) !== String(selectedComponentId)) return false;
+    if(typeof isPlanoOperacional_ === "function") return isPlanoOperacional_(plan);
+    return upper_(plan.status) === ST.ATIVO && ["VALIDADO","ATIVO"].indexOf(upper_(plan.workflow_status)) >= 0;
+  }).sort(sortByDateDesc_("atualizado_em"));
+  var planMap = {};
+  plans.forEach(function(plan){ planMap[String(plan.id)] = plan; });
+
+  var rules = rows_("plano_itens", true).filter(function(item){
+    return !!planMap[String(item.plano_id)] &&
+      upper_(item.status || ST.ATIVO) === ST.ATIVO &&
+      !!clean_(item.parametro_nome);
+  });
+  var readings = rows_("parametros", true).filter(function(reading){
+    if(String(reading.ativo_id) !== String(assetId)) return false;
+    return !selectedComponentId ||
+      !clean_(reading.componente_id) ||
+      String(reading.componente_id) === String(selectedComponentId);
+  }).sort(sortByDateDesc_("registrado_em"));
+  var users = {};
+  rows_("usuarios", true).forEach(function(user){ users[String(user.id)] = user; });
+  var components = {};
+  rows_("componentes", true).filter(function(component){
+    return String(component.ativo_id) === String(assetId);
+  }).forEach(function(component){ components[String(component.id)] = component; });
+
+  function key(componentId, parameter){
+    return clean_(componentId) + "|" + upper_(parameter);
+  }
+
+  var summaries = {};
+  rules.forEach(function(rule){
+    var plan = planMap[String(rule.plano_id)];
+    var componentId = clean_(plan && plan.componente_id);
+    var summaryKey = key(componentId, rule.parametro_nome);
+    if(summaries[summaryKey]) return;
+    summaries[summaryKey] = {
+      chave:summaryKey,
+      parametro:upper_(rule.parametro_nome),
+      unidade:clean_(rule.unidade || plan.unidade),
+      limite_min:technicalNullableNumber_(rule.limite_min),
+      limite_max:technicalNullableNumber_(rule.limite_max),
+      valor_esperado:clean_(rule.valor_esperado),
+      plano_id:clean_(plan.id),
+      plano_nome:clean_(plan.nome),
+      componente_id:componentId,
+      componente_nome:clean_(components[componentId] && components[componentId].nome),
+      componente_tag:clean_(components[componentId] && components[componentId].tag),
+      configurado:true,
+      leitura_atual:null,
+      leituras_recentes:[]
+    };
+  });
+
+  readings.forEach(function(reading){
+    var summaryKey = key(reading.componente_id, reading.parametro);
+    if(!summaries[summaryKey]){
+      summaries[summaryKey] = {
+        chave:summaryKey,
+        parametro:upper_(reading.parametro),
+        unidade:clean_(reading.unidade),
+        limite_min:null,
+        limite_max:null,
+        valor_esperado:"",
+        plano_id:"",
+        plano_nome:"",
+        componente_id:clean_(reading.componente_id),
+        componente_nome:clean_(components[String(reading.componente_id)] && components[String(reading.componente_id)].nome),
+        componente_tag:clean_(components[String(reading.componente_id)] && components[String(reading.componente_id)].tag),
+        configurado:false,
+        leitura_atual:null,
+        leituras_recentes:[]
+      };
+    }
+    var summary = summaries[summaryKey];
+    var publicReading = strip_(reading);
+    var author = users[String(reading.registrado_por)];
+    publicReading.registrado_por_nome = clean_(author && author.nome);
+    publicReading.status_limite = technicalParameterStatus_(
+      reading.valor,
+      summary.limite_min,
+      summary.limite_max
+    );
+    if(!summary.leitura_atual) summary.leitura_atual = publicReading;
+    if(summary.leituras_recentes.length < 6) summary.leituras_recentes.push(publicReading);
+  });
+
+  return Object.keys(summaries).map(function(summaryKey){
+    var summary = summaries[summaryKey];
+    summary.status = technicalParameterStatus_(
+      summary.leitura_atual && summary.leitura_atual.valor,
+      summary.limite_min,
+      summary.limite_max
+    );
+    return summary;
+  }).sort(function(a, b){
+    var score = {ACIMA_LIMITE:4, ABAIXO_LIMITE:4, SEM_LEITURA:3, SEM_LIMITE:2, NORMAL:1};
+    return num_(score[b.status], 0) - num_(score[a.status], 0) ||
+      String(a.parametro).localeCompare(String(b.parametro));
+  });
+}
+
+function technicalManagerAssetHistory_(context, limit){
+  var assetId = clean_(context && context.ativo && context.ativo.id);
+  var selectedComponentId = clean_(context && context.componente && context.componente.id);
+  if(!assetId) return [];
+  var users = {};
+  rows_("usuarios", true).forEach(function(user){ users[String(user.id)] = user; });
+  var orders = {};
+  rows_("ordens_servico", true).filter(function(order){
+    return String(order.ativo_id) === String(assetId);
+  }).forEach(function(order){ orders[String(order.id)] = order; });
+  var actions = {};
+  rows_("os_acoes", true).filter(function(action){
+    return String(action.ativo_id) === String(assetId);
+  }).forEach(function(action){ actions[String(action.id)] = action; });
+  var executions = rows_("execucoes", true).filter(function(execution){
+    if(String(execution.ativo_id) !== String(assetId)) return false;
+    return !selectedComponentId ||
+      !clean_(execution.componente_id) ||
+      String(execution.componente_id) === String(selectedComponentId);
+  });
+  var executionsMap = {};
+  executions.forEach(function(execution){ executionsMap[String(execution.id)] = execution; });
+  var checklistByExecution = {};
+  rows_("checklist_execucao", true).forEach(function(item){
+    var executionId = String(item.execucao_id || "");
+    if(!executionsMap[executionId]) return;
+    if(!checklistByExecution[executionId]) checklistByExecution[executionId] = [];
+    checklistByExecution[executionId].push(strip_(item));
+  });
+
+  function publicExecution(execution){
+    if(!execution) return null;
+    var checklist = checklistByExecution[String(execution.id)] || [];
+    var operator = users[String(execution.operador_id)];
+    return {
+      id:clean_(execution.id),
+      status:upper_(execution.status),
+      resultado:clean_(execution.resultado),
+      observacao:clean_(execution.observacao),
+      duracao_segundos:num_(execution.duracao_segundos, 0),
+      iniciou_em:clean_(execution.iniciou_em || execution.abriu_em),
+      finalizou_em:clean_(execution.finalizou_em),
+      operador_id:clean_(execution.operador_id),
+      operador_nome:clean_(operator && operator.nome),
+      checklist_total:checklist.length,
+      checklist_respondidos:checklist.filter(function(item){ return !!clean_(item.resposta) || clean_(item.valor_numero) !== ""; }).length,
+      checklist_nao_conformes:checklist.filter(function(item){ return upper_(item.conforme) === "NAO"; }).length,
+      checklist_itens:checklist.sort(function(a,b){ return num_(a.ordem,0)-num_(b.ordem,0); }).slice(0, 40)
+    };
+  }
+
+  var events = rows_("historico", true).filter(function(item){
+    if(String(item.ativo_id) !== String(assetId)) return false;
+    return !selectedComponentId ||
+      !clean_(item.componente_id) ||
+      String(item.componente_id) === String(selectedComponentId);
+  }).map(function(item){
+    var user = users[String(item.usuario_id)];
+    var order = orders[String(item.os_id)];
+    var action = actions[String(item.acao_id)];
+    return Object.assign({}, strip_(item), {
+      usuario_nome:clean_(user && user.nome) || clean_(item.usuario_id) || "Sistema",
+      os_codigo:clean_(order && (order.codigo || order.id)),
+      os_titulo:clean_(order && order.titulo),
+      acao_titulo:clean_(action && action.titulo),
+      execucao:publicExecution(executionsMap[String(item.execucao_id)])
+    });
+  });
+
+  var representedExecutions = {};
+  events.forEach(function(event){
+    if(clean_(event.execucao_id)) representedExecutions[String(event.execucao_id)] = true;
+  });
+  executions.forEach(function(execution){
+    if(representedExecutions[String(execution.id)]) return;
+    var action = actions[String(execution.acao_id)];
+    var order = orders[String(execution.os_id)];
+    var publicData = publicExecution(execution);
+    events.push({
+      id:"EXEC-"+execution.id,
+      ativo_id:execution.ativo_id,
+      componente_id:execution.componente_id,
+      os_id:execution.os_id,
+      acao_id:execution.acao_id,
+      execucao_id:execution.id,
+      evento:"EXECUCAO_"+upper_(execution.status || "REGISTRADA"),
+      descricao:clean_(execution.observacao || action && action.titulo || "Execução operacional registrada."),
+      usuario_id:execution.operador_id,
+      usuario_nome:publicData && publicData.operador_nome || clean_(execution.operador_id),
+      perfil:ROLE.OPERADOR,
+      criado_em:clean_(execution.finalizou_em || execution.iniciou_em || execution.criado_em),
+      os_codigo:clean_(order && (order.codigo || order.id)),
+      os_titulo:clean_(order && order.titulo),
+      acao_titulo:clean_(action && action.titulo),
+      execucao:publicData
+    });
+  });
+
+  return events.sort(sortByDateDesc_("criado_em")).slice(0, Math.max(10, Math.min(num_(limit, 60), 120)));
+}
+
+function gestorDossieAtivo_(p, auth){
+  technicalRequireManager_(auth);
+  req_(p, ["qr_payload"]);
+  var context = operadorContextoQr_({
+    qr_payload:p.qr_payload,
+    motor:false,
+    __auth:auth
+  });
+  if(!context.found || !context.ativo) return context;
+
+  var identity = technicalIdentity_(auth);
+  var recentAccess = rows_("historico", true).filter(function(item){
+    if(String(item.ativo_id) !== String(context.ativo.id)) return false;
+    if(String(item.usuario_id) !== String(identity.usuario_id)) return false;
+    if(upper_(item.evento) !== "GESTOR_QR_CONSULTADO") return false;
+    var timestamp = new Date(clean_(item.criado_em)).getTime();
+    return timestamp && Date.now() - timestamp < 60000;
+  })[0];
+  if(!recentAccess){
+    hist_({
+      ativo_id:context.ativo.id,
+      componente_id:context.componente ? context.componente.id : "",
+      evento:"GESTOR_QR_CONSULTADO",
+      descricao:"Dossiê técnico consultado por QR Code ou TAG.",
+      usuario_id:identity.usuario_id,
+      perfil:identity.perfil
+    });
+    audit_(auth, "GESTOR_QR_CONTEXT_VIEWED", "ativos", context.ativo.id, null, {
+      ativo_id:context.ativo.id,
+      componente_id:context.componente ? context.componente.id : "",
+      qr_payload:clean_(p.qr_payload)
+    }, clean_(p.user_agent));
+  }
+
+  context.parametros_analisados = technicalManagerParameterSummaries_(context);
+  context.historico_manutencao = technicalManagerAssetHistory_(context, p.limite_historico);
+  context.consulta_registrada_em = now_();
+  context.consultado_por = {
+    usuario_id:identity.usuario_id,
+    nome:identity.nome,
+    area_nome:identity.area_nome,
+    cargo_nome:identity.cargo_nome
+  };
+  return context;
+}
+
+function gestorSolicitarAcaoParametro_(p, auth){
+  technicalRequireManager_(auth);
+  technicalEnsureSchema_();
+  req_(p, ["parametro_id", "tipo_solicitacao"]);
+  var identity = technicalIdentity_(auth);
+  var reading = find_("parametros", "id", p.parametro_id);
+  if(!reading) err_("PARAMETER_READING_NOT_FOUND", "A leitura selecionada não foi encontrada.", 404);
+  var asset = find_("ativos", "id", reading.ativo_id);
+  if(!asset) err_("ASSET_NOT_FOUND", "O equipamento da leitura não foi encontrado.", 404);
+  var component = clean_(reading.componente_id)
+    ? find_("componentes", "id", reading.componente_id)
+    : null;
+  var requestType = upper_(p.tipo_solicitacao);
+  if(["INSPECAO","CHECKLIST","AJUSTE_LIMITE"].indexOf(requestType) < 0){
+    err_("PARAMETER_REQUEST_TYPE_INVALID", "Escolha inspeção, checklist ou ajuste de limites.", 400);
+  }
+
+  var summaries = technicalManagerParameterSummaries_({
+    ativo:asset,
+    componente:component
+  });
+  var summary = summaries.filter(function(item){
+    return String(item.componente_id || "") === String(reading.componente_id || "") &&
+      upper_(item.parametro) === upper_(reading.parametro);
+  })[0] || {};
+  var status = technicalParameterStatus_(reading.valor, summary.limite_min, summary.limite_max);
+  var priority = upper_(p.prioridade || (
+    ["ACIMA_LIMITE","ABAIXO_LIMITE"].indexOf(status) >= 0 ? "ALTA" : "MEDIA"
+  ));
+  var assetLabel = clean_(asset.tag || asset.nome || asset.id);
+  var parameterLabel = upper_(reading.parametro);
+  var valueLabel = clean_(reading.valor) + (clean_(reading.unidade) ? " " + clean_(reading.unidade) : "");
+  var requestLabels = {
+    INSPECAO:"Solicitar inspeção",
+    CHECKLIST:"Solicitar checklist",
+    AJUSTE_LIMITE:"Revisar limites"
+  };
+  var timestamp = now_();
+  var occurrence = fit_("ocorrencias_operacionais", {
+    id:uuid_("OCR"),
+    ativo_id:asset.id,
+    componente_id:clean_(reading.componente_id),
+    tipo:"PARAMETRO_TECNICO",
+    titulo:requestLabels[requestType]+" - "+parameterLabel+" - "+assetLabel,
+    descricao:clean_(p.observacao || (
+      "Leitura de "+parameterLabel+" em "+valueLabel+" requer avaliação administrativa."
+    )),
+    severidade:priority,
+    status:"EM_ANALISE_TECNICA",
+    usuario_id:identity.usuario_id,
+    perfil:identity.perfil,
+    os_id:"",
+    acao_id:"",
+    parada_id:"",
+    tratamento_status:"EM_ANALISE_TECNICA",
+    criado_em:timestamp,
+    atualizado_em:timestamp
+  });
+  occurrence = append_("ocorrencias_operacionais", occurrence);
+
+  var limitText = [];
+  if(summary.limite_min !== null && summary.limite_min !== undefined) limitText.push("mínimo "+summary.limite_min);
+  if(summary.limite_max !== null && summary.limite_max !== undefined) limitText.push("máximo "+summary.limite_max);
+  var recommendation = requestType === "CHECKLIST"
+    ? "Criar um checklist de inspeção para confirmar a causa, registrar evidências e validar o retorno à faixa esperada."
+    : (requestType === "INSPECAO"
+      ? "Programar uma inspeção técnica orientada para confirmar a condição e definir o tratamento."
+      : "Revisar tecnicamente os limites propostos antes de alterar a configuração mestre.");
+  var analysisResult = gestorAnaliseSalvar_({
+    ocorrencia_id:occurrence.id,
+    ativo_id:asset.id,
+    componente_id:clean_(reading.componente_id),
+    titulo:requestLabels[requestType]+": "+parameterLabel+" - "+assetLabel,
+    diagnostico:parameterLabel+" registrou "+valueLabel+
+      (limitText.length ? " (faixa configurada: "+limitText.join(", ")+")." : " sem faixa configurada."),
+    risco:clean_(p.risco || (
+      status === "NORMAL"
+        ? "A tendência deve ser confirmada antes de qualquer alteração operacional."
+        : "Leitura fora da faixa configurada pode indicar degradação ou condição operacional insegura."
+    )),
+    causa_provavel:clean_(p.causa_provavel || "A confirmar por inspeção técnica no equipamento."),
+    recomendacao:recommendation,
+    recomenda_checklist:requestType === "CHECKLIST",
+    recomenda_os:requestType === "INSPECAO",
+    prioridade:priority,
+    relatorio_tecnico:{
+      situacao:parameterLabel+" em "+valueLabel+" no ativo "+assetLabel+".",
+      causa_provavel:clean_(p.causa_provavel || "A confirmar por inspeção técnica."),
+      resultado_esperado:"Confirmar a causa e restabelecer ou validar a faixa operacional segura.",
+      riscos:[{
+        tipo:priority,
+        titulo:"Parâmetro técnico",
+        descricao:clean_(p.risco || "Validar a condição antes de liberar qualquer intervenção.")
+      }],
+      seguranca:[
+        "Confirmar a identificação do ativo e a condição segura da área.",
+        "Usar instrumento compatível e calibrado para repetir a medição.",
+        "Interromper a operação se a leitura representar risco imediato."
+      ],
+      nrs:["NR-12"],
+      ferramentas:[{tipo:"MEDICAO", nome:"Instrumento compatível com "+parameterLabel}],
+      etapas:[
+        {ordem:1, titulo:"Confirmar a leitura", descricao:"Repetir a medição e registrar data, condição operacional e evidência."},
+        {ordem:2, titulo:"Inspecionar a causa", descricao:"Verificar o componente e os fatores que podem alterar o parâmetro."},
+        {ordem:3, titulo:"Definir o tratamento", descricao:"Corrigir, monitorar ou revisar a faixa somente após avaliação técnica."},
+        {ordem:4, titulo:"Validar o resultado", descricao:"Registrar a leitura final e confirmar a condição segura."}
+      ],
+      evidencias_requeridas:["Leitura inicial", "Condição encontrada", "Leitura após o tratamento"],
+      criterio_aceite:"Parâmetro confirmado em faixa aprovada e condição segura documentada.",
+      parametro_contexto:{
+        leitura_id:reading.id,
+        ativo_id:asset.id,
+        componente_id:clean_(reading.componente_id),
+        parametro:parameterLabel,
+        valor:reading.valor,
+        unidade:reading.unidade,
+        limite_min:summary.limite_min,
+        limite_max:summary.limite_max,
+        limite_min_proposto:technicalNullableNumber_(p.limite_min_proposto),
+        limite_max_proposto:technicalNullableNumber_(p.limite_max_proposto),
+        status:status,
+        registrado_por:reading.registrado_por,
+        registrado_em:reading.registrado_em,
+        tipo_solicitacao:requestType
+      }
+    },
+    user_agent:p.user_agent
+  }, auth);
+  var sent = gestorAnaliseEnviarAdmin_({
+    analise_id:analysisResult.analise.id,
+    user_agent:p.user_agent
+  }, auth);
+
+  hist_({
+    ativo_id:asset.id,
+    componente_id:clean_(reading.componente_id),
+    evento:"PARAMETRO_ENCAMINHADO_ADMIN",
+    descricao:requestLabels[requestType]+": "+parameterLabel+" em "+valueLabel+".",
+    usuario_id:identity.usuario_id,
+    perfil:identity.perfil
+  });
+  return {
+    requested:true,
+    tipo_solicitacao:requestType,
+    status_parametro:status,
+    ocorrencia:strip_(occurrence),
+    analise:sent.analise
+  };
+}
+
 function technicalIdentity_(auth){
   var user = auth && auth.usuario_id ? find_("usuarios", "id", auth.usuario_id) : null;
   var area = user && user.area_id ? find_("areas_tecnicas", "id", user.area_id) : null;
@@ -313,6 +734,23 @@ function technicalTextList_(value, fallback, limit){
 function technicalNormalizeBrief_(value, fallback){
   var data = technicalObject_(value);
   var base = technicalObject_(fallback);
+  var parameterSource = technicalObject_(data.parametro_contexto || base.parametro_contexto);
+  var parameterContext = clean_(parameterSource.parametro) ? {
+    leitura_id:clean_(parameterSource.leitura_id),
+    ativo_id:clean_(parameterSource.ativo_id),
+    componente_id:clean_(parameterSource.componente_id),
+    parametro:upper_(parameterSource.parametro),
+    valor:parameterSource.valor,
+    unidade:clean_(parameterSource.unidade),
+    limite_min:parameterSource.limite_min,
+    limite_max:parameterSource.limite_max,
+    limite_min_proposto:parameterSource.limite_min_proposto,
+    limite_max_proposto:parameterSource.limite_max_proposto,
+    status:upper_(parameterSource.status),
+    registrado_por:clean_(parameterSource.registrado_por),
+    registrado_em:clean_(parameterSource.registrado_em),
+    tipo_solicitacao:upper_(parameterSource.tipo_solicitacao)
+  } : null;
   var situation = clean_(data.situacao || base.situacao || "Intervenção técnica registrada para execução.");
   var cause = clean_(data.causa_provavel || base.causa_provavel || "A confirmar na inspeção inicial do equipamento.");
   var expected = clean_(data.resultado_esperado || base.resultado_esperado || "Concluir a atividade em condição segura e operacional.");
@@ -369,7 +807,8 @@ function technicalNormalizeBrief_(value, fallback){
       "Condição encontrada",
       "Teste ou condição final"
     ], 20),
-    criterio_aceite:acceptance
+    criterio_aceite:acceptance,
+    parametro_contexto:parameterContext
   };
 }
 
@@ -1383,7 +1822,23 @@ function gestorAnaliseEnviarAdmin_(p, auth){
     tratamento_status:"AGUARDANDO_ADMIN",
     atualizado_em:now_()
   });
-  technicalNotify_({perfil:ROLE.ADMIN}, "ANALISE_TECNICA", analysis.titulo, "Análise técnica recebida com recomendação para decisão administrativa.", "analises_tecnicas", analysis.id, analysis.prioridade);
+  var notificationType = bool_(analysis.recomenda_checklist)
+    ? "SOLICITACAO_CHECKLIST"
+    : (bool_(analysis.recomenda_os) ? "SOLICITACAO_INTERVENCAO" : "ANALISE_TECNICA");
+  var notificationMessage = notificationType === "SOLICITACAO_CHECKLIST"
+    ? "O Gestor enviou uma análise com solicitação de checklist. O construtor será aberto com o contexto técnico preenchido."
+    : (notificationType === "SOLICITACAO_INTERVENCAO"
+      ? "O Gestor solicitou uma inspeção ou intervenção baseada em análise técnica."
+      : "Análise técnica recebida com recomendação para decisão administrativa.");
+  technicalNotify_(
+    {perfil:ROLE.ADMIN},
+    notificationType,
+    analysis.titulo,
+    notificationMessage,
+    "analises_tecnicas",
+    analysis.id,
+    analysis.prioridade
+  );
   audit_(auth, "TECH_ANALYSIS_SENT_ADMIN", "analises_tecnicas", analysis.id, strip_(analysis), Object.assign({}, strip_(analysis), patch), clean_(p.user_agent));
   return {sent:true, already_sent:false, analise:Object.assign({}, strip_(analysis), patch)};
 }

@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { listAdminUsers, listTechnicalRoles } from '../services/api/admin'
+import {
+  listAdminTechnicalAnalyses,
+  listAdminUsers,
+  listTechnicalRoles,
+} from '../services/api/admin'
 import { actionAdminEntity, listAdminEntity } from '../services/api/catalog'
 import {
   createAdminChecklistRevision,
+  convertAdminTechnicalAnalysisToChecklist,
   getAdminChecklistDetail,
   listAdminChecklistModels,
   saveAdminChecklistModel,
@@ -10,7 +15,12 @@ import {
 } from '../services/api/checklists'
 import { isGestorAuthenticationError } from '../services/api/gestor'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
-import type { AdminNotificationTarget, AdminUser, TechnicalRole } from '../types/admin'
+import type {
+  AdminNotificationTarget,
+  AdminTechnicalAnalysis,
+  AdminUser,
+  TechnicalRole,
+} from '../types/admin'
 import type { AdminEntityRecord } from '../types/catalog'
 import type { AdminChecklistItem, AdminChecklistPlan, ChecklistResponseType } from '../types/checklists'
 import type { ValidationRouteDraft } from '../types/validation'
@@ -157,6 +167,152 @@ function isAvailable(record: AdminEntityRecord): boolean {
   return String(record.status ?? '').trim().toUpperCase() !== 'INATIVO'
 }
 
+interface TechnicalBriefParameter {
+  parametro?: string
+  valor?: number | string
+  unidade?: string
+  limite_min?: number | string
+  limite_max?: number | string
+  limite_min_proposto?: number | string
+  limite_max_proposto?: number | string
+  status?: string
+  tipo_solicitacao?: string
+}
+
+interface TechnicalBrief {
+  situacao?: string
+  causa_provavel?: string
+  resultado_esperado?: string
+  seguranca?: string[]
+  evidencias_requeridas?: string[]
+  criterio_aceite?: string
+  parametro_contexto?: TechnicalBriefParameter | null
+}
+
+function parseTechnicalBrief(value?: string): TechnicalBrief {
+  if (!value) return {}
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as TechnicalBrief
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function humanizeTechnicalName(value?: string): string {
+  const normalized = String(value ?? '').trim().replace(/[_-]+/g, ' ').toLocaleLowerCase('pt-BR')
+  return normalized ? normalized.charAt(0).toLocaleUpperCase('pt-BR') + normalized.slice(1) : 'condição técnica'
+}
+
+function normalizedCriticality(value?: string): string {
+  const normalized = String(value ?? 'MEDIA')
+    .trim()
+    .toLocaleUpperCase('pt-BR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  return ['BAIXA', 'MEDIA', 'ALTA', 'CRITICA'].includes(normalized) ? normalized : 'MEDIA'
+}
+
+function checklistDraftFromAnalysis(analysis: AdminTechnicalAnalysis): {
+  plan: AdminChecklistPlan
+  items: AdminChecklistItem[]
+  routingComment: string
+} {
+  const brief = parseTechnicalBrief(analysis.relatorio_tecnico_json)
+  const parameter = brief.parametro_contexto ?? null
+  const parameterName = String(parameter?.parametro ?? '').trim().toLocaleUpperCase('pt-BR')
+  const parameterLabel = humanizeTechnicalName(parameterName)
+  const minimum = parameter?.limite_min_proposto ?? parameter?.limite_min ?? ''
+  const maximum = parameter?.limite_max_proposto ?? parameter?.limite_max ?? ''
+  const safety = Array.isArray(brief.seguranca)
+    ? brief.seguranca.filter(Boolean).slice(0, 4)
+    : []
+  const expected = brief.resultado_esperado || analysis.recomendacao || 'Concluir a inspeção com condição segura e evidências registradas.'
+  const evidenceLabel = brief.evidencias_requeridas?.filter(Boolean).join(' e ')
+    || 'Registrar a condição encontrada e o resultado final.'
+  const plan: AdminChecklistPlan = {
+    ...emptyPlan(),
+    ativo_id: analysis.ativo_id || '',
+    componente_id: analysis.componente_id || '',
+    nome: parameterName
+      ? `Inspeção de ${parameterLabel} · ${analysis.titulo}`
+      : `Checklist técnico · ${analysis.titulo}`,
+    tipo: parameterName ? 'PREDITIVA' : 'INSPECAO',
+    criticidade: normalizedCriticality(analysis.prioridade),
+    gatilho_tipo: parameterName ? 'PARAMETRO' : 'DIAS',
+    gatilho_valor: parameterName
+      ? Math.max(1, Number(parameter?.valor) || Number(maximum) || 1)
+      : 30,
+    unidade: parameterName ? (parameter?.unidade || 'un') : 'dias',
+    recorrencia_dias: parameterName ? 0 : 30,
+    tempo_estimado_min: 30,
+    requer_bloqueio: 'SIM',
+    requer_evidencia: 'SIM',
+  }
+
+  const items: AdminChecklistItem[] = []
+  const safetyItem = emptyItem(items.length + 1, 'CONFIRMACAO')
+  items.push({
+    ...safetyItem,
+    titulo: 'Confirmar segurança e identificação do ativo',
+    instrucao: safety.join(' ') || 'Confirme o equipamento, a autorização e a condição segura da área.',
+    categoria: 'SEGURANCA',
+    bloqueia_finalizacao: 'SIM',
+  })
+
+  if (parameterName) {
+    const parameterItem = emptyItem(items.length + 1, 'PARAMETRO')
+    items.push({
+      ...parameterItem,
+      titulo: `Medir ${parameterLabel}`,
+      instrucao: `Compare a leitura atual com a faixa configurada. Referência recebida: ${parameter?.valor ?? 'sem leitura'} ${parameter?.unidade || ''}.`,
+      parametro_nome: parameterName,
+      unidade: parameter?.unidade || 'un',
+      limite_min: minimum,
+      limite_max: maximum,
+      categoria: 'MANUTENCAO',
+      evidencia_obrigatoria: 'SIM',
+      evidencia_min_fotos: 1,
+      bloqueia_finalizacao: 'SIM',
+    })
+  }
+
+  const inspectionItem = emptyItem(items.length + 1, 'OK_NOK')
+  items.push({
+    ...inspectionItem,
+    titulo: parameterName ? `Inspecionar causa do desvio de ${parameterLabel}` : 'Inspecionar a condição informada',
+    instrucao: brief.causa_provavel || analysis.causa_provavel || analysis.diagnostico || 'Confirme a causa provável durante a inspeção.',
+    categoria: 'MANUTENCAO',
+    evidencia_obrigatoria: 'SIM',
+    evidencia_min_fotos: 1,
+    bloqueia_finalizacao: 'SIM',
+  })
+
+  const evidenceItem = emptyItem(items.length + 1, 'EVIDENCIA')
+  items.push({
+    ...evidenceItem,
+    titulo: 'Registrar evidências da inspeção',
+    instrucao: evidenceLabel,
+    categoria: 'MANUTENCAO',
+  })
+
+  const resultItem = emptyItem(items.length + 1, 'TEXTO')
+  items.push({
+    ...resultItem,
+    titulo: 'Registrar resultado técnico e condição final',
+    instrucao: `${expected} Critério de aceite: ${brief.criterio_aceite || 'condição segura confirmada.'}`,
+    categoria: 'MANUTENCAO',
+  })
+
+  return {
+    plan,
+    items: items.map((item, index) => ({ ...item, ordem: index + 1 })),
+    routingComment: `Validar o checklist originado da análise "${analysis.titulo}". ${analysis.risco || brief.situacao || ''}`.trim(),
+  }
+}
+
 export function AdminChecklistBuilder({
   onSessionExpired,
   focusTarget,
@@ -176,6 +332,7 @@ export function AdminChecklistBuilder({
   const [detailLoading, setDetailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  const [sourceAnalysis, setSourceAnalysis] = useState<AdminTechnicalAnalysis | null>(null)
   const [libraryBusy, setLibraryBusy] = useState(false)
   const [modelToDelete, setModelToDelete] = useState<AdminChecklistPlan | null>(null)
   const [routingOpen, setRoutingOpen] = useState(false)
@@ -260,6 +417,7 @@ export function AdminChecklistBuilder({
   function newModel() {
     setPlan(emptyPlan())
     setItems([emptyItem(1)])
+    setSourceAnalysis(null)
     setActiveItemIndex(0)
     setRoutingOpen(false)
     setError('')
@@ -276,6 +434,7 @@ export function AdminChecklistBuilder({
       setItems(detail.itens.map((item, index) => ({
         ...item, ordem: Number(item.ordem || index + 1), opcoes_texto: parseOptions(item.opcoes_json),
       })))
+      setSourceAnalysis(null)
       setActiveItemIndex(0)
       setRoutingOpen(false)
     } catch (cause) {
@@ -287,16 +446,55 @@ export function AdminChecklistBuilder({
 
   useEffect(() => {
     const entityType = String(focusTarget?.entityType ?? '').toUpperCase()
+    const notificationType = String(focusTarget?.notificationType ?? '').toUpperCase()
     if (
       !focusTarget?.entityId ||
-      !['PLANOS_MANUTENCAO', 'CHECKLIST_MODELO', 'PLANO_CHECKLIST'].includes(entityType) ||
       handledFocusRef.current === focusTarget.nonce
     ) {
       return
     }
     handledFocusRef.current = focusTarget.nonce
-    void openModel(focusTarget.entityId)
-  }, [focusTarget?.entityId, focusTarget?.entityType, focusTarget?.nonce])
+    if (
+      entityType === 'ANALISES_TECNICAS' &&
+      notificationType === 'SOLICITACAO_CHECKLIST'
+    ) {
+      setDetailLoading(true)
+      setError('')
+      setNotice('')
+      void listAdminTechnicalAnalyses()
+        .then((analyses) => {
+          const analysis = analyses.find((item) => String(item.id) === String(focusTarget.entityId))
+          if (!analysis) {
+            throw new Error('A análise técnica vinculada à notificação não foi encontrada.')
+          }
+          const draft = checklistDraftFromAnalysis(analysis)
+          setSourceAnalysis(analysis)
+          setPlan(draft.plan)
+          setItems(draft.items)
+          setActiveItemIndex(0)
+          setRouting((current) => ({
+            ...current,
+            comentario: draft.routingComment,
+          }))
+          setRoutingOpen(false)
+          setNotice('Solicitação do Gestor carregada. Revise apenas os campos necessários e envie para assinatura técnica.')
+        })
+        .catch((cause) => {
+          handleFailure(cause, 'Não foi possível preparar o checklist solicitado pelo Gestor.')
+        })
+        .finally(() => setDetailLoading(false))
+      return
+    }
+    if (['PLANOS_MANUTENCAO', 'CHECKLIST_MODELO', 'PLANO_CHECKLIST'].includes(entityType)) {
+      void openModel(focusTarget.entityId)
+    }
+  }, [
+    focusTarget?.entityId,
+    focusTarget?.entityType,
+    focusTarget?.nonce,
+    focusTarget?.notificationType,
+    handleFailure,
+  ])
 
   function updatePlan<K extends keyof AdminChecklistPlan>(key: K, value: AdminChecklistPlan[K]) {
     setPlan((current) => {
@@ -402,12 +600,18 @@ export function AdminChecklistBuilder({
       const normalizedItems = items.map((item, index) => ({
         ...item, ordem: index + 1, opcoes_json: cleanOptions(item.opcoes_texto),
       }))
-      const result = await saveAdminChecklistModel(plan, normalizedItems)
+      const result = sourceAnalysis && !plan.id
+        ? await convertAdminTechnicalAnalysisToChecklist(sourceAnalysis.id, plan, normalizedItems)
+        : await saveAdminChecklistModel(plan, normalizedItems)
       setPlan(result.plano)
       setItems(result.itens.map((item, index) => ({ ...item, ordem: index + 1, opcoes_texto: parseOptions(item.opcoes_json) })))
+      const convertedFromAnalysis = Boolean(sourceAnalysis && !plan.id)
+      setSourceAnalysis(null)
       const nextModels = await listAdminChecklistModels()
       setModels(nextModels)
-      setNotice('Rascunho salvo. O modelo continua inativo até a validação técnica.')
+      setNotice(convertedFromAnalysis
+        ? 'Análise convertida em checklist rastreável. O modelo continua inativo até a assinatura técnica.'
+        : 'Rascunho salvo. O modelo continua inativo até a validação técnica.')
       return result.plano
     } catch (cause) {
       handleFailure(cause, 'Não foi possível salvar o checklist.')
@@ -544,6 +748,20 @@ export function AdminChecklistBuilder({
 
           {detailLoading ? <div className="dashboard-loading">Abrindo modelo…</div> : (
             <>
+              {sourceAnalysis ? (
+                <div className="admin-checklist-source">
+                  <ChartIcon />
+                  <span>
+                    <small>SOLICITAÇÃO DO GESTOR</small>
+                    <strong>{sourceAnalysis.titulo}</strong>
+                    <p>
+                      Ativo, componente, leitura, faixa técnica e justificativa já foram vinculados.
+                      O Administrador revisa o necessário antes de enviar para assinatura.
+                    </p>
+                  </span>
+                  <b>{normalizedCriticality(sourceAnalysis.prioridade)}</b>
+                </div>
+              ) : null}
               {!canEdit ? <div className="admin-checklist-lock"><ShieldIcon /><span><strong>Versão protegida</strong><small>Este modelo está em validação ou já foi validado. Ele não pode ser alterado diretamente.</small></span></div> : null}
               {canEdit ? (
                 <section className="admin-checklist-quick-start" aria-label="Criação rápida de etapas">

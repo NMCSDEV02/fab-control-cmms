@@ -55,6 +55,32 @@ export async function saveAdminChecklistModel(
   return response.data
 }
 
+export async function convertAdminTechnicalAnalysisToChecklist(
+  analysisId: string,
+  plan: AdminChecklistPlan,
+  items: AdminChecklistItem[],
+): Promise<AdminChecklistSaveResult> {
+  const response = await callApi<AdminChecklistSaveResult>(
+    'admin.analises_tecnicas.converter',
+    {
+      token: adminToken(),
+      analise_id: analysisId,
+      plano: plan,
+      itens: items,
+      user_agent: navigator.userAgent,
+    },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
+  )
+  if (!response.data) {
+    throw new ApiRequestError(
+      'A API não confirmou a conversão da análise técnica.',
+      'ADMIN_CHECKLIST_CONVERSION_EMPTY',
+    )
+  }
+  return response.data
+}
+
 export async function sendAdminChecklistForValidation(
   input: AdminChecklistSendInput,
 ): Promise<AdminChecklistSendResult> {

@@ -464,8 +464,35 @@ export interface GestorAssetParameter {
   unidade?: string
   origem?: string
   registrado_por?: string
+  registrado_por_nome?: string
   registrado_em?: string
   criado_em?: string
+  status_limite?: GestorParameterStatus
+}
+
+export type GestorParameterStatus =
+  | 'NORMAL'
+  | 'ACIMA_LIMITE'
+  | 'ABAIXO_LIMITE'
+  | 'SEM_LEITURA'
+  | 'SEM_LIMITE'
+
+export interface GestorAssetParameterSummary {
+  chave: string
+  parametro: string
+  unidade?: string
+  limite_min?: number | null
+  limite_max?: number | null
+  valor_esperado?: string
+  plano_id?: string
+  plano_nome?: string
+  componente_id?: string
+  componente_nome?: string
+  componente_tag?: string
+  configurado: boolean
+  status: GestorParameterStatus
+  leitura_atual: GestorAssetParameter | null
+  leituras_recentes: GestorAssetParameter[]
 }
 
 export interface GestorAssetParameterRule {
@@ -492,6 +519,34 @@ export interface GestorAssetHistory {
   usuario_id?: string
   perfil?: string
   criado_em?: string
+  usuario_nome?: string
+  os_codigo?: string
+  os_titulo?: string
+  acao_titulo?: string
+  execucao?: {
+    id: string
+    status?: string
+    resultado?: string
+    observacao?: string
+    duracao_segundos?: number
+    iniciou_em?: string
+    finalizou_em?: string
+    operador_id?: string
+    operador_nome?: string
+    checklist_total?: number
+    checklist_respondidos?: number
+    checklist_nao_conformes?: number
+    checklist_itens?: Array<{
+      id: string
+      ordem?: number
+      titulo?: string
+      resposta?: string
+      valor_numero?: number | string
+      unidade?: string
+      conforme?: string
+      observacao?: string
+    }>
+  } | null
 }
 
 export interface GestorAssetJourney {
@@ -505,6 +560,8 @@ export interface GestorAssetJourney {
   parametros_recentes: GestorAssetParameter[]
   parametros_atuais: GestorAssetParameter[]
   regras_parametros: GestorAssetParameterRule[]
+  parametros_analisados: GestorAssetParameterSummary[]
+  historico_manutencao: GestorAssetHistory[]
   parada_ativa: GestorStop | null
   ocorrencias_abertas: GestorOccurrence[]
   saude: {
@@ -513,4 +570,27 @@ export interface GestorAssetJourney {
     acoes_abertas?: number
     os_abertas?: number
   } | null
+  consulta_registrada_em?: string
+  consultado_por?: {
+    usuario_id?: string
+    nome?: string
+    area_nome?: string
+    cargo_nome?: string
+  }
+}
+
+export type GestorParameterRequestType =
+  | 'INSPECAO'
+  | 'CHECKLIST'
+  | 'AJUSTE_LIMITE'
+
+export interface GestorParameterActionRequest {
+  parametro_id: string
+  tipo_solicitacao: GestorParameterRequestType
+  prioridade: string
+  observacao: string
+  causa_provavel?: string
+  risco?: string
+  limite_min_proposto?: number
+  limite_max_proposto?: number
 }

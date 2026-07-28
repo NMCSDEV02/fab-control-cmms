@@ -4,10 +4,9 @@ import type {
   GestorActionDetail,
   GestorAsset,
   GestorAssetCatalog,
-  GestorAssetHistory,
   GestorAssetJourney,
   GestorAssetParameter,
-  GestorAssetParameterRule,
+  GestorParameterActionRequest,
   GestorChecklistModel,
   GestorChecklistModelDecision,
   GestorChecklistModelDecisionResult,
@@ -68,10 +67,6 @@ interface AdminListData<T> {
   entidade: string
   total: number
   rows: T[]
-}
-
-interface AssetHistoryListData {
-  items: GestorAssetHistory[]
 }
 
 const OPEN_STOP_STATUSES = new Set([
@@ -556,62 +551,13 @@ export async function getGestorAssetCatalog(
 
 export async function getGestorAssetJourney(
   qrPayload: string,
-  signal?: AbortSignal,
+  _signal?: AbortSignal,
 ): Promise<GestorAssetJourney> {
-  const context = await readGestorData<GestorAssetJourney>(
-    'operador.contexto_qr',
-    { qr_payload: qrPayload, motor: false },
-    signal,
-  )
-  const assetId = String(context.ativo?.id ?? '').trim()
-  if (!context.found || !assetId) return context
-
-  const [history, planData, itemData] = await Promise.all([
-    readGestorData<AssetHistoryListData>(
-      'operador.historico_qr',
-      { ativo_id: assetId, limite: 100 },
-      signal,
-    ),
-    readGestorData<AdminListData<Record<string, unknown>>>(
-      'admin.listar',
-      { entidade: 'planos', limite: 500 },
-      signal,
-    ),
-    readGestorData<AdminListData<Record<string, unknown>>>(
-      'admin.listar',
-      { entidade: 'plano_itens', limite: 1000 },
-      signal,
-    ),
-  ])
-
-  const plans = Array.isArray(planData.rows)
-    ? planData.rows.filter((plan) => String(plan.ativo_id ?? '') === assetId)
-    : []
-  const planNames = new Map(
-    plans.map((plan) => [
-      String(plan.id ?? ''),
-      String(plan.nome ?? plan.titulo ?? 'Plano técnico'),
-    ]),
-  )
-  const regras_parametros: GestorAssetParameterRule[] =
-    Array.isArray(itemData.rows)
-      ? itemData.rows
-        .filter((item) => {
-          const planId = String(item.plano_id ?? '')
-          return planNames.has(planId) && Boolean(String(item.parametro_nome ?? '').trim())
-        })
-        .map((item) => ({
-          id: String(item.id ?? ''),
-          plano_id: String(item.plano_id ?? ''),
-          plano_nome: planNames.get(String(item.plano_id ?? '')),
-          componente_id: String(item.componente_id ?? ''),
-          parametro_nome: String(item.parametro_nome ?? ''),
-          unidade: String(item.unidade ?? ''),
-          limite_min: item.limite_min as number | string | undefined,
-          limite_max: item.limite_max as number | string | undefined,
-          valor_esperado: String(item.valor_esperado ?? ''),
-        }))
-      : []
+  const context = await writeGestorData<GestorAssetJourney>('gestor.dossie_ativo', {
+    qr_payload: qrPayload,
+    limite_historico: 80,
+    user_agent: navigator.userAgent,
+  })
 
   return {
     ...context,
@@ -619,11 +565,12 @@ export async function getGestorAssetJourney(
     acoes_pendentes: Array.isArray(context.acoes_pendentes)
       ? context.acoes_pendentes
       : [],
-    historico_recente: Array.isArray(history.items)
-      ? history.items
-      : Array.isArray(context.historico_recente)
-        ? context.historico_recente
-        : [],
+    historico_recente: Array.isArray(context.historico_recente)
+      ? context.historico_recente
+      : [],
+    historico_manutencao: Array.isArray(context.historico_manutencao)
+      ? context.historico_manutencao
+      : [],
     parametros_recentes: Array.isArray(context.parametros_recentes)
       ? context.parametros_recentes
       : [],
@@ -633,7 +580,12 @@ export async function getGestorAssetJourney(
     ocorrencias_abertas: Array.isArray(context.ocorrencias_abertas)
       ? context.ocorrencias_abertas
       : [],
-    regras_parametros,
+    parametros_analisados: Array.isArray(context.parametros_analisados)
+      ? context.parametros_analisados
+      : [],
+    regras_parametros: Array.isArray(context.regras_parametros)
+      ? context.regras_parametros
+      : [],
   }
 }
 
@@ -650,6 +602,24 @@ export function registerGestorParameter(input: {
   return writeGestorData('gestor.registrar_parametro', {
     ...input,
     origem: 'GESTOR_QR',
+    user_agent: navigator.userAgent,
+  })
+}
+
+export function requestGestorParameterAction(
+  input: GestorParameterActionRequest,
+): Promise<{
+  requested: boolean
+  tipo_solicitacao: string
+  status_parametro: string
+  ocorrencia: GestorOccurrence
+  analise: {
+    id: string
+    status: string
+  }
+}> {
+  return writeGestorData('gestor.parametros.solicitar_acao', {
+    ...input,
     user_agent: navigator.userAgent,
   })
 }

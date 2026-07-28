@@ -85,7 +85,11 @@ const ADMIN_PERMISSION_CAPABILITIES = [
     descricao:"Analisa ocorrências e envia recomendações de checklist ou ordem de serviço ao administrador.",
     perfis:[ROLE.GESTOR],
     padrao:[ROLE.GESTOR],
-    acoes:["gestor.analises.salvar","gestor.analises.enviar_admin"]
+    acoes:[
+      "gestor.analises.salvar",
+      "gestor.analises.enviar_admin",
+      "gestor.parametros.solicitar_acao"
+    ]
   },
   {
     id:"CONSULTAR_ATIVOS",
@@ -93,7 +97,7 @@ const ADMIN_PERMISSION_CAPABILITIES = [
     descricao:"Permite leitura do catálogo técnico de ativos e componentes.",
     perfis:[ROLE.GESTOR],
     padrao:[ROLE.GESTOR],
-    acoes:["admin.listar","admin.obter"]
+    acoes:["admin.listar","admin.obter","gestor.dossie_ativo"]
   },
   {
     id:"REGISTRAR_LEITURAS_TECNICAS",

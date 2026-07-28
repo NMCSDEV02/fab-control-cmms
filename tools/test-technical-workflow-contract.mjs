@@ -19,6 +19,7 @@ function near(actual, expected, tolerance = 0.001) {
 const config = read('backend/apps-script/00_Config.js')
 const router = read('backend/apps-script/03_Http_Auth.js')
 const workflow = read('backend/apps-script/25_Workflow_Tecnico_KPI.js')
+const adminPermissions = read('backend/apps-script/04_Admin.js')
 const gestorApi = read('frontend-gestor/src/services/api/gestor.ts')
 const decisions = read('frontend-gestor/src/pages/GestorDecisionWorkspace.tsx')
 const analytics = read('frontend-gestor/src/pages/GestorAnalyticsWorkspace.tsx')
@@ -87,6 +88,8 @@ const requiredActions = [
   'gestor.analises.salvar',
   'gestor.analises.enviar_admin',
   'gestor.registrar_parametro',
+  'gestor.dossie_ativo',
+  'gestor.parametros.solicitar_acao',
   'gestor.notificacoes.listar',
   'gestor.notificacoes.marcar_lida',
 ]
@@ -218,21 +221,39 @@ assert(
   'centro técnico não separa campo, histórico e ativos ou ainda duplica críticos fora das notificações',
 )
 assert(gestorApi.includes('getGestorTechnicalKpisForPeriod'), 'cliente não envia período e ativo aos KPIs')
-assert(gestorApi.includes('getGestorAssetJourney') && gestorApi.includes("'operador.contexto_qr'"), 'ficha do ativo não usa o contexto técnico real')
+assert(
+  gestorApi.includes('getGestorAssetJourney') &&
+    gestorApi.includes("'gestor.dossie_ativo'") &&
+    !gestorApi.includes("'operador.contexto_qr'"),
+  'ficha do ativo não usa o dossiê técnico rastreável do Gestor',
+)
 assert(assetJourney.includes('Faixas configuradas') && assetJourney.includes('Últimas alterações') && assetJourney.includes('Histórico'), 'jornada completa do ativo está incompleta')
 assert(
   qrWorkspace.includes('BarcodeDetector') &&
     qrWorkspace.includes('getGestorAssetJourney') &&
     qrWorkspace.includes('registerGestorParameter') &&
+    qrWorkspace.includes('requestGestorParameterAction') &&
+    qrWorkspace.includes('parametros_analisados') &&
+    qrWorkspace.includes('historico_manutencao') &&
+    qrWorkspace.includes("'AJUSTE_LIMITE'") &&
     qrWorkspace.includes('Código do equipamento ou componente'),
-  'Gestor móvel não possui leitura QR, busca manual e registro técnico rastreável',
+  'Gestor móvel não possui dossiê QR, parâmetros, histórico e decisão rastreável',
 )
 assert(
   workflow.includes('function gestorRegistrarParametro_') &&
+    workflow.includes('function gestorDossieAtivo_') &&
+    workflow.includes('function gestorSolicitarAcaoParametro_') &&
+    workflow.includes('GESTOR_QR_CONTEXT_VIEWED') &&
+    workflow.includes('PARAMETRO_ENCAMINHADO_ADMIN') &&
     workflow.includes('COMPONENT_ASSET_MISMATCH') &&
     workflow.includes('GESTOR_PARAMETER_RECORDED') &&
     workflow.includes('componente_id:componentId'),
-  'backend não protege o registro de parâmetros nem calcula indicadores por componente',
+  'backend não protege o dossiê, o registro ou a decisão sobre parâmetros',
+)
+assert(
+  adminPermissions.includes('"gestor.dossie_ativo"') &&
+    adminPermissions.includes('"gestor.parametros.solicitar_acao"'),
+  'matriz efetiva de capacidades bloqueia o dossiê ou a solicitação do Gestor',
 )
 assert(
   navigation.includes("id: 'scan'") &&
@@ -304,8 +325,9 @@ assert(
 assert(
   adminWorkspace.includes('<NotificationCenter') &&
     adminWorkspace.includes('setNotificationOpen(true)') &&
-    adminWorkspace.includes("notificationType === 'ANALISE_TECNICA'"),
-  'Admin não possui central de notificações com roteamento para análises técnicas',
+    adminWorkspace.includes("notificationType === 'SOLICITACAO_CHECKLIST'") &&
+    adminWorkspace.includes("openModule('checklists')"),
+  'Admin não roteia a solicitação do Gestor para o construtor de checklist',
 )
 assert(
   adminWorkspace.includes('listAdminTechnicalDemands') &&
@@ -327,9 +349,18 @@ assert(
   'Admin não possui caixa de análises nem foco no registro originado pela notificação',
 )
 assert(
-  workflow.includes('technicalNotify_({perfil:ROLE.ADMIN}, "ANALISE_TECNICA"') &&
+  workflow.includes('"SOLICITACAO_CHECKLIST"') &&
+    workflow.includes('"SOLICITACAO_INTERVENCAO"') &&
+    workflow.includes('technicalNotify_(') &&
     workflow.includes('"DECISAO_TECNICA"'),
   'decisões e análises do Gestor não notificam o Admin',
+)
+assert(
+  checklistBuilder.includes('checklistDraftFromAnalysis') &&
+    checklistBuilder.includes('convertAdminTechnicalAnalysisToChecklist') &&
+    checklistBuilder.includes('parametro_contexto') &&
+    checklistBuilder.includes('Solicitação do Gestor carregada'),
+  'solicitação de checklist não preenche nem converte o rascunho no Admin',
 )
 assert(
   workflow.includes('demand.entidade_tipo') &&

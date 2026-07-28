@@ -848,7 +848,19 @@ export function AdminWorkspace({
       nonce: Date.now(),
     })
 
-    if (notificationType === 'ANALISE_TECNICA' || entityType === 'ANALISES_TECNICAS') {
+    if (
+      notificationType === 'SOLICITACAO_CHECKLIST' &&
+      entityType === 'ANALISES_TECNICAS'
+    ) {
+      openModule('checklists')
+      return
+    }
+
+    if (
+      notificationType === 'SOLICITACAO_INTERVENCAO' ||
+      notificationType === 'ANALISE_TECNICA' ||
+      entityType === 'ANALISES_TECNICAS'
+    ) {
       openModule('operations')
       return
     }
