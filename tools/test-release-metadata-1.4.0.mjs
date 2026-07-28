@@ -44,9 +44,9 @@ assert(production.release === '1.3.1', 'produção não permaneceu em 1.3.1')
 assert(production.health === 'approved-unchanged', 'produção não foi reconfirmada')
 assert(production.deploymentId !== target.deploymentId, 'deployment canário não está isolado')
 assert(production.spreadsheetId !== target.spreadsheetId, 'planilha canária não está isolada')
-assert(target.immutableAppsScriptVersion === 35, 'versão imutável canária incorreta')
+assert(target.immutableAppsScriptVersion === 36, 'versão imutável canária incorreta')
 assert(target.deploymentId !== 'HEAD', 'deployment canário não pode usar HEAD')
-assert(target.sourceGitCommit === 'da1b43e', 'commit-fonte canário incorreto')
+assert(target.sourceGitCommit === '4ad0844', 'commit-fonte canário incorreto')
 assert(
   manifest.candidateEvidence?.gestorAdminStartupContract === 'approved',
   'contrato de pré-carregamento Gestor/Admin ausente',
@@ -82,6 +82,18 @@ assert(
 assert(
   manifest.candidateEvidence?.canaryMaintenanceVisual?.startsWith('approved-'),
   'validação visual do modo de manutenção ausente',
+)
+assert(
+  manifest.candidateEvidence?.managerQrAssetDossier?.startsWith('approved-'),
+  'dossiê QR técnico do Gestor ausente',
+)
+assert(
+  manifest.candidateEvidence?.managerParameterActionRequest?.startsWith('approved-'),
+  'solicitação de ação por parâmetro ausente',
+)
+assert(
+  manifest.candidateEvidence?.adminChecklistRequestPrefill?.startsWith('approved-'),
+  'preenchimento assistido do checklist no Admin ausente',
 )
 
 assert(manifest.candidateEvidence?.motorCommercialAccessContract === 'approved', 'contrato comercial do motor ausente')
@@ -145,6 +157,9 @@ for (const check of [
   'usersRequiresAuthentication',
   'invalidPermissionTokenRejected',
   'productionDeploymentUnchanged',
+  'gestorAssetDossierEndpointDeclared',
+  'gestorParameterActionEndpointDeclared',
+  'gestorAssetDossierRequiresAuthentication',
 ]) {
   assert(checks?.[check] === 'approved', `evidência pública ausente: ${check}`)
 }
