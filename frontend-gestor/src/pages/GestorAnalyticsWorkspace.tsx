@@ -34,6 +34,20 @@ import type {
 type AnalyticsView = 'indicators' | 'monitoring' | 'history' | 'library'
 type MonitoringFilter = 'all' | 'executing' | 'pending' | 'blocked' | 'stopped'
 
+const MINUTE_MS = 60 * 1000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+const PERIOD_OPTIONS = [
+  { value: 15 * MINUTE_MS, label: '15 min' },
+  { value: HOUR_MS, label: '1 hora' },
+  { value: 6 * HOUR_MS, label: '6 horas' },
+  { value: DAY_MS, label: '24 horas' },
+  { value: 7 * DAY_MS, label: '7 dias' },
+  { value: 30 * DAY_MS, label: '30 dias' },
+  { value: 90 * DAY_MS, label: '90 dias' },
+  { value: 365 * DAY_MS, label: '12 meses' },
+] as const
+
 interface GestorAnalyticsWorkspaceProps {
   focusAssetId?: string
   focusOccurrenceId?: string
@@ -71,11 +85,9 @@ function localIso(date: Date): string {
   ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-function periodRange(days: number, offset = 0) {
-  const end = new Date()
-  end.setDate(end.getDate() - (days * offset))
-  const start = new Date(end)
-  start.setDate(start.getDate() - days)
+function periodRange(durationMs: number, offset = 0) {
+  const end = new Date(Date.now() - (durationMs * offset))
+  const start = new Date(end.getTime() - durationMs)
   return { inicio_em: localIso(start), fim_em: localIso(end) }
 }
 
@@ -146,11 +158,11 @@ function actionAssetLabel(action: GestorAction): string {
   return action.ativo_tag || action.ativo_nome || action.ativo_id || 'Ativo não informado'
 }
 
-function isWithinPeriod(value: string | undefined, days: number): boolean {
+function isWithinPeriod(value: string | undefined, durationMs: number): boolean {
   if (!value) return true
   const time = new Date(value).getTime()
   if (!Number.isFinite(time)) return true
-  return time >= Date.now() - (days * 24 * 60 * 60 * 1000)
+  return time >= Date.now() - durationMs
 }
 
 export function GestorAnalyticsWorkspace({
@@ -162,7 +174,7 @@ export function GestorAnalyticsWorkspace({
   onSessionExpired,
 }: GestorAnalyticsWorkspaceProps) {
   const [view, setView] = useState<AnalyticsView>('indicators')
-  const [periodDays, setPeriodDays] = useState(30)
+  const [periodMs, setPeriodMs] = useState(30 * DAY_MS)
   const [assetId, setAssetId] = useState(focusAssetId ?? '')
   const [componentId, setComponentId] = useState('')
   const [catalog, setCatalog] = useState<GestorAssetCatalog>(EMPTY_CATALOG)
@@ -184,8 +196,8 @@ export function GestorAnalyticsWorkspace({
   const load = useCallback(async (signal?: AbortSignal, background = false) => {
     if (!background) setLoading(true)
     setError('')
-    const currentRange = periodRange(periodDays)
-    const previousRange = periodRange(periodDays, 1)
+    const currentRange = periodRange(periodMs)
+    const previousRange = periodRange(periodMs, 1)
     const filters = assetId
       ? {
         ativo_id: assetId,
@@ -231,7 +243,7 @@ export function GestorAnalyticsWorkspace({
         setLoading(false)
       }
     }
-  }, [assetId, componentId, onSessionExpired, periodDays])
+  }, [assetId, componentId, onSessionExpired, periodMs])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -279,14 +291,13 @@ export function GestorAnalyticsWorkspace({
     : []
 
   useEffect(() => {
-    if (!selectedAsset) {
-      if (!assetId) setAssetLookup('')
+    if (!focusAssetId || !selectedAsset || selectedAsset.id !== focusAssetId) {
       return
     }
     setAssetLookup(
       `${selectedAsset.tag || selectedAsset.id} · ${selectedAsset.nome || 'Sem nome'}`,
     )
-  }, [assetId, selectedAsset])
+  }, [focusAssetId, selectedAsset])
 
   function selectAssetFromLookup(value: string) {
     setAssetLookup(value)
@@ -503,7 +514,7 @@ export function GestorAnalyticsWorkspace({
     for (const stop of overview?.stops ?? []) {
       if (
         !stop.ativo_id ||
-        !isWithinPeriod(stop.iniciada_em, periodDays) ||
+        !isWithinPeriod(stop.iniciada_em, periodMs) ||
         (assetId && stop.ativo_id !== assetId)
       ) continue
       const row = ensure(stop.ativo_id)
@@ -517,7 +528,7 @@ export function GestorAnalyticsWorkspace({
     for (const occurrence of overview?.occurrenceHistory ?? []) {
       if (
         !occurrence.ativo_id ||
-        !isWithinPeriod(occurrence.criado_em, periodDays) ||
+        !isWithinPeriod(occurrence.criado_em, periodMs) ||
         (assetId && occurrence.ativo_id !== assetId)
       ) continue
       ensure(occurrence.ativo_id).occurrences += 1
@@ -535,7 +546,7 @@ export function GestorAnalyticsWorkspace({
     overview?.openStops,
     overview?.occurrenceHistory,
     overview?.stops,
-    periodDays,
+    periodMs,
   ])
 
   const executionRanking = useMemo(() => {
@@ -549,7 +560,7 @@ export function GestorAnalyticsWorkspace({
 
     for (const action of overview?.completedActions ?? []) {
       if (
-        !isWithinPeriod(action.finalizado_em || action.atualizado_em, periodDays) ||
+        !isWithinPeriod(action.finalizado_em || action.atualizado_em, periodMs) ||
         (assetId && action.ativo_id !== assetId)
       ) continue
       const id = String(
@@ -584,10 +595,14 @@ export function GestorAnalyticsWorkspace({
     return [...rows.values()]
       .sort((a, b) => b.completed - a.completed)
       .slice(0, 5)
-  }, [assetId, overview?.completedActions, periodDays])
+  }, [assetId, overview?.completedActions, periodMs])
 
   const filteredAssets = useMemo(() => {
-    const normalized = search.trim().toLocaleLowerCase('pt-BR')
+    const normalized = assetLookup
+      .trim()
+      .toLocaleLowerCase('pt-BR')
+      .split('·')[0]
+      .trim()
     if (!normalized) return catalog.assets
     return catalog.assets.filter((asset) => [
       asset.id,
@@ -596,7 +611,7 @@ export function GestorAnalyticsWorkspace({
       asset.tipo,
       asset.localizacao_tecnica,
     ].some((value) => String(value ?? '').toLocaleLowerCase('pt-BR').includes(normalized)))
-  }, [catalog.assets, search])
+  }, [assetLookup, catalog.assets])
 
   const views: Array<{
     id: AnalyticsView
@@ -643,17 +658,15 @@ export function GestorAnalyticsWorkspace({
             </datalist>
           </label>
           <select
-            value={periodDays}
-            onChange={(event) => setPeriodDays(Number(event.target.value))}
+            value={periodMs}
+            onChange={(event) => setPeriodMs(Number(event.target.value))}
             aria-label="Período dos indicadores"
           >
-            <option value={7}>7 dias</option>
-            <option value={30}>30 dias</option>
-            <option value={90}>90 dias</option>
-            <option value={180}>6 meses</option>
-            <option value={365}>12 meses</option>
-            <option value={730}>24 meses</option>
-            <option value={1825}>5 anos</option>
+            {PERIOD_OPTIONS.map((option) => (
+              <option value={option.value} key={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
       </section>
@@ -1100,15 +1113,10 @@ export function GestorAnalyticsWorkspace({
               <div>
                 <span className="eyebrow">BIBLIOTECA TÉCNICA</span>
                 <h2>Equipamentos e componentes</h2>
+                <p>
+                  Use a busca principal para localizar por TAG, nome ou localização.
+                </p>
               </div>
-              <label>
-                <SearchIcon />
-                <input
-                  value={search}
-                  placeholder="TAG, equipamento ou localização"
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </label>
             </header>
             <div className="manager-library-layout">
               <div className="manager-library-list">

@@ -416,8 +416,8 @@ export function NotificationCenter({
       >
         <header className="manager-notification-header">
           <div>
-            <span className="eyebrow">CENTRAL OPERACIONAL</span>
-            <h2 id="manager-notification-title">Notificações</h2>
+            <span className="eyebrow">ALERTAS E DECISÕES</span>
+            <h2 id="manager-notification-title">Central operacional</h2>
             <p>{audienceDescription}</p>
           </div>
           <div>

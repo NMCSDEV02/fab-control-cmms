@@ -328,7 +328,16 @@ export function GestorDecisionWorkspace({
 
   const filteredItems = useMemo(() => items.filter((item) => {
     if (activeView !== 'all' && item.view !== activeView) return false
-    if (priority && item.priority !== priority) return false
+    if (
+      priority === 'CRITICAL_OR_OVERDUE' &&
+      !item.overdue &&
+      !['CRITICA', 'CRÍTICA'].includes(item.priority)
+    ) return false
+    if (
+      priority &&
+      priority !== 'CRITICAL_OR_OVERDUE' &&
+      item.priority !== priority
+    ) return false
     return includesSearch(item, search.trim())
   }), [activeView, items, priority, search])
 
@@ -402,10 +411,36 @@ export function GestorDecisionWorkspace({
             <p>Revise o primeiro documento, assine ou solicite uma correção.</p>
           </div>
           <div className="manager-workspace-heading__status">
-            <span><strong>{items.length}</strong> pendentes</span>
-            <span className={criticalCount ? 'is-critical' : ''}>
+            <button
+              type="button"
+              className={!priority && activeView === 'all' ? 'is-active' : ''}
+              aria-pressed={!priority && activeView === 'all'}
+              onClick={() => {
+                setPriority('')
+                setActiveView('all')
+                setFiltersOpen(false)
+              }}
+            >
+              <strong>{items.length}</strong> pendentes
+            </button>
+            <button
+              type="button"
+              className={`${criticalCount ? 'is-critical ' : ''}${
+                priority === 'CRITICAL_OR_OVERDUE' ? 'is-active' : ''
+              }`}
+              aria-pressed={priority === 'CRITICAL_OR_OVERDUE'}
+              onClick={() => {
+                setPriority((current) =>
+                  current === 'CRITICAL_OR_OVERDUE'
+                    ? ''
+                    : 'CRITICAL_OR_OVERDUE',
+                )
+                setActiveView('all')
+                setFiltersOpen(false)
+              }}
+            >
               <strong>{criticalCount}</strong> críticos
-            </span>
+            </button>
           </div>
         </section>
 
@@ -465,6 +500,7 @@ export function GestorDecisionWorkspace({
                     onChange={(event) => setPriority(event.target.value)}
                   >
                     <option value="">Todas</option>
+                    <option value="CRITICAL_OR_OVERDUE">Críticas ou vencidas</option>
                     <option value="CRITICA">Crítica</option>
                     <option value="ALTA">Alta</option>
                     <option value="MEDIA">Média</option>

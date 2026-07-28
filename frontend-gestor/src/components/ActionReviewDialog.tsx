@@ -12,6 +12,7 @@ import type {
   GestorChecklistItem,
   GestorDecision,
   GestorDecisionResult,
+  GestorEvidence,
 } from '../types/gestor'
 
 export interface ActionReviewDialogProps {
@@ -59,6 +60,31 @@ function formatDate(value?: string): string {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(date)
+}
+
+function evidenceFileUrl(evidence: GestorEvidence): string {
+  return recordValue(evidence, [
+    'url',
+    'download_url',
+    'arquivo_url',
+    'drive_url',
+  ])
+}
+
+function evidencePreviewUrl(evidence: GestorEvidence): string {
+  return recordValue(evidence, [
+    'thumbnail_url',
+    'preview_url',
+  ]) || evidenceFileUrl(evidence)
+}
+
+function isImageEvidence(evidence: GestorEvidence): boolean {
+  const mimeType = recordValue(evidence, ['mime_type', 'tipo_mime'])
+    .toLocaleLowerCase('pt-BR')
+  const fileName = String(evidence.nome_arquivo ?? evidenceFileUrl(evidence))
+    .toLocaleLowerCase('pt-BR')
+  return mimeType.startsWith('image/') ||
+    /\.(avif|gif|jpe?g|png|webp)(?:$|[?#])/.test(fileName)
 }
 
 function humanizeAuditEvent(value: unknown): string {
@@ -155,16 +181,19 @@ export function ActionReviewDialog({
     return () => controller.abort()
   }, [action.id, onSessionExpired])
 
-  const evidenceCountByChecklist = useMemo(() => {
-    const counts = new Map<string, number>()
+  const evidenceByChecklist = useMemo(() => {
+    const grouped = new Map<string, GestorEvidence[]>()
 
     for (const evidence of detail?.evidencias ?? []) {
       const checklistId = String(evidence.checklist_execucao_id ?? '')
       if (!checklistId) continue
-      counts.set(checklistId, (counts.get(checklistId) ?? 0) + 1)
+      grouped.set(checklistId, [
+        ...(grouped.get(checklistId) ?? []),
+        evidence,
+      ])
     }
 
-    return counts
+    return grouped
   }, [detail?.evidencias])
 
   const currentStatus = upper(detail?.acao.status ?? action.status)
@@ -463,8 +492,10 @@ export function ActionReviewDialog({
                         'comentario',
                         'observacoes',
                       ])
-                    const evidenceCount =
-                      evidenceCountByChecklist.get(String(item.id ?? '')) ?? 0
+                    const itemEvidence =
+                      evidenceByChecklist.get(String(item.id ?? '')) ??
+                      evidenceByChecklist.get(String(item.item_id ?? '')) ??
+                      []
 
                     return (
                       <article className="review-checklist-item" key={itemId}>
@@ -492,9 +523,67 @@ export function ActionReviewDialog({
                           </div>
                           <div>
                             <dt>Evidências</dt>
-                            <dd>{evidenceCount}</dd>
+                            <dd>
+                              {itemEvidence.length
+                                ? `${itemEvidence.length} arquivo(s)`
+                                : 'Nenhuma evidência'}
+                            </dd>
                           </div>
                         </dl>
+                        {itemEvidence.length ? (
+                          <div
+                            className="review-checklist-evidence-list"
+                            aria-label={`Evidências de ${description}`}
+                          >
+                            {itemEvidence.map((evidence, evidenceIndex) => {
+                              const fileUrl = evidenceFileUrl(evidence)
+                              const previewUrl = evidencePreviewUrl(evidence)
+                              const evidenceName =
+                                evidence.nome_arquivo ||
+                                evidence.tipo ||
+                                `Evidência ${evidenceIndex + 1}`
+                              const content = (
+                                <>
+                                  {previewUrl && isImageEvidence(evidence) ? (
+                                    <img
+                                      src={previewUrl}
+                                      alt={`Prévia de ${evidenceName}`}
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <span aria-hidden="true">
+                                      {String(evidenceIndex + 1).padStart(2, '0')}
+                                    </span>
+                                  )}
+                                  <div>
+                                    <strong>{evidenceName}</strong>
+                                    <small>
+                                      {evidence.observacao ||
+                                        (fileUrl
+                                          ? 'Clique para consultar o arquivo.'
+                                          : 'Registro sem arquivo consultável.')}
+                                    </small>
+                                  </div>
+                                </>
+                              )
+
+                              return fileUrl ? (
+                                <a
+                                  href={fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  key={String(evidence.id ?? evidenceIndex)}
+                                >
+                                  {content}
+                                </a>
+                              ) : (
+                                <article key={String(evidence.id ?? evidenceIndex)}>
+                                  {content}
+                                </article>
+                              )
+                            })}
+                          </div>
+                        ) : null}
                       </article>
                     )
                   })}
