@@ -20,10 +20,10 @@
   "target": {
     "environment": "homologation",
     "backendSourceSha256": "08892BC96F4707FBA665CCDEE9EAEECC326E170017B4CBCD639F5C2910355C80",
-    "immutableAppsScriptVersion": 36,
+    "immutableAppsScriptVersion": 37,
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
-    "sourceGitCommit": "4ad0844"
+    "sourceGitCommit": "a75b47f"
   },
   "homologationGate": {
     "requireExactVersionMatch": true,
@@ -157,14 +157,19 @@
     "adminChecklistRequestPrefill": "approved-notification-routes-to-prefilled-builder",
     "managerNotificationFilters": "approved-unread-today-critical-context",
     "notificationReadPersistence": "approved-user-context-idempotent",
+    "managerResponsiveAssetWorkspace": "approved-single-search-horizontal-catalog-full-width-detail-mobile-tablet",
+    "managerFlexibleTechnicalPeriods": "approved-minutes-hours-days-months",
+    "managerQueueSummaryFilters": "approved-pending-and-critical-actionable",
+    "completedActionEvidencePreview": "approved-per-checklist-openable-preview",
+    "managerOperationalCenter": "approved-immersive-fullscreen-filtered-auto-refresh",
     "remoteCanary": "public-contract-approved"
   },
   "canaryEvidence": {
     "environment": "isolated",
     "release": "1.4.0",
     "backendSourceSha256": "08892BC96F4707FBA665CCDEE9EAEECC326E170017B4CBCD639F5C2910355C80",
-    "immutableAppsScriptVersion": 36,
-    "sourceGitCommit": "4ad0844",
+    "immutableAppsScriptVersion": 37,
+    "sourceGitCommit": "a75b47f",
     "deploymentId": "AKfycbzLa7ftFiIVU9ERaxoCFeAvBZ10YINDyR_eRV_ibCSiHggp-qPXkK9UmkuOTIxdfJwFRw",
     "spreadsheetId": "1Yb7UNQhSggOeL4Iq2aWIobrGb1pgsRpSKZiLqNQbgKg",
     "checks": {
@@ -222,6 +227,7 @@
       "gestorAssetDossierRequiresAuthentication": "approved",
       "technicalSchemaSeeded": "approved",
       "continuousLiveRefreshContract": "approved",
+      "managerResponsiveFinalContract": "approved",
       "managerTechnicalRankings": "approved",
       "completedActionReadOnlyAudit": "approved",
       "canaryAdminRecovery": "approved-first-access-required",
