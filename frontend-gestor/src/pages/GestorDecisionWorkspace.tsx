@@ -406,9 +406,7 @@ export function GestorDecisionWorkspace({
       <main className="content manager-decision-workspace">
         <section className="manager-workspace-heading">
           <div>
-            <span className="eyebrow">VALIDAÇÃO TÉCNICA</span>
-            <h1>Documentos para validar</h1>
-            <p>Revise o primeiro documento, assine ou solicite uma correção.</p>
+            <h1>Validar</h1>
           </div>
           <div className="manager-workspace-heading__status">
             <button

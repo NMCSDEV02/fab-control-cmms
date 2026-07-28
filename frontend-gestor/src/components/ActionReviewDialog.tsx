@@ -63,19 +63,33 @@ function formatDate(value?: string): string {
 }
 
 function evidenceFileUrl(evidence: GestorEvidence): string {
-  return recordValue(evidence, [
+  const explicitUrl = recordValue(evidence, [
     'url',
     'download_url',
     'arquivo_url',
     'drive_url',
   ])
+  if (explicitUrl) return explicitUrl
+
+  const fileId = recordValue(evidence, ['arquivo_id', 'file_id'])
+  return fileId
+    ? `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`
+    : ''
 }
 
 function evidencePreviewUrl(evidence: GestorEvidence): string {
-  return recordValue(evidence, [
+  const explicitPreview = recordValue(evidence, [
     'thumbnail_url',
     'preview_url',
-  ]) || evidenceFileUrl(evidence)
+  ])
+  if (explicitPreview) return explicitPreview
+
+  const fileId = recordValue(evidence, ['arquivo_id', 'file_id'])
+  if (fileId && isImageEvidence(evidence)) {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w800`
+  }
+
+  return evidenceFileUrl(evidence)
 }
 
 function isImageEvidence(evidence: GestorEvidence): boolean {
@@ -357,33 +371,58 @@ export function ActionReviewDialog({
                   </div>
                   <span className="panel-count">{detail.evidencias.length}</span>
                 </header>
-                <div className="review-record-list">
+                <div className="review-checklist-evidence-list">
                   {detail.evidencias.map((evidence, index) => {
                     const evidenceName =
                       evidence.nome_arquivo ||
                       evidence.tipo ||
                       `Evidência ${index + 1}`
-                    return (
-                      <article key={String(evidence.id ?? index)}>
-                        <span>{String(index + 1).padStart(2, '0')}</span>
+                    const fileUrl = evidenceFileUrl(evidence)
+                    const previewUrl = evidencePreviewUrl(evidence)
+                    const content = (
+                      <>
+                        {fileUrl && isImageEvidence(evidence) ? (
+                          <img
+                            src={previewUrl}
+                            alt={`Prévia de ${evidenceName}`}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span>{String(index + 1).padStart(2, '0')}</span>
+                        )}
                         <div>
                           <strong>{evidenceName}</strong>
                           <small>
-                            {evidence.observacao || 'Evidência registrada durante a execução.'}
+                            {evidence.observacao ||
+                              (fileUrl
+                                ? 'Clique para consultar a evidência.'
+                                : 'Registro preservado sem arquivo anexado.')}
                           </small>
-                          <em>
-                            {evidence.usuario_id || 'Autoria preservada'} · {formatDate(evidence.criado_em)}
-                          </em>
+                          <small>
+                            {evidence.usuario_id || 'Autoria preservada'} ·{' '}
+                            {formatDate(evidence.criado_em)}
+                          </small>
                         </div>
-                        {evidence.url ? (
-                          <a
-                            href={evidence.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Abrir arquivo
-                          </a>
-                        ) : null}
+                      </>
+                    )
+
+                    if (fileUrl) {
+                      return (
+                        <a
+                          href={fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          key={String(evidence.id ?? index)}
+                          aria-label={`Abrir evidência ${evidenceName}`}
+                        >
+                          {content}
+                        </a>
+                      )
+                    }
+
+                    return (
+                      <article key={String(evidence.id ?? index)}>
+                        {content}
                       </article>
                     )
                   })}

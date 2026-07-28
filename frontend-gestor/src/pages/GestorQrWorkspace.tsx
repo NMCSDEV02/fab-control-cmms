@@ -413,13 +413,7 @@ export function GestorQrWorkspace({
     <main className={`content manager-qr-workspace${journey ? ' has-dossier' : ''}`}>
       <header className="manager-qr-heading">
         <div>
-          <span className="eyebrow">CAMPO E CONFIABILIDADE</span>
-          <h1>{journey ? 'Dossiê do equipamento' : 'Ler equipamento'}</h1>
-          <p>
-            {journey
-              ? 'Condição atual, parâmetros, decisões e manutenção em uma única consulta.'
-              : 'Leia o QR Code ou informe a TAG para abrir o contexto técnico completo.'}
-          </p>
+          <h1>{journey ? 'Equipamento' : 'Ler QR'}</h1>
         </div>
         {journey ? (
           <button
@@ -446,7 +440,13 @@ export function GestorQrWorkspace({
             <div className="manager-qr-camera">
               <video ref={videoRef} muted playsInline aria-label="Leitor de QR Code" />
               <span aria-hidden="true"><i /><i /><i /><i /></span>
-              <b>Centralize o código</b>
+              {cameraError ? (
+                <p className="manager-qr-camera-error" role="alert">
+                  {cameraError}
+                </p>
+              ) : (
+                <b>Centralize o código</b>
+              )}
             </div>
           ) : (
             <button
@@ -462,8 +462,6 @@ export function GestorQrWorkspace({
               <span>Use a câmera traseira para ler a identificação do ativo.</span>
             </button>
           )}
-
-          {cameraError ? <p className="manager-qr-camera-error">{cameraError}</p> : null}
 
           <form
             className="manager-qr-search"

@@ -10,6 +10,7 @@ import {
   WrenchIcon,
 } from '../components/Icons'
 import { AssetJourneyPanel } from '../components/AssetJourneyPanel'
+import { AssetSearchSelect } from '../components/AssetSearchSelect'
 import {
   getGestorAssetCatalog,
   getGestorAssetJourney,
@@ -33,6 +34,7 @@ import type {
 
 type AnalyticsView = 'indicators' | 'monitoring' | 'history' | 'library'
 type MonitoringFilter = 'all' | 'executing' | 'pending' | 'blocked' | 'stopped'
+type FieldWindow = 'all' | 'today' | '24h' | '7d'
 
 const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * MINUTE_MS
@@ -158,6 +160,52 @@ function actionAssetLabel(action: GestorAction): string {
   return action.ativo_tag || action.ativo_nome || action.ativo_id || 'Ativo não informado'
 }
 
+function assetOptionLabel(asset: GestorAsset): string {
+  return `${asset.tag || asset.id} · ${asset.nome || 'Ativo sem nome'}`
+}
+
+function actionResponsible(action: GestorAction) {
+  const id = String(action.responsavel_id || action.executor_id || '').trim()
+  const name = String(
+    action.responsavel_nome ||
+    action.executor_nome ||
+    id ||
+    'Responsável não definido',
+  ).trim()
+  const profile = humanize(
+    action.responsavel_perfil ||
+    action.executor_perfil ||
+    action.perfil_responsavel ||
+    '',
+  )
+  return {
+    value: id || name,
+    label: profile === 'Não informado' ? name : `${name} · ${profile}`,
+  }
+}
+
+function actionStartedAt(action: GestorAction): string {
+  return String(
+    action.iniciado_em ||
+    action.gerado_em ||
+    action.criado_em ||
+    action.atualizado_em ||
+    '',
+  )
+}
+
+function isWithinFieldWindow(value: string, window: FieldWindow): boolean {
+  if (window === 'all') return true
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return false
+  if (window === 'today') {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    return time >= start.getTime()
+  }
+  return time >= Date.now() - (window === '24h' ? DAY_MS : 7 * DAY_MS)
+}
+
 function isWithinPeriod(value: string | undefined, durationMs: number): boolean {
   if (!value) return true
   const time = new Date(value).getTime()
@@ -186,6 +234,9 @@ export function GestorAnalyticsWorkspace({
   const [assetLookup, setAssetLookup] = useState('')
   const [monitoringFilter, setMonitoringFilter] =
     useState<MonitoringFilter>('all')
+  const [fieldResponsible, setFieldResponsible] = useState('')
+  const [fieldAsset, setFieldAsset] = useState('')
+  const [fieldWindow, setFieldWindow] = useState<FieldWindow>('all')
   const [selectedHistoryAction, setSelectedHistoryAction] =
     useState<GestorAction | null>(null)
   const [selectedOccurrence, setSelectedOccurrence] =
@@ -291,35 +342,10 @@ export function GestorAnalyticsWorkspace({
     : []
 
   useEffect(() => {
-    if (!focusAssetId || !selectedAsset || selectedAsset.id !== focusAssetId) {
-      return
-    }
-    setAssetLookup(
-      `${selectedAsset.tag || selectedAsset.id} · ${selectedAsset.nome || 'Sem nome'}`,
-    )
-  }, [focusAssetId, selectedAsset])
-
-  function selectAssetFromLookup(value: string) {
-    setAssetLookup(value)
-    const normalized = value.trim().toLocaleLowerCase('pt-BR')
-    if (!normalized) {
-      setAssetId('')
-      return
-    }
-    const match = catalog.assets.find((asset) => {
-      const label = `${asset.tag || asset.id} · ${asset.nome || 'Sem nome'}`
-      return [
-        asset.id,
-        asset.tag,
-        asset.nome,
-        label,
-      ].some(
-        (candidate) =>
-          String(candidate ?? '').trim().toLocaleLowerCase('pt-BR') === normalized,
-      )
-    })
-    if (match) setAssetId(match.id)
-  }
+    if (!selectedAsset) return
+    const label = assetOptionLabel(selectedAsset)
+    setAssetLookup((currentValue) => currentValue === label ? currentValue : label)
+  }, [selectedAsset])
 
   const metrics = useMemo(() => {
     if (!current) return []
@@ -384,6 +410,13 @@ export function GestorAnalyticsWorkspace({
     return (overview?.actions ?? [])
       .filter((action) => ['PENDENTE', 'EM_EXECUCAO', 'BLOQUEADA'].includes(upper(action.status)))
       .filter((action) => !assetId || action.ativo_id === assetId)
+      .filter((action) => !fieldAsset || action.ativo_id === fieldAsset)
+      .filter((action) =>
+        !fieldResponsible || actionResponsible(action).value === fieldResponsible,
+      )
+      .filter((action) =>
+        isWithinFieldWindow(actionStartedAt(action), fieldWindow),
+      )
       .filter((action) => {
         if (!normalized) return true
         return [
@@ -395,13 +428,52 @@ export function GestorAnalyticsWorkspace({
           action.responsavel_id,
         ].some((value) => String(value ?? '').toLocaleLowerCase('pt-BR').includes(normalized))
       })
-  }, [assetId, overview?.actions, search])
+  }, [
+    assetId,
+    fieldAsset,
+    fieldResponsible,
+    fieldWindow,
+    overview?.actions,
+    search,
+  ])
+
+  const fieldResponsibleOptions = useMemo(() => {
+    const options = new Map<string, string>()
+    for (const action of overview?.actions ?? []) {
+      if (!['PENDENTE', 'EM_EXECUCAO', 'BLOQUEADA'].includes(upper(action.status))) {
+        continue
+      }
+      if (assetId && action.ativo_id !== assetId) continue
+      const responsible = actionResponsible(action)
+      options.set(responsible.value, responsible.label)
+    }
+    return [...options].map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+  }, [assetId, overview?.actions])
+
+  const fieldAssetOptions = useMemo(() => {
+    const ids = new Set(
+      (overview?.actions ?? [])
+        .filter((action) =>
+          ['PENDENTE', 'EM_EXECUCAO', 'BLOQUEADA'].includes(upper(action.status)),
+        )
+        .map((action) => String(action.ativo_id || '').trim())
+        .filter(Boolean),
+    )
+    return catalog.assets
+      .filter((asset) => ids.has(asset.id))
+      .map((asset) => ({ value: asset.id, label: assetOptionLabel(asset) }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+  }, [catalog.assets, overview?.actions])
 
   const monitoredStops = useMemo(
-    () => (overview?.openStops ?? []).filter(
-      (stop) => !assetId || stop.ativo_id === assetId,
-    ),
-    [assetId, overview?.openStops],
+    () => (overview?.openStops ?? [])
+      .filter((stop) => !assetId || stop.ativo_id === assetId)
+      .filter((stop) => !fieldAsset || stop.ativo_id === fieldAsset)
+      .filter((stop) =>
+        isWithinFieldWindow(String(stop.iniciada_em || ''), fieldWindow),
+      ),
+    [assetId, fieldAsset, fieldWindow, overview?.openStops],
   )
 
   const completedActions = useMemo(() => {
@@ -625,38 +697,22 @@ export function GestorAnalyticsWorkspace({
   ]
 
   return (
-    <main className="content manager-analytics-workspace">
+    <main
+      className="content manager-analytics-workspace"
+      data-technical-scope={technicalContext?.identidade.area_codigo || 'GERAL'}
+    >
       <section className="manager-workspace-heading">
         <div>
-          <span className="eyebrow">
-            {technicalContext?.pode_validar ? 'QUALIDADE E SEGURANÇA' : 'PCM E CONFIABILIDADE'}
-          </span>
-          <h1>Centro técnico</h1>
-          <p>
-            {technicalContext?.pode_validar
-              ? 'Acompanhe a operação e abra a fila de validação quando houver documentos destinados ao seu perfil.'
-              : 'Acompanhe confiabilidade, trabalho em campo e o histórico completo dos ativos.'}
-          </p>
+          <h1>Acompanhar</h1>
         </div>
         <div className="manager-analytics-filters">
-          <label className="manager-asset-lookup">
-            <SearchIcon />
-            <input
-              list="manager-assets-list"
-              value={assetLookup}
-              placeholder="Pesquisar TAG ou equipamento"
-              aria-label="Pesquisar e filtrar por ativo"
-              onChange={(event) => selectAssetFromLookup(event.target.value)}
-            />
-            <datalist id="manager-assets-list">
-              {catalog.assets.map((asset) => (
-                <option
-                  value={`${asset.tag || asset.id} · ${asset.nome || 'Sem nome'}`}
-                  key={asset.id}
-                />
-              ))}
-            </datalist>
-          </label>
+          <AssetSearchSelect
+            assets={catalog.assets}
+            query={assetLookup}
+            selectedId={assetId}
+            onQueryChange={setAssetLookup}
+            onSelect={(asset) => setAssetId(asset?.id ?? '')}
+          />
           <select
             value={periodMs}
             onChange={(event) => setPeriodMs(Number(event.target.value))}
@@ -826,18 +882,62 @@ export function GestorAnalyticsWorkspace({
           <div className="manager-monitoring-view">
             <header className="manager-stage-toolbar">
               <div>
-                <span className="eyebrow">EXECUÇÕES ATIVAS</span>
-                <h2>Quem, onde e quando</h2>
+                <h2>Em campo</h2>
               </div>
-              <label>
-                <SearchIcon />
-                <input
-                  value={search}
-                  placeholder="Buscar execução, ativo ou responsável"
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </label>
             </header>
+            <div className="manager-field-filters">
+              <label>
+                <span>Responsável</span>
+                <select
+                  value={fieldResponsible}
+                  onChange={(event) => setFieldResponsible(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {fieldResponsibleOptions.map((option) => (
+                    <option value={option.value} key={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Local</span>
+                <select
+                  value={fieldAsset}
+                  onChange={(event) => setFieldAsset(event.target.value)}
+                >
+                  <option value="">Todos os ativos</option>
+                  {fieldAssetOptions.map((option) => (
+                    <option value={option.value} key={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Início</span>
+                <select
+                  value={fieldWindow}
+                  onChange={(event) => setFieldWindow(event.target.value as FieldWindow)}
+                >
+                  <option value="all">Qualquer período</option>
+                  <option value="today">Hoje</option>
+                  <option value="24h">Últimas 24 horas</option>
+                  <option value="7d">Últimos 7 dias</option>
+                </select>
+              </label>
+              <label className="manager-field-filters__search">
+                <span>Busca</span>
+                <div>
+                  <SearchIcon />
+                  <input
+                    value={search}
+                    placeholder="Título ou código"
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+              </label>
+            </div>
             <div
               className="manager-monitoring-overview"
               role="group"
@@ -1111,11 +1211,7 @@ export function GestorAnalyticsWorkspace({
           <div className="manager-library-view">
             <header className="manager-stage-toolbar">
               <div>
-                <span className="eyebrow">BIBLIOTECA TÉCNICA</span>
-                <h2>Equipamentos e componentes</h2>
-                <p>
-                  Use a busca principal para localizar por TAG, nome ou localização.
-                </p>
+                <h2>Ativos</h2>
               </div>
             </header>
             <div className="manager-library-layout">
@@ -1125,7 +1221,10 @@ export function GestorAnalyticsWorkspace({
                     className={asset.id === assetId ? 'is-selected' : ''}
                     type="button"
                     key={asset.id}
-                    onClick={() => setAssetId(asset.id)}
+                    onClick={() => {
+                      setAssetId(asset.id)
+                      setAssetLookup(assetOptionLabel(asset))
+                    }}
                   >
                     <AssetIcon />
                     <span>

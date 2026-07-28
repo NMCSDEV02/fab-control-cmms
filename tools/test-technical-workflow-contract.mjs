@@ -107,7 +107,7 @@ for (const action of requiredActions.filter((action) => action.startsWith('gesto
   assert(gestorApi.includes(`'${action}'`), `cliente gestor não usa ${action}`)
 }
 
-assert(decisions.includes('Documentos para validar'), 'área de validação não apresenta os documentos pendentes')
+assert(decisions.includes('<h1>Validar</h1>'), 'área de validação não apresenta a ação principal')
 assert(decisions.includes('PRÓXIMO PASSO'), 'fila não orienta a próxima decisão')
 assert(decisions.includes('<option value="demands">Solicitações') && decisions.includes('<option value="models">Checklists'), 'categorias de documentos não estão organizadas')
 assert(!decisions.includes('<option value="operations">Ocorrências'), 'ocorrências ainda concorrem com documentos na área de assinatura')
@@ -209,8 +209,9 @@ assert(
 )
 assert(analytics.includes('período anterior'), 'painel não compara tendências')
 assert(
-  analytics.includes('Pesquisar TAG ou equipamento') &&
-    analytics.includes('manager-assets-list'),
+  analytics.includes('<AssetSearchSelect') &&
+    analytics.includes('assets={catalog.assets}') &&
+    analytics.includes('selectedId={assetId}'),
   'painel não permite pesquisar e recortar por ativo',
 )
 assert(

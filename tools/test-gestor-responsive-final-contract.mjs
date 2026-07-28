@@ -18,6 +18,9 @@ const notifications = read(
   'frontend-gestor/src/components/NotificationCenter.tsx',
 )
 const styles = read('frontend-gestor/src/styles/global.css')
+const assetSearch = read(
+  'frontend-gestor/src/components/AssetSearchSelect.tsx',
+)
 
 for (const period of ['15 min', '1 hora', '6 horas', '24 horas']) {
   assert.match(
@@ -37,6 +40,23 @@ assert.match(
   /const normalized = assetLookup/,
   'A busca principal deve filtrar a biblioteca de ativos.',
 )
+assert.match(
+  assetSearch,
+  /const PAGE_SIZE = 20/,
+  'O seletor deve carregar o catálogo progressivamente em lotes de 20.',
+)
+assert.doesNotMatch(
+  assetSearch,
+  /<datalist/,
+  'O seletor de ativos não pode depender do menu nativo inconsistente do navegador.',
+)
+for (const field of ['Responsável', 'Local', 'Início']) {
+  assert.match(
+    analytics,
+    new RegExp(`<span>${field}</span>`),
+    `Filtro de campo ausente: ${field}`,
+  )
+}
 
 assert.match(
   decision,
@@ -84,6 +104,11 @@ assert.match(
   styles,
   /\.manager-qr-dialog > footer > span svg\s*\{[\s\S]*?max-width: 20px;/,
   'O ícone de confirmação de leitura deve permanecer compacto.',
+)
+assert.match(
+  styles,
+  /\.manager-analytics-workspace\s*\{[\s\S]*?overflow-x: clip;/,
+  'O workspace técnico deve impedir vazamento horizontal.',
 )
 
 console.log('CONTRATO RESPONSIVO FINAL DO GESTOR APROVADO')
