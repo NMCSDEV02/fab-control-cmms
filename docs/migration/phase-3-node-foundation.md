@@ -118,15 +118,16 @@ O banco foi preservado para inspeção. Nenhuma base existente foi removida.
 
 ## Blocos ainda pendentes da Fase 3
 
-1. estrutura fabril, ativos, componentes, materiais e parâmetros;
-2. checklists, versões e planos;
-3. intervenções, OS, ações e execuções;
-4. ocorrências, análises, validações e assinaturas permanentes;
-5. notificações, outbox e atualização em tempo real;
-6. documentos, evidências e armazenamento;
-7. indicadores técnicos e auditoria administrativa;
-8. contratos de compatibilidade e integração gradual dos três frontends;
-9. testes E2E por perfil e por fluxo.
+1. checklists, versões e planos;
+2. intervenções, OS, ações e execuções;
+3. ocorrências, análises, validações e assinaturas permanentes;
+4. notificações, outbox e atualização em tempo real;
+5. documentos, evidências e armazenamento;
+6. indicadores técnicos e auditoria administrativa;
+7. contratos de compatibilidade e integração gradual dos três frontends;
+8. testes E2E por perfil e por fluxo.
+
+Estrutura fabril, ativos, componentes, materiais e parâmetros foram concluídos no bloco 3.2, documentado em `phase-3-node-cmms-catalog.md`.
 
 ## Limite deste bloco
 

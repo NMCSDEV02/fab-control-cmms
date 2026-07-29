@@ -2,6 +2,7 @@ import { loadEnvironment, type Environment } from '../../src/config/environment.
 
 export function createTestEnvironment(
   databaseUrl = 'postgresql://test:test@127.0.0.1:55432/fab_control_test',
+  defaultTenantId = '00000000-0000-4000-8000-000000000001',
 ): Environment {
   return loadEnvironment({
     NODE_ENV: 'test',
@@ -18,11 +19,11 @@ export function createTestEnvironment(
     DATABASE_IDLE_TIMEOUT_MS: '5000',
     DATABASE_CONNECTION_TIMEOUT_MS: '5000',
     DATABASE_STATEMENT_TIMEOUT_MS: '15000',
-    DEFAULT_TENANT_ID: '00000000-0000-4000-8000-000000000001',
+    DEFAULT_TENANT_ID: defaultTenantId,
     APP_ENVIRONMENT: 'DEVELOPMENT',
     APP_RELEASE_VERSION: '1.4.0',
     API_VERSION: '2.0.0',
-    SCHEMA_VERSION: 'postgres-0008',
+    SCHEMA_VERSION: 'postgres-0009',
     CONTRACT_VERSION: '2.0.0',
     FRONTEND_VERSION: '1.4.0',
     AUTH_SESSION_HOURS: '8',

@@ -10,7 +10,7 @@ import { createTestEnvironment } from './helpers/environment.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const integrationEnabled = Boolean(databaseUrl);
-const tenantId = '00000000-0000-4000-8000-000000000001';
+const tenantId = '00000000-0000-4000-8000-000000000003';
 
 async function inTenantTransaction<T>(
   pool: Pool,
@@ -34,7 +34,7 @@ async function inTenantTransaction<T>(
 async function seedIdentity(pool: Pool, passwordHash: string) {
   const userId = randomUUID();
   const roleId = randomUUID();
-  const capabilityId = randomUUID();
+  let capabilityId = '';
 
   await inTenantTransaction(pool, async (client) => {
     await client.query(
@@ -46,13 +46,15 @@ async function seedIdentity(pool: Pool, passwordHash: string) {
       `,
       [tenantId, `fab-control-tests-${randomUUID()}`],
     );
-    await client.query(
+    const capability = await client.query<{ id: string }>(
       `
-        INSERT INTO iam.capabilities (id, code, name, description, module)
-        VALUES ($1, $2, 'Consultar operação', 'Capacidade usada no teste.', 'OPERATIONS')
+        SELECT id
+        FROM iam.capabilities
+        WHERE code = 'cmms.structure.read'
       `,
-      [capabilityId, `operations.read.${randomUUID()}`],
     );
+    capabilityId = capability.rows[0]?.id ?? '';
+    assert.ok(capabilityId);
     await client.query(
       `
         INSERT INTO iam.roles (
@@ -115,7 +117,7 @@ test(
   { skip: !integrationEnabled, timeout: 30_000 },
   async (context) => {
     assert.ok(databaseUrl);
-    const environment = createTestEnvironment(databaseUrl);
+    const environment = createTestEnvironment(databaseUrl, tenantId);
     const pool = new Pool({ connectionString: databaseUrl, max: 2 });
     const initialPassword = 'Initial!Password-2026';
     const changedPassword = 'Changed!Password-2026';

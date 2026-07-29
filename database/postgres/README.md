@@ -25,6 +25,7 @@ Este banco nasce em paralelo. Ele não substitui o Apps Script, não altera as p
 6. `0006_workflow_governance_migration.sql`
 7. `0007_integrity_security_views.sql`
 8. `0008_runtime_access.sql`
+9. `0009_cmms_catalog_runtime.sql`
 
 Cada arquivo abre e confirma a própria transação. Uma falha interrompe a aplicação e não confirma o arquivo incompleto.
 
@@ -46,11 +47,12 @@ Set-Location .\backend\node-api
 Esse teste:
 
 1. cria outro banco isolado;
-2. aplica as oito migrações pelo migrador Node.js;
+2. aplica as nove migrações pelo migrador Node.js;
 3. cria ou atualiza somente o usuário local restrito da API;
 4. executa o contrato do banco;
-5. testa autenticação, primeiro acesso, sessão, recuperação e logout;
-6. preserva o banco e protege a senha local com DPAPI do Windows.
+5. testa autenticação e o catálogo CMMS por rotas HTTP reais;
+6. executa duas vezes a carga controlada de homologação;
+7. preserva o banco e protege a senha local com DPAPI do Windows.
 
 ## Contratos cobertos
 
@@ -63,6 +65,11 @@ Esse teste:
 - liberação segura para a fila do Operador;
 - persistência de leitura de notificação;
 - grants mínimos para runtime e leitura.
+- chave idempotente e classificação automática de leituras;
+- unicidade de parâmetro de ativo sem componente;
+- imutabilidade de leituras técnicas;
+- capacidades separadas para estrutura, ativos, materiais e parâmetros;
+- catálogo global protegido contra mutação pelo runtime.
 
 ## Segredos locais
 

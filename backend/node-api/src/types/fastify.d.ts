@@ -7,6 +7,7 @@ declare module 'fastify' {
     readonly environment: Environment;
     readonly database: Database;
     authenticate(request: FastifyRequest): Promise<void>;
+    authorize(request: FastifyRequest, capability: string): Promise<void>;
   }
 
   interface FastifyRequest {

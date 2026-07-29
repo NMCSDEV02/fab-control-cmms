@@ -15,6 +15,7 @@
     "dev": "tsx watch src/server.ts",
     "format:check": "prettier --check .",
     "lint": "eslint .",
+    "seed:homologation": "tsx src/infrastructure/demo/seed.cli.ts",
     "start": "node --enable-source-maps dist/server.js",
     "test": "tsx --test --test-concurrency=1 tests/**/*.test.ts",
     "test:coverage": "c8 --all --include=src/**/*.ts --reporter=text --reporter=html npm test",

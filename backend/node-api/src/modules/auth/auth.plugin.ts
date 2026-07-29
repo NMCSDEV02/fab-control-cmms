@@ -25,6 +25,19 @@ export const authPlugin = fastifyPlugin(
       request.auth = await service.authenticate(token);
     });
 
+    app.decorate('authorize', async (request, capability) => {
+      await app.authenticate(request);
+
+      if (!request.auth?.user.capabilities.includes(capability)) {
+        throw new AppError({
+          code: 'AUTH_CAPABILITY_REQUIRED',
+          message: 'Seu perfil não possui permissão para esta operação.',
+          statusCode: 403,
+          details: { capability },
+        });
+      }
+    });
+
     await app.register(createAuthRoutes(controller));
   },
   {

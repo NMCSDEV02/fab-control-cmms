@@ -79,7 +79,7 @@ try {
   $env:APP_ENVIRONMENT = 'DEVELOPMENT'
   $env:APP_RELEASE_VERSION = '1.4.0'
   $env:API_VERSION = '2.0.0'
-  $env:SCHEMA_VERSION = 'postgres-0008'
+  $env:SCHEMA_VERSION = 'postgres-0009'
   $env:CONTRACT_VERSION = '2.0.0'
   $env:FRONTEND_VERSION = '1.4.0'
   $env:AUTH_SESSION_HOURS = '8'
@@ -179,7 +179,21 @@ GRANT fab_control_runtime TO fab_control_api_local;
     throw 'Os testes da API falharam.'
   }
 
+  $env:DEMO_ADMIN_PASSWORD = "Test!$([Guid]::NewGuid().ToString('N'))"
+  $env:DEMO_QUALITY_PASSWORD = "Test!$([Guid]::NewGuid().ToString('N'))"
+  $env:DEMO_SAFETY_PASSWORD = "Test!$([Guid]::NewGuid().ToString('N'))"
+  $env:DEMO_MAINTENANCE_PASSWORD = "Test!$([Guid]::NewGuid().ToString('N'))"
+  $env:DEMO_OPERATOR_PASSWORD = "Test!$([Guid]::NewGuid().ToString('N'))"
+
+  1..2 | ForEach-Object {
+    & $npm run seed:homologation
+    if ($LASTEXITCODE -ne 0) {
+      throw "A carga de homologacao falhou na execucao $_."
+    }
+  }
+
   Write-Host "Validacao Node.js concluida em $databaseName."
+  Write-Host 'Testes e carga idempotente de homologacao foram aprovados.'
   Write-Host 'O banco foi preservado e a senha local foi protegida pelo Windows.'
 }
 finally {
@@ -188,7 +202,12 @@ finally {
     'DATABASE_URL',
     'TEST_DATABASE_URL',
     'AUTH_PASSWORD_PEPPER',
-    'AUTH_RECOVERY_HMAC_SECRET'
+    'AUTH_RECOVERY_HMAC_SECRET',
+    'DEMO_ADMIN_PASSWORD',
+    'DEMO_QUALITY_PASSWORD',
+    'DEMO_SAFETY_PASSWORD',
+    'DEMO_MAINTENANCE_PASSWORD',
+    'DEMO_OPERATOR_PASSWORD'
   ) | ForEach-Object {
     Remove-Item "Env:$_" -ErrorAction SilentlyContinue
   }
