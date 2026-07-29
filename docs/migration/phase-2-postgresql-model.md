@@ -1,6 +1,6 @@
 # Fase 2 — Modelo PostgreSQL
 
-Status: concluído tecnicamente e aguardando aprovação do proprietário
+Status: aprovado pelo proprietário em 29/07/2026
 
 Data: 29/07/2026
 
@@ -293,7 +293,7 @@ fila e notificações validados
 
 Foram testados:
 
-- aplicação sequencial das sete migrações;
+- aplicação sequencial das oito migrações;
 - RLS entre dois tenants;
 - os nove tipos de checklist;
 - rejeição de componente em equipamento incorreto;
@@ -305,9 +305,9 @@ Foram testados:
 - entrada segura da ação na fila do Operador;
 - persistência de leitura da notificação.
 
-## 9. Próxima aprovação
+## 9. Aprovação e continuidade
 
-Após aprovação deste modelo:
+Após a aprovação deste modelo:
 
 1. criar o backend Node.js em diretório novo;
 2. criar os usuários técnicos do banco e grants mínimos;
@@ -316,4 +316,4 @@ Após aprovação deste modelo:
 5. manter Apps Script como fonte operacional;
 6. só depois construir o migrador e executar carga de ensaio.
 
-Nenhum dado será migrado antes da confirmação do backup e da aprovação explícita desta Fase 2.
+Nenhum dado será migrado antes da confirmação do backup, da conclusão dos módulos necessários da Fase 3 e de nova aprovação explícita para a Fase 4.

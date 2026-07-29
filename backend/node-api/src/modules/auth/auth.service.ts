@@ -1,0 +1,527 @@
+import type { Environment } from '../../config/environment.js';
+import { AppError } from '../../core/errors/app-error.js';
+import type { Database } from '../../infrastructure/database/database.js';
+import { AuthRepository } from './auth.repository.js';
+import type {
+  AuthContext,
+  AuthenticatedUser,
+  FirstAccessInput,
+  LoginInput,
+  RequestMetadata,
+  SessionPurpose,
+} from './auth.types.js';
+import { PasswordService } from './password.service.js';
+import { TokenService } from './token.service.js';
+
+const INVALID_CREDENTIALS = new AppError({
+  code: 'AUTH_INVALID_CREDENTIALS',
+  message: 'Matrícula ou senha inválida.',
+  statusCode: 401,
+});
+
+const INVALID_SESSION = new AppError({
+  code: 'AUTH_SESSION_INVALID',
+  message: 'A sessão é inválida ou expirou.',
+  statusCode: 401,
+});
+
+type LoginResult =
+  | {
+      readonly kind: 'AUTHENTICATED';
+      readonly accessToken: string;
+      readonly expiresAt: Date;
+      readonly user: AuthenticatedUser;
+    }
+  | {
+      readonly kind: 'FIRST_ACCESS';
+      readonly changeToken: string;
+      readonly expiresAt: Date;
+      readonly user: AuthenticatedUser;
+    }
+  | {
+      readonly kind: 'REJECTED';
+      readonly reason: 'INVALID' | 'LOCKED';
+    };
+
+function addMinutes(date: Date, minutes: number): Date {
+  return new Date(date.getTime() + minutes * 60_000);
+}
+
+function addHours(date: Date, hours: number): Date {
+  return new Date(date.getTime() + hours * 3_600_000);
+}
+
+function normalizeEmployeeNumber(employeeNumber: string): string {
+  return employeeNumber.trim().toUpperCase();
+}
+
+function roleSnapshot(user: AuthenticatedUser): string {
+  return user.roles.join(',') || user.profile;
+}
+
+export class AuthService {
+  private readonly repository = new AuthRepository();
+  private readonly passwords: PasswordService;
+  private readonly tokens: TokenService;
+
+  constructor(
+    private readonly environment: Environment,
+    private readonly database: Database,
+  ) {
+    this.passwords = new PasswordService(environment.auth.passwordPepper);
+    this.tokens = new TokenService(environment.auth.recoveryHmacSecret);
+  }
+
+  async login(input: LoginInput, metadata: RequestMetadata) {
+    const employeeNumber = normalizeEmployeeNumber(input.employeeNumber);
+    const employeeNumberDigest = this.tokens.digestEmployeeNumber(employeeNumber);
+
+    const result = await this.database.withTransaction(
+      { tenantId: this.environment.defaultTenantId },
+      async (client): Promise<LoginResult> => {
+        const credential = await this.repository.findCredentialForLogin(
+          client,
+          this.environment.defaultTenantId,
+          employeeNumber,
+        );
+
+        if (!credential) {
+          await this.passwords.consumeDummyVerification(input.password);
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: this.environment.defaultTenantId,
+            userId: null,
+            employeeNumberDigest,
+            successful: false,
+            failureCode: 'USER_NOT_FOUND',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          return { kind: 'REJECTED', reason: 'INVALID' };
+        }
+
+        if (credential.lockedUntil && credential.lockedUntil.getTime() > Date.now()) {
+          await this.passwords.consumeDummyVerification(input.password);
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: credential.tenantId,
+            userId: credential.userId,
+            employeeNumberDigest,
+            successful: false,
+            failureCode: 'ACCOUNT_LOCKED',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          return { kind: 'REJECTED', reason: 'LOCKED' };
+        }
+
+        const usableCredential =
+          credential.status === 'ACTIVE' &&
+          credential.algorithm === 'ARGON2ID' &&
+          credential.passwordHash !== null;
+        let passwordMatches = false;
+        if (usableCredential && credential.passwordHash) {
+          passwordMatches = await this.passwords.verify(credential.passwordHash, input.password);
+        } else {
+          await this.passwords.consumeDummyVerification(input.password);
+        }
+
+        if (!passwordMatches) {
+          await this.repository.registerFailedLogin(client, {
+            tenantId: credential.tenantId,
+            userId: credential.userId,
+            maxAttempts: this.environment.auth.maxFailedAttempts,
+            lockMinutes: this.environment.auth.lockMinutes,
+          });
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: credential.tenantId,
+            userId: credential.userId,
+            employeeNumberDigest,
+            successful: false,
+            failureCode: usableCredential ? 'PASSWORD_MISMATCH' : 'ACCOUNT_UNAVAILABLE',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          return { kind: 'REJECTED', reason: 'INVALID' };
+        }
+
+        const purpose: SessionPurpose = credential.firstAccessRequired
+          ? 'FIRST_ACCESS'
+          : 'APPLICATION';
+        const token = this.tokens.createSessionToken(purpose);
+        const expiresAt =
+          purpose === 'FIRST_ACCESS'
+            ? addMinutes(new Date(), this.environment.auth.firstAccessMinutes)
+            : addHours(new Date(), this.environment.auth.sessionHours);
+        const identity = await this.repository.resolveUser(client, {
+          sessionId: '',
+          tenantId: credential.tenantId,
+          userId: credential.userId,
+          tokenHash: '',
+          expiresAt,
+          purpose,
+          employeeNumber: credential.employeeNumber,
+          name: credential.name,
+          email: credential.email,
+          userStatus: credential.status,
+          firstAccessRequired: credential.firstAccessRequired,
+        });
+        if (identity.roles.length === 0) {
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: credential.tenantId,
+            userId: credential.userId,
+            employeeNumberDigest,
+            successful: false,
+            failureCode: 'ROLE_NOT_ASSIGNED',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          return { kind: 'REJECTED', reason: 'INVALID' };
+        }
+
+        await this.repository.registerSuccessfulLogin(
+          client,
+          credential.tenantId,
+          credential.userId,
+        );
+        await this.repository.recordLoginAttempt(client, {
+          tenantId: credential.tenantId,
+          userId: credential.userId,
+          employeeNumberDigest,
+          successful: true,
+          failureCode: null,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        });
+
+        const session = await this.repository.createSession(client, {
+          tenantId: credential.tenantId,
+          userId: credential.userId,
+          tokenHash: token.hash,
+          purpose,
+          environment: this.environment.release.environment,
+          expiresAt,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        });
+        const user = identity;
+
+        await this.repository.writeAuditEvent(client, {
+          tenantId: credential.tenantId,
+          userId: credential.userId,
+          roleSnapshot: roleSnapshot(user),
+          action: 'AUTH_LOGIN_SUCCEEDED',
+          entityType: 'iam.sessions',
+          entityId: session.id,
+          afterData: { purpose, expires_at: expiresAt.toISOString() },
+          traceId: metadata.traceId,
+          userAgent: metadata.userAgent,
+          ipAddress: metadata.ipAddress,
+        });
+
+        return purpose === 'FIRST_ACCESS'
+          ? {
+              kind: 'FIRST_ACCESS',
+              changeToken: token.raw,
+              expiresAt,
+              user,
+            }
+          : {
+              kind: 'AUTHENTICATED',
+              accessToken: token.raw,
+              expiresAt,
+              user,
+            };
+      },
+    );
+
+    if (result.kind === 'REJECTED') {
+      if (result.reason === 'LOCKED') {
+        throw new AppError({
+          code: 'AUTH_ACCOUNT_LOCKED',
+          message: 'Acesso temporariamente bloqueado. Tente novamente mais tarde.',
+          statusCode: 423,
+        });
+      }
+      throw INVALID_CREDENTIALS;
+    }
+
+    if (result.kind === 'FIRST_ACCESS') {
+      return {
+        authenticated: false,
+        first_access_required: true,
+        change_token: result.changeToken,
+        expires_at: result.expiresAt.toISOString(),
+        user: this.publicUser(result.user),
+      };
+    }
+
+    return {
+      authenticated: true,
+      first_access_required: false,
+      access_token: result.accessToken,
+      token_type: 'Bearer',
+      expires_at: result.expiresAt.toISOString(),
+      user: this.publicUser(result.user),
+    };
+  }
+
+  async completeFirstAccess(input: FirstAccessInput, metadata: RequestMetadata) {
+    this.passwords.assertPolicy(input.newPassword);
+    if (input.currentPassword === input.newPassword) {
+      throw new AppError({
+        code: 'AUTH_PASSWORD_REUSE',
+        message: 'A nova senha deve ser diferente da senha atual.',
+        statusCode: 422,
+      });
+    }
+
+    const changeTokenHash = this.tokens.hashSessionToken(input.changeToken);
+    const newPasswordHash = await this.passwords.hash(input.newPassword);
+    const applicationToken = this.tokens.createSessionToken('APPLICATION');
+    const expiresAt = addHours(new Date(), this.environment.auth.sessionHours);
+
+    const result = await this.database.withTransaction(
+      { tenantId: this.environment.defaultTenantId },
+      async (client) => {
+        const session = await this.repository.findSessionByHash(
+          client,
+          this.environment.defaultTenantId,
+          changeTokenHash,
+          true,
+        );
+        if (
+          session?.purpose !== 'FIRST_ACCESS' ||
+          !session.firstAccessRequired ||
+          session.userStatus !== 'ACTIVE'
+        ) {
+          return null;
+        }
+
+        const currentPasswordHash = await this.repository.getPasswordHash(
+          client,
+          session.tenantId,
+          session.userId,
+        );
+        if (
+          !currentPasswordHash ||
+          !(await this.passwords.verify(currentPasswordHash, input.currentPassword))
+        ) {
+          return null;
+        }
+
+        await this.repository.changePassword(client, {
+          tenantId: session.tenantId,
+          userId: session.userId,
+          passwordHash: newPasswordHash,
+        });
+        await this.repository.revokeAllUserSessions(
+          client,
+          session.tenantId,
+          session.userId,
+          'FIRST_ACCESS_COMPLETED',
+        );
+        const createdSession = await this.repository.createSession(client, {
+          tenantId: session.tenantId,
+          userId: session.userId,
+          tokenHash: applicationToken.hash,
+          purpose: 'APPLICATION',
+          environment: this.environment.release.environment,
+          expiresAt,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        });
+        const user = await this.repository.resolveUser(client, {
+          ...session,
+          sessionId: createdSession.id,
+          tokenHash: applicationToken.hash,
+          expiresAt,
+          purpose: 'APPLICATION',
+          firstAccessRequired: false,
+        });
+        await this.repository.writeAuditEvent(client, {
+          tenantId: session.tenantId,
+          userId: session.userId,
+          roleSnapshot: roleSnapshot(user),
+          action: 'AUTH_FIRST_ACCESS_COMPLETED',
+          entityType: 'iam.users',
+          entityId: session.userId,
+          afterData: { password_changed: true },
+          traceId: metadata.traceId,
+          userAgent: metadata.userAgent,
+          ipAddress: metadata.ipAddress,
+        });
+        return user;
+      },
+    );
+
+    if (!result) {
+      throw new AppError({
+        code: 'AUTH_FIRST_ACCESS_INVALID',
+        message: 'O acesso inicial é inválido, expirou ou a senha atual não confere.',
+        statusCode: 401,
+      });
+    }
+
+    return {
+      authenticated: true,
+      first_access_required: false,
+      access_token: applicationToken.raw,
+      token_type: 'Bearer',
+      expires_at: expiresAt.toISOString(),
+      user: this.publicUser(result),
+    };
+  }
+
+  async authenticate(rawToken: string): Promise<AuthContext> {
+    const tokenHash = this.tokens.hashSessionToken(rawToken);
+    const context = await this.database.withTransaction(
+      { tenantId: this.environment.defaultTenantId },
+      async (client) => {
+        const session = await this.repository.findSessionByHash(
+          client,
+          this.environment.defaultTenantId,
+          tokenHash,
+          false,
+        );
+        if (
+          session?.purpose !== 'APPLICATION' ||
+          session.firstAccessRequired ||
+          session.userStatus !== 'ACTIVE'
+        ) {
+          return null;
+        }
+
+        const user = await this.repository.resolveUser(client, session);
+        await this.repository.updateLastUsed(client, session.tenantId, session.sessionId);
+        return {
+          sessionId: session.sessionId,
+          tokenHash,
+          expiresAt: session.expiresAt,
+          user,
+        } satisfies AuthContext;
+      },
+    );
+
+    if (!context) throw INVALID_SESSION;
+    return context;
+  }
+
+  async logout(context: AuthContext, metadata: RequestMetadata): Promise<void> {
+    await this.database.withTransaction(
+      { tenantId: context.user.tenantId, userId: context.user.id },
+      async (client) => {
+        await this.repository.revokeSession(
+          client,
+          context.user.tenantId,
+          context.sessionId,
+          'USER_LOGOUT',
+        );
+        await this.repository.writeAuditEvent(client, {
+          tenantId: context.user.tenantId,
+          userId: context.user.id,
+          roleSnapshot: roleSnapshot(context.user),
+          action: 'AUTH_LOGOUT',
+          entityType: 'iam.sessions',
+          entityId: context.sessionId,
+          traceId: metadata.traceId,
+          userAgent: metadata.userAgent,
+          ipAddress: metadata.ipAddress,
+        });
+      },
+    );
+  }
+
+  async requestRecovery(
+    employeeNumberInput: string,
+    metadata: RequestMetadata,
+  ): Promise<{ readonly accepted: true; readonly message: string }> {
+    const startedAt = performance.now();
+    const employeeNumber = normalizeEmployeeNumber(employeeNumberInput);
+    const employeeNumberDigest = this.tokens.digestEmployeeNumber(employeeNumber);
+
+    await this.database.withTransaction(
+      { tenantId: this.environment.defaultTenantId },
+      async (client) => {
+        const credential = await this.repository.findCredentialForLogin(
+          client,
+          this.environment.defaultTenantId,
+          employeeNumber,
+        );
+        if (credential?.status !== 'ACTIVE') {
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: this.environment.defaultTenantId,
+            userId: credential?.userId ?? null,
+            employeeNumberDigest,
+            successful: false,
+            failureCode: 'RECOVERY_REQUESTED',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          return;
+        }
+
+        const recent = await this.repository.hasRecentRecoveryRequest(
+          client,
+          credential.tenantId,
+          credential.userId,
+          this.environment.auth.recoveryCooldownMinutes,
+        );
+        if (recent) return;
+
+        const material = this.tokens.createRecoveryMaterial();
+        await this.repository.createRecoveryRequest(client, {
+          tenantId: credential.tenantId,
+          userId: credential.userId,
+          publicReference: material.publicReference,
+          secretHash: material.secretHash,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        });
+        await this.repository.writeAuditEvent(client, {
+          tenantId: credential.tenantId,
+          userId: credential.userId,
+          roleSnapshot: null,
+          action: 'AUTH_RECOVERY_REQUESTED',
+          entityType: 'iam.recovery_requests',
+          entityId: material.publicReference,
+          traceId: metadata.traceId,
+          userAgent: metadata.userAgent,
+          ipAddress: metadata.ipAddress,
+        });
+      },
+    );
+
+    const remainingDelay = 250 - (performance.now() - startedAt);
+    if (remainingDelay > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, remainingDelay);
+      });
+    }
+
+    return {
+      accepted: true,
+      message: 'Se a matrícula estiver ativa, a solicitação será encaminhada ao administrador.',
+    };
+  }
+
+  session(context: AuthContext) {
+    return {
+      authenticated: true,
+      expires_at: context.expiresAt.toISOString(),
+      user: this.publicUser(context.user),
+    };
+  }
+
+  private publicUser(user: AuthenticatedUser) {
+    return {
+      id: user.id,
+      matricula: user.employeeNumber,
+      nome: user.name,
+      email: user.email,
+      perfil: user.profile,
+      area_id: user.areaId,
+      cargo_tecnico_id: user.technicalRoleId,
+      papeis: user.roles,
+      capacidades: user.capabilities,
+    };
+  }
+}
