@@ -1,5 +1,5 @@
 import type { ApiEnvelope } from '../../types/api'
-import { getApiUrl } from './config'
+import { getApiTransport, getApiUrl, getLegacyApiUrl } from './config'
 
 export const API_TIMEOUT_MS = {
   FAST_READ: 15_000,
@@ -39,7 +39,7 @@ function stableSerialize(value: unknown): string {
     .join(',')}}`
 }
 
-async function executeApiCall<T>(
+async function executeAppsScriptCall<T>(
   apiUrl: string,
   action: string,
   payload: Record<string, unknown>,
@@ -117,6 +117,136 @@ async function executeApiCall<T>(
   return envelope
 }
 
+interface NodeActionRequest {
+  method: 'GET' | 'POST' | 'PATCH'
+  path: string
+  body?: Record<string, unknown>
+  token?: string
+  transform?: (data: Record<string, unknown>) => unknown
+}
+
+function nodeActionRequest(
+  action: string,
+  payload: Record<string, unknown>,
+): NodeActionRequest | null {
+  const token = typeof payload.token === 'string' ? payload.token : undefined
+  switch (action) {
+    case 'auth.login':
+      return {
+        method: 'POST',
+        path: '/v1/auth/login',
+        body: { matricula: payload.matricula, senha: payload.senha },
+      }
+    case 'auth.first_access.complete':
+      return {
+        method: 'POST',
+        path: '/v1/auth/first-access',
+        body: {
+          change_token: payload.change_token,
+          senha_atual: payload.senha_atual,
+          nova_senha: payload.nova_senha,
+        },
+      }
+    case 'auth.recovery.request':
+      return {
+        method: 'POST',
+        path: '/v1/auth/recovery',
+        body: { matricula: payload.matricula },
+      }
+    case 'auth.logout':
+      return { method: 'POST', path: '/v1/auth/logout', body: {}, token }
+    case 'sistema.health':
+      return { method: 'GET', path: '/health/ready' }
+    case 'sistema.warmup':
+      return {
+        method: 'GET',
+        path: '/v1/auth/session',
+        token,
+        transform: (data) => {
+          const user = data.user as Record<string, unknown> | undefined
+          return {
+            warmed: true,
+            version: data.release_version,
+            perfil: user?.perfil ?? '',
+            usuario_id: user?.id ?? '',
+            elapsed_internal_ms: 0,
+            loaded_tables: 0,
+          }
+        },
+      }
+    default:
+      return null
+  }
+}
+
+function nodeBaseUrl(apiUrl: string): string {
+  return apiUrl.replace(/\/+$/, '').replace(/\/v1$/, '')
+}
+
+function isAppsScriptUrl(apiUrl: string): boolean {
+  return /script\.google\.com|script\.googleusercontent\.com/i.test(apiUrl)
+}
+
+async function executeNodeCall<T>(
+  apiUrl: string,
+  action: string,
+  request: NodeActionRequest,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): Promise<ApiEnvelope<T>> {
+  const controller = new AbortController()
+  let timedOut = false
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  const abortFromCaller = () => controller.abort()
+  signal?.addEventListener('abort', abortFromCaller, { once: true })
+
+  try {
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    if (request.body) headers['Content-Type'] = 'application/json'
+    if (request.token) headers.Authorization = `Bearer ${request.token}`
+    const response = await fetch(`${nodeBaseUrl(apiUrl)}${request.path}`, {
+      method: request.method,
+      headers,
+      body: request.body ? JSON.stringify(request.body) : undefined,
+      signal: controller.signal,
+    })
+    const envelope = (await response.json()) as ApiEnvelope<Record<string, unknown>>
+    if (!response.ok || !envelope.ok) {
+      throw new ApiRequestError(
+        envelope.error?.message ?? `A API respondeu com HTTP ${response.status}.`,
+        envelope.error?.code ?? 'HTTP_ERROR',
+        envelope.error?.details ?? { status: response.status },
+      )
+    }
+    const data = envelope.data ?? {}
+    return {
+      ...envelope,
+      data: (request.transform ? request.transform(data) : data) as T,
+    }
+  } catch (error) {
+    if (error instanceof ApiRequestError) throw error
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      if (signal?.aborted) throw error
+      throw new ApiRequestError(
+        timedOut ? `A API excedeu ${Math.round(timeoutMs / 1000)} segundos.` : 'A requisição foi cancelada.',
+        timedOut ? 'API_TIMEOUT' : 'API_ABORTED',
+        { action, timeoutMs },
+      )
+    }
+    throw new ApiRequestError(
+      'Não foi possível alcançar a API Node. Verifique a rede e a configuração do endpoint.',
+      'NETWORK_ERROR',
+      error,
+    )
+  } finally {
+    window.clearTimeout(timeoutId)
+    signal?.removeEventListener('abort', abortFromCaller)
+  }
+}
+
 export function callApi<T>(
   action: string,
   payload: Record<string, unknown> = {},
@@ -145,7 +275,26 @@ export function callApi<T>(
     if (existing) return existing as Promise<ApiEnvelope<T>>
   }
 
-  const request = executeApiCall<T>(apiUrl, action, payload, signal, timeoutMs)
+  const transport = getApiTransport()
+  const useNode = transport === 'node' || (transport === 'auto' && !isAppsScriptUrl(apiUrl))
+  const nodeRequest = useNode ? nodeActionRequest(action, payload) : null
+  let request: Promise<ApiEnvelope<T>>
+  if (nodeRequest) {
+    request = executeNodeCall<T>(apiUrl, action, nodeRequest, signal, timeoutMs)
+  } else if (useNode) {
+    const legacyUrl = getLegacyApiUrl()
+    request = legacyUrl
+      ? executeAppsScriptCall<T>(legacyUrl, action, payload, signal, timeoutMs)
+      : Promise.reject(
+          new ApiRequestError(
+            `A ação ${action} ainda não possui adaptador Node e o fallback legado não está configurado.`,
+            'NODE_ACTION_NOT_MIGRATED',
+            { action },
+          ),
+        )
+  } else {
+    request = executeAppsScriptCall<T>(apiUrl, action, payload, signal, timeoutMs)
+  }
 
   if (!dedupeKey) return request
 

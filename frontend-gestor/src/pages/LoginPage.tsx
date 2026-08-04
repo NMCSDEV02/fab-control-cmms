@@ -37,7 +37,7 @@ function wait(milliseconds: number): Promise<void> {
 
 function passwordMeetsRules(password: string): boolean {
   return (
-    password.length >= 8 &&
+    password.length >= 12 &&
     /[a-z]/.test(password) &&
     /[A-Z]/.test(password) &&
     /\d/.test(password)
@@ -58,6 +58,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [password, setPassword] = useState('')
   const [firstAccessRegistration, setFirstAccessRegistration] = useState('')
   const [changeToken, setChangeToken] = useState('')
+  const [firstAccessCurrentPassword, setFirstAccessCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [recoveryRegistration, setRecoveryRegistration] = useState('')
@@ -189,6 +190,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
         setFirstAccessRegistration(result.usuario.matricula || normalizedRegistration)
         setChangeToken(result.change_token)
+        setFirstAccessCurrentPassword(password)
         setNewPassword('')
         setConfirmation('')
         setPassword('')
@@ -258,7 +260,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     if (!passwordMeetsRules(newPassword)) {
       setError(
-        'A nova senha deve ter ao menos 8 caracteres, com letra maiúscula, minúscula e número.',
+        'A nova senha deve ter ao menos 12 caracteres, com letra maiúscula, minúscula e número.',
       )
       return
     }
@@ -275,9 +277,10 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     setSubmitting(true)
     try {
-      await completeFirstAccess(changeToken, newPassword)
+      await completeFirstAccess(changeToken, firstAccessCurrentPassword, newPassword)
       setRegistration(firstAccessRegistration)
       setChangeToken('')
+      setFirstAccessCurrentPassword('')
       setNewPassword('')
       setConfirmation('')
       setView('login')

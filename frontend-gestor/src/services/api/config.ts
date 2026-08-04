@@ -2,6 +2,8 @@ const API_URL_KEY = 'fab-control.gestor-api-url'
 const GESTOR_TOKEN_SESSION_KEY = 'fab-control.gestor-token'
 const LEGACY_GESTOR_TOKEN_PERSISTENT_KEY = 'fab-control.gestor-token-persistent'
 
+export type ApiTransport = 'auto' | 'node' | 'apps-script'
+
 let inMemoryGestorToken = ''
 
 function environmentGestorToken(): string {
@@ -54,6 +56,15 @@ export function getApiUrl(): string {
   const fromEnv = getEnvironmentApiUrl()
   if (fromEnv) return fromEnv
   return readLocalStorage(API_URL_KEY)
+}
+
+export function getLegacyApiUrl(): string {
+  return (import.meta.env.VITE_APPS_SCRIPT_API_URL as string | undefined)?.trim() ?? ''
+}
+
+export function getApiTransport(): ApiTransport {
+  const value = (import.meta.env.VITE_API_TRANSPORT as string | undefined)?.trim().toLowerCase()
+  return value === 'node' || value === 'apps-script' ? value : 'auto'
 }
 
 export function isApiUrlManagedByEnvironment(): boolean {

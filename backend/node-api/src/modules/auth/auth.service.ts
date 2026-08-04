@@ -248,19 +248,32 @@ export class AuthService {
       return {
         authenticated: false,
         first_access_required: true,
+        requires_password_change: true,
+        first_access: true,
         change_token: result.changeToken,
         expires_at: result.expiresAt.toISOString(),
+        expira_em: result.expiresAt.toISOString(),
+        expira_ms: result.expiresAt.getTime(),
         user: this.publicUser(result.user),
+        usuario: this.publicUser(result.user),
+        ...this.releaseContract(),
       };
     }
 
     return {
       authenticated: true,
       first_access_required: false,
+      requires_password_change: false,
+      first_access: false,
       access_token: result.accessToken,
+      token: result.accessToken,
       token_type: 'Bearer',
       expires_at: result.expiresAt.toISOString(),
+      expira_em: result.expiresAt.toISOString(),
+      expira_ms: result.expiresAt.getTime(),
       user: this.publicUser(result.user),
+      usuario: this.publicUser(result.user),
+      ...this.releaseContract(),
     };
   }
 
@@ -364,10 +377,17 @@ export class AuthService {
     return {
       authenticated: true,
       first_access_required: false,
+      password_changed: true,
+      requires_password_change: false,
       access_token: applicationToken.raw,
+      token: applicationToken.raw,
       token_type: 'Bearer',
       expires_at: expiresAt.toISOString(),
+      expira_em: expiresAt.toISOString(),
+      expira_ms: expiresAt.getTime(),
       user: this.publicUser(result),
+      usuario: this.publicUser(result),
+      ...this.releaseContract(),
     };
   }
 
@@ -433,10 +453,17 @@ export class AuthService {
   async requestRecovery(
     employeeNumberInput: string,
     metadata: RequestMetadata,
-  ): Promise<{ readonly accepted: true; readonly message: string }> {
+  ): Promise<{
+    readonly accepted: true;
+    readonly request_id: string;
+    readonly message: string;
+    readonly release_version: string;
+  }> {
     const startedAt = performance.now();
     const employeeNumber = normalizeEmployeeNumber(employeeNumberInput);
     const employeeNumberDigest = this.tokens.digestEmployeeNumber(employeeNumber);
+    // A referência sempre é gerada para não revelar se a matrícula existe.
+    const recoveryMaterial = this.tokens.createRecoveryMaterial();
 
     await this.database.withTransaction(
       { tenantId: this.environment.defaultTenantId },
@@ -467,12 +494,11 @@ export class AuthService {
         );
         if (recent) return;
 
-        const material = this.tokens.createRecoveryMaterial();
         await this.repository.createRecoveryRequest(client, {
           tenantId: credential.tenantId,
           userId: credential.userId,
-          publicReference: material.publicReference,
-          secretHash: material.secretHash,
+          publicReference: recoveryMaterial.publicReference,
+          secretHash: recoveryMaterial.secretHash,
           ipAddress: metadata.ipAddress,
           userAgent: metadata.userAgent,
         });
@@ -482,7 +508,7 @@ export class AuthService {
           roleSnapshot: null,
           action: 'AUTH_RECOVERY_REQUESTED',
           entityType: 'iam.recovery_requests',
-          entityId: material.publicReference,
+          entityId: recoveryMaterial.publicReference,
           traceId: metadata.traceId,
           userAgent: metadata.userAgent,
           ipAddress: metadata.ipAddress,
@@ -499,7 +525,9 @@ export class AuthService {
 
     return {
       accepted: true,
+      request_id: recoveryMaterial.publicReference,
       message: 'Se a matrícula estiver ativa, a solicitação será encaminhada ao administrador.',
+      release_version: this.environment.release.app,
     };
   }
 
@@ -508,6 +536,7 @@ export class AuthService {
       authenticated: true,
       expires_at: context.expiresAt.toISOString(),
       user: this.publicUser(context.user),
+      ...this.releaseContract(),
     };
   }
 
@@ -523,5 +552,17 @@ export class AuthService {
       papeis: user.roles,
       capacidades: user.capabilities,
     };
+  }
+
+  private releaseContract() {
+    return {
+      release_version: this.environment.release.app,
+      api_version: this.environment.release.api,
+      schema_version: this.environment.release.schema,
+      contract_version: this.environment.release.contract,
+      frontend_version: this.environment.release.frontend,
+      warmup_required: true,
+      warmup_action: 'sistema.warmup',
+    } as const;
   }
 }

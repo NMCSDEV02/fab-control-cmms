@@ -2,6 +2,8 @@ const API_URL_KEY = 'fab-control.api-url'
 const OPERATOR_TOKEN_SESSION_KEY = 'fab-control.operator-token'
 const LEGACY_OPERATOR_TOKEN_PERSISTENT_KEY = 'fab-control.operator-token-persistent'
 
+export type ApiTransport = 'auto' | 'node' | 'apps-script'
+
 let inMemoryOperatorToken = ''
 
 function environmentOperatorToken(): string {
@@ -50,6 +52,15 @@ export function getApiUrl(): string {
   const fromEnv = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
   if (fromEnv) return fromEnv
   return readLocalStorage(API_URL_KEY)
+}
+
+export function getLegacyApiUrl(): string {
+  return (import.meta.env.VITE_APPS_SCRIPT_API_URL as string | undefined)?.trim() ?? ''
+}
+
+export function getApiTransport(): ApiTransport {
+  const value = (import.meta.env.VITE_API_TRANSPORT as string | undefined)?.trim().toLowerCase()
+  return value === 'node' || value === 'apps-script' ? value : 'auto'
 }
 
 export function saveApiUrl(value: string): void {

@@ -81,12 +81,14 @@ export async function loginOperator(
 
 export async function completeFirstAccess(
   changeToken: string,
+  currentPassword: string,
   newPassword: string,
 ): Promise<FirstAccessResponseData> {
   const response = await callApi<FirstAccessResponseData>(
     'auth.first_access.complete',
     {
       change_token: changeToken,
+      senha_atual: currentPassword,
       nova_senha: newPassword,
       user_agent: navigator.userAgent,
     },

@@ -36,7 +36,7 @@ function wait(milliseconds: number): Promise<void> {
 
 function passwordMeetsPreviewRules(password: string): boolean {
   return (
-    password.length >= 8 &&
+    password.length >= 12 &&
     /[a-z]/.test(password) &&
     /[A-Z]/.test(password) &&
     /\d/.test(password)
@@ -71,6 +71,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [recoveryRequestId, setRecoveryRequestId] = useState('')
   const [firstAccessRegistration, setFirstAccessRegistration] = useState('')
   const [firstAccessToken, setFirstAccessToken] = useState('')
+  const [firstAccessCurrentPassword, setFirstAccessCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -180,6 +181,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setView('login')
     setPassword('')
     setFirstAccessToken('')
+    setFirstAccessCurrentPassword('')
     setNewPassword('')
     setNewPasswordConfirmation('')
     setError('')
@@ -210,6 +212,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
         setFirstAccessRegistration(result.usuario.matricula || normalizedRegistration)
         setFirstAccessToken(result.change_token)
+        setFirstAccessCurrentPassword(password)
         setNewPassword('')
         setNewPasswordConfirmation('')
         setPassword('')
@@ -306,7 +309,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     if (!passwordMeetsPreviewRules(newPassword)) {
       setError(
-        'A nova senha deve ter ao menos 8 caracteres, com letra maiúscula, minúscula e número.',
+        'A nova senha deve ter ao menos 12 caracteres, com letra maiúscula, minúscula e número.',
       )
       return
     }
@@ -323,7 +326,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     setSubmitting(true)
     try {
-      await completeFirstAccess(firstAccessToken, newPassword)
+      await completeFirstAccess(firstAccessToken, firstAccessCurrentPassword, newPassword)
       setRegistration(firstAccessRegistration)
       returnToLogin('Nova senha definida. Entre novamente para continuar.')
     } catch (cause) {
