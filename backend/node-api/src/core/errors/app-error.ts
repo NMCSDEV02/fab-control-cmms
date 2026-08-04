@@ -57,6 +57,15 @@ export function normalizeError(error: unknown): AppError {
       });
     }
 
+    if (error.code === '42501') {
+      return new AppError({
+        code: 'OPERATION_FORBIDDEN',
+        message: 'O usuário não possui autorização técnica para concluir esta operação.',
+        statusCode: 403,
+        cause: error,
+      });
+    }
+
     if (error.code === '23514' || error.code === '22P02') {
       return new AppError({
         code: 'DATABASE_VALIDATION_FAILED',

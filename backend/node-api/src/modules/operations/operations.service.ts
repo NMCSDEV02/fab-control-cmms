@@ -1,0 +1,967 @@
+import { createHash, randomUUID } from 'node:crypto';
+
+import type { PoolClient } from 'pg';
+
+import { AppError } from '../../core/errors/app-error.js';
+import type { Database } from '../../infrastructure/database/database.js';
+import type { AuthenticatedUser } from '../auth/auth.types.js';
+import { OperationsRepository, type OperationsRow } from './operations.repository.js';
+import type {
+  CompletionInput,
+  EvidenceInput,
+  ExecutionResponseInput,
+  RequestAuditMetadata,
+  ReviewSubmissionInput,
+  SignatureInput,
+  SignaturePolicy,
+  WorkOrderCorrectionInput,
+  WorkOrderInput,
+  WorkOrderListQuery,
+} from './operations.types.js';
+
+function error(code: string, message: string, statusCode: number, details?: unknown): AppError {
+  return new AppError({ code, message, statusCode, ...(details === undefined ? {} : { details }) });
+}
+
+function text(row: OperationsRow, key: string): string {
+  const value = row[key];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`Campo ${key} ausente.`);
+  return value;
+}
+
+function nullableText(value: string | null): string | null {
+  if (value === null) return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${stable(child)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function hash(value: unknown): string {
+  return createHash('sha256').update(stable(value), 'utf8').digest('hex');
+}
+
+function integer(row: OperationsRow, key: string): number {
+  const value = row[key];
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Number.parseInt(value, 10);
+  return 0;
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  return null;
+}
+
+function codeForWorkOrder(): string {
+  const now = new Date();
+  const timestamp = now
+    .toISOString()
+    .replaceAll(/[-:TZ.]/g, '')
+    .slice(0, 14);
+  return `OS-${timestamp}-${randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
+function eligibleArea(policy: SignaturePolicy, areaCode: string): boolean {
+  if (policy === 'QUALIDADE') return areaCode === 'QUALITY';
+  if (policy === 'SEGURANCA') return areaCode === 'SAFETY';
+  return areaCode === 'QUALITY' || areaCode === 'SAFETY';
+}
+
+function normalizedWorkOrder(input: WorkOrderInput): WorkOrderInput {
+  return {
+    ...input,
+    originType: input.originType.trim().toUpperCase(),
+    workType: input.workType.trim().toUpperCase(),
+    title: input.title.trim(),
+    description: input.description.trim(),
+    scheduledFor: input.scheduledFor,
+  };
+}
+
+function normalizedCorrection(input: WorkOrderCorrectionInput): WorkOrderCorrectionInput {
+  return {
+    ...input,
+    title: input.title.trim(),
+    description: input.description.trim(),
+  };
+}
+
+function workOrderHash(
+  id: string,
+  code: string,
+  input: WorkOrderInput,
+  context: Readonly<Record<string, unknown>>,
+): string {
+  return hash({
+    id,
+    code,
+    input,
+    context: {
+      assetId: context.asset_id,
+      componentId: context.component_id,
+      planVersionId: context.id,
+      checklistVersionId: context.checklist_template_version_id,
+    },
+  });
+}
+
+export class OperationsService {
+  private readonly repository = new OperationsRepository();
+
+  constructor(private readonly database: Database) {}
+
+  async listWorkOrders(user: AuthenticatedUser, query: WorkOrderListQuery) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => ({
+        itens: await this.repository.listWorkOrders(client, query),
+        limite: query.limit,
+      }),
+    );
+  }
+
+  async getWorkOrder(user: AuthenticatedUser, workOrderId: string) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => this.requiredWorkOrderDetail(client, workOrderId),
+    );
+  }
+
+  async createWorkOrder(
+    user: AuthenticatedUser,
+    rawInput: WorkOrderInput,
+    audit: RequestAuditMetadata,
+  ) {
+    const input = normalizedWorkOrder(rawInput);
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const context = await this.repository.findPublishedPlanContext(client, input.planVersionId);
+        if (
+          context?.status !== 'PUBLISHED' ||
+          context.checklist_status !== 'PUBLISHED' ||
+          context.lifecycle_status !== 'ACTIVE' ||
+          context.asset_status !== 'ACTIVE' ||
+          integer(context, 'total_items') < 1
+        ) {
+          throw error(
+            'WORK_ORDER_PLAN_NOT_EXECUTABLE',
+            'A OS exige um plano ativo, publicado e vinculado a um checklist com etapas.',
+            422,
+          );
+        }
+        if (
+          input.responsibleId &&
+          !(await this.repository.activeUserExists(client, input.responsibleId))
+        ) {
+          throw error(
+            'WORK_ORDER_RESPONSIBLE_INVALID',
+            'O responsável informado não está ativo.',
+            422,
+          );
+        }
+        const id = randomUUID();
+        const code = codeForWorkOrder();
+        const contentHash = workOrderHash(id, code, input, context);
+        await this.repository.createWorkOrder(
+          client,
+          user.tenantId,
+          id,
+          code,
+          user.id,
+          input,
+          context,
+          contentHash,
+        );
+        const detail = await this.requiredWorkOrderDetail(client, id);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'WORK_ORDER_CREATED',
+          'WORK_ORDER',
+          id,
+          detail,
+        );
+        return detail;
+      },
+    );
+  }
+
+  async correctWorkOrder(
+    user: AuthenticatedUser,
+    workOrderId: string,
+    rawInput: WorkOrderCorrectionInput,
+    audit: RequestAuditMetadata,
+  ) {
+    const input = normalizedCorrection(rawInput);
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const workOrder = await this.repository.findWorkOrder(client, workOrderId, true);
+        if (!workOrder)
+          throw error('WORK_ORDER_NOT_FOUND', 'Ordem de serviço não encontrada.', 404);
+        if (text(workOrder, 'status') !== 'CHANGES_REQUESTED') {
+          throw error(
+            'WORK_ORDER_CORRECTION_NOT_ALLOWED',
+            'Somente uma OS devolvida pode ser corrigida por esta operação.',
+            409,
+          );
+        }
+        if (
+          input.responsibleId &&
+          !(await this.repository.activeUserExists(client, input.responsibleId))
+        ) {
+          throw error(
+            'WORK_ORDER_RESPONSIBLE_INVALID',
+            'O responsável informado não está ativo.',
+            422,
+          );
+        }
+        const context = await this.repository.findPublishedPlanContext(
+          client,
+          text(workOrder, 'maintenance_plan_version_id'),
+        );
+        if (!context) {
+          throw error(
+            'WORK_ORDER_PLAN_NOT_EXECUTABLE',
+            'O plano vinculado à OS não está mais disponível.',
+            409,
+          );
+        }
+        const correctedWorkOrder: WorkOrderInput = {
+          planVersionId: text(workOrder, 'maintenance_plan_version_id'),
+          originType: text(workOrder, 'origin_type'),
+          originEntityId: workOrder.origin_entity_id as string | null,
+          workType: text(workOrder, 'work_type'),
+          title: input.title,
+          description: input.description,
+          priority: input.priority,
+          responsibleId: input.responsibleId,
+          scheduledFor: input.scheduledFor,
+          technicalAnalysis: input.technicalAnalysis,
+        };
+        const contentHash = workOrderHash(
+          workOrderId,
+          text(workOrder, 'code'),
+          correctedWorkOrder,
+          context,
+        );
+        if (contentHash === workOrder.content_hash_sha256) {
+          throw error(
+            'WORK_ORDER_CORRECTION_REQUIRED',
+            'A correção deve alterar o conteúdo técnico antes do reenvio.',
+            422,
+          );
+        }
+        const previousDemandId = text(workOrder, 'technical_demand_id');
+        await this.repository.correctWorkOrder(client, workOrderId, input, contentHash);
+        const detail = await this.requiredWorkOrderDetail(client, workOrderId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'WORK_ORDER_CORRECTED',
+          'WORK_ORDER',
+          workOrderId,
+          { demanda_anterior_id: previousDemandId, ordem: detail },
+        );
+        return detail;
+      },
+    );
+  }
+
+  async submitForReview(
+    user: AuthenticatedUser,
+    workOrderId: string,
+    input: ReviewSubmissionInput,
+    audit: RequestAuditMetadata,
+  ) {
+    this.validateSignaturePolicy(input);
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const workOrder = await this.repository.findWorkOrder(client, workOrderId, true);
+        if (!workOrder)
+          throw error('WORK_ORDER_NOT_FOUND', 'Ordem de serviço não encontrada.', 404);
+        if (!['DRAFT', 'CHANGES_REQUESTED'].includes(text(workOrder, 'status'))) {
+          throw error(
+            'WORK_ORDER_NOT_EDITABLE',
+            'A OS não está disponível para envio à validação.',
+            409,
+          );
+        }
+        if (workOrder.technical_demand_id !== null) {
+          throw error(
+            'WORK_ORDER_REVIEW_ALREADY_CREATED',
+            'A OS já possui uma demanda técnica vinculada.',
+            409,
+          );
+        }
+        const areas = await this.repository.findTechnicalAreas(client);
+        const qualityArea = areas.find((area) => area.code === 'QUALITY');
+        const safetyArea = areas.find((area) => area.code === 'SAFETY');
+        if (!qualityArea || !safetyArea) {
+          throw error(
+            'VALIDATION_AREAS_NOT_CONFIGURED',
+            'As áreas de Qualidade e Segurança devem estar ativas.',
+            409,
+          );
+        }
+        const demandId = randomUUID();
+        await this.repository.createDemand(
+          client,
+          user.tenantId,
+          demandId,
+          workOrder,
+          user.id,
+          audit.roleSnapshot,
+          input,
+        );
+        if (input.signaturePolicy === 'QUALIDADE') {
+          await this.repository.createRequirement(
+            client,
+            user.tenantId,
+            demandId,
+            'QUALITY',
+            qualityArea.id,
+          );
+        } else if (input.signaturePolicy === 'SEGURANCA') {
+          await this.repository.createRequirement(
+            client,
+            user.tenantId,
+            demandId,
+            'SAFETY',
+            safetyArea.id,
+          );
+        } else if (input.signaturePolicy === 'QUALIDADE_E_SEGURANCA') {
+          await this.repository.createRequirement(
+            client,
+            user.tenantId,
+            demandId,
+            'QUALITY',
+            qualityArea.id,
+          );
+          await this.repository.createRequirement(
+            client,
+            user.tenantId,
+            demandId,
+            'SAFETY',
+            safetyArea.id,
+          );
+        }
+        await this.repository.attachDemand(client, workOrderId, demandId);
+        await this.repository.appendDemandEvent(
+          client,
+          user.tenantId,
+          demandId,
+          'SUBMITTED',
+          user.id,
+          null,
+          null,
+          text(workOrder, 'content_hash_sha256'),
+        );
+        const detail = await this.requiredWorkOrderDetail(client, workOrderId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'WORK_ORDER_SUBMITTED',
+          'WORK_ORDER',
+          workOrderId,
+          detail,
+        );
+        return detail;
+      },
+    );
+  }
+
+  async signDemand(
+    user: AuthenticatedUser,
+    demandId: string,
+    input: SignatureInput,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const demand = await this.repository.findDemand(client, demandId, true);
+        if (!demand)
+          throw error('TECHNICAL_DEMAND_NOT_FOUND', 'Demanda técnica não encontrada.', 404);
+        if (text(demand, 'status') !== 'AWAITING_SIGNATURE') {
+          throw error(
+            'TECHNICAL_DEMAND_NOT_SIGNABLE',
+            'A demanda não aceita novas assinaturas.',
+            409,
+          );
+        }
+        const context = await this.repository.validatorContext(client, user.id);
+        const areaCode = context ? text(context, 'area_code') : '';
+        if (
+          context?.can_sign !== true ||
+          !eligibleArea(text(demand, 'signature_policy') as SignaturePolicy, areaCode)
+        ) {
+          throw error(
+            'TECHNICAL_SIGNATURE_NOT_ALLOWED',
+            'Seu vínculo técnico não atende à política de assinatura.',
+            403,
+          );
+        }
+        const requirement = await this.repository.matchingRequirement(
+          client,
+          demandId,
+          text(context, 'technical_area_id'),
+        );
+        if (text(demand, 'signature_policy') !== 'QUALIDADE_OU_SEGURANCA' && !requirement) {
+          throw error(
+            'VALIDATOR_REQUIREMENT_NOT_FOUND',
+            'Não existe requisito pendente para sua área técnica.',
+            409,
+          );
+        }
+        const declaration = input.declaration.trim();
+        const meaning = input.meaning.trim();
+        const signatureHash = hash({
+          demandId,
+          payload: demand.payload_hash_sha256,
+          userId: user.id,
+          areaId: context.technical_area_id,
+          declaration,
+          meaning,
+          nonce: randomUUID(),
+        });
+        await this.repository.insertSignature(
+          client,
+          user.tenantId,
+          demand,
+          requirement?.id ?? null,
+          user.id,
+          audit.roleSnapshot,
+          text(context, 'technical_area_id'),
+          context.technical_role_id as string | null,
+          meaning,
+          declaration,
+          signatureHash,
+        );
+        const state = await this.repository.demandApprovalState(client, demandId);
+        const approved =
+          integer(state, 'completed_signature_count') >=
+            integer(state, 'required_signature_count') &&
+          integer(state, 'pending_requirements') === 0;
+        if (approved)
+          await this.repository.approveDemand(client, demandId, text(demand, 'entity_id'));
+        await this.repository.appendDemandEvent(
+          client,
+          user.tenantId,
+          demandId,
+          'SIGNED',
+          user.id,
+          'APPROVED',
+          null,
+          signatureHash,
+        );
+        const detail = await this.requiredWorkOrderDetail(client, text(demand, 'entity_id'));
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'TECHNICAL_SIGNATURE_RECORDED',
+          'TECHNICAL_DEMAND',
+          demandId,
+          { signature_hash: signatureHash, aprovada: approved },
+        );
+        return detail;
+      },
+    );
+  }
+
+  async requestChanges(
+    user: AuthenticatedUser,
+    demandId: string,
+    reason: string,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const demand = await this.repository.findDemand(client, demandId, true);
+        if (!demand)
+          throw error('TECHNICAL_DEMAND_NOT_FOUND', 'Demanda técnica não encontrada.', 404);
+        if (!['AWAITING_SIGNATURE', 'IN_TECHNICAL_REVIEW'].includes(text(demand, 'status'))) {
+          throw error(
+            'TECHNICAL_DEMAND_NOT_REVIEWABLE',
+            'A demanda não aceita solicitação de ajustes.',
+            409,
+          );
+        }
+        const context = await this.repository.validatorContext(client, user.id);
+        if (
+          !context ||
+          !eligibleArea(
+            text(demand, 'signature_policy') as SignaturePolicy,
+            text(context, 'area_code'),
+          )
+        ) {
+          throw error(
+            'TECHNICAL_REVIEW_NOT_ALLOWED',
+            'Seu vínculo técnico não pode revisar esta demanda.',
+            403,
+          );
+        }
+        const normalizedReason = reason.trim();
+        await this.repository.requestChanges(client, demandId, text(demand, 'entity_id'));
+        await this.repository.appendDemandEvent(
+          client,
+          user.tenantId,
+          demandId,
+          'CHANGES_REQUESTED',
+          user.id,
+          'CHANGES_REQUESTED',
+          normalizedReason,
+          hash({ demandId, normalizedReason }),
+        );
+        const detail = await this.requiredWorkOrderDetail(client, text(demand, 'entity_id'));
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'WORK_ORDER_CHANGES_REQUESTED',
+          'TECHNICAL_DEMAND',
+          demandId,
+          { motivo: normalizedReason },
+        );
+        return detail;
+      },
+    );
+  }
+
+  async releaseWorkOrder(
+    user: AuthenticatedUser,
+    workOrderId: string,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const workOrder = await this.repository.findWorkOrder(client, workOrderId, true);
+        if (!workOrder)
+          throw error('WORK_ORDER_NOT_FOUND', 'Ordem de serviço não encontrada.', 404);
+        if (text(workOrder, 'status') !== 'APPROVED') {
+          throw error(
+            'WORK_ORDER_NOT_APPROVED',
+            'Somente uma OS tecnicamente aprovada pode ser liberada.',
+            409,
+          );
+        }
+        const actionId = await this.repository.releaseWorkOrder(client, workOrder);
+        const detail = await this.requiredWorkOrderDetail(client, workOrderId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'WORK_ORDER_RELEASED',
+          'WORK_ORDER',
+          workOrderId,
+          { acao_id: actionId, ordem: detail },
+        );
+        return detail;
+      },
+    );
+  }
+
+  async listOperatorActions(user: AuthenticatedUser, limit: number) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => ({
+        itens: await this.repository.listOperatorActions(client, user.id, limit),
+        limite: limit,
+      }),
+    );
+  }
+
+  async assumeAction(user: AuthenticatedUser, actionId: string, audit: RequestAuditMetadata) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const action = await this.repository.findAction(client, actionId, true);
+        if (!action)
+          throw error('OPERATOR_ACTION_NOT_FOUND', 'Ação operacional não encontrada.', 404);
+        if (text(action, 'status') !== 'READY')
+          throw error('OPERATOR_ACTION_NOT_READY', 'A ação não está disponível para assumir.', 409);
+        if (action.responsible_id !== null && action.responsible_id !== user.id) {
+          throw error(
+            'OPERATOR_ACTION_ASSIGNED_TO_ANOTHER_USER',
+            'A ação está atribuída a outro usuário.',
+            403,
+          );
+        }
+        const executionId = randomUUID();
+        await this.repository.createExecution(client, user.tenantId, executionId, action, user.id);
+        const detail = await this.requiredExecutionDetail(client, executionId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'EXECUTION_ASSUMED',
+          'EXECUTION',
+          executionId,
+          detail,
+        );
+        return detail;
+      },
+    );
+  }
+
+  async getExecution(user: AuthenticatedUser, executionId: string) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const detail = await this.requiredExecutionDetail(client, executionId);
+        if (user.profile === 'OPERADOR' && detail.operador_id !== user.id) {
+          throw error('EXECUTION_NOT_FOUND', 'Execução não encontrada.', 404);
+        }
+        return detail;
+      },
+    );
+  }
+
+  async startExecution(
+    user: AuthenticatedUser,
+    executionId: string,
+    stopMode: string,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const execution = await this.ownedExecution(client, executionId, user.id);
+        if (text(execution, 'status') !== 'OPEN')
+          throw error('EXECUTION_NOT_OPEN', 'A execução já foi iniciada ou encerrada.', 409);
+        await this.repository.startExecution(client, executionId, stopMode);
+        const detail = await this.requiredExecutionDetail(client, executionId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'EXECUTION_STARTED',
+          'EXECUTION',
+          executionId,
+          detail,
+        );
+        return detail;
+      },
+    );
+  }
+
+  async answerItem(
+    user: AuthenticatedUser,
+    executionId: string,
+    itemId: string,
+    input: ExecutionResponseInput,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const execution = await this.ownedExecution(client, executionId, user.id);
+        if (text(execution, 'status') !== 'IN_PROGRESS')
+          throw error(
+            'EXECUTION_NOT_IN_PROGRESS',
+            'Inicie a execução antes de responder o checklist.',
+            409,
+          );
+        const item = await this.repository.findExecutionItem(client, executionId, itemId, true);
+        if (!item)
+          throw error('EXECUTION_ITEM_NOT_FOUND', 'Etapa da execução não encontrada.', 404);
+        const validation = this.validateResponse(item, input);
+        await this.repository.answerExecutionItem(
+          client,
+          itemId,
+          user.id,
+          input,
+          validation.status,
+          validation.compliant,
+          validation.message,
+        );
+        if (item.parameter_definition_id !== null && input.numberValue !== null) {
+          await this.repository.insertParameterReading(
+            client,
+            user.tenantId,
+            executionId,
+            item,
+            user.id,
+            input.numberValue,
+            validation.classification,
+          );
+        }
+        const detail = await this.requiredExecutionDetail(client, executionId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'EXECUTION_ITEM_ANSWERED',
+          'EXECUTION_CHECKLIST_ITEM',
+          itemId,
+          { status: validation.status, conforme: validation.compliant },
+        );
+        return detail;
+      },
+    );
+  }
+
+  async addEvidence(
+    user: AuthenticatedUser,
+    executionId: string,
+    itemId: string,
+    input: EvidenceInput,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const execution = await this.ownedExecution(client, executionId, user.id);
+        if (text(execution, 'status') !== 'IN_PROGRESS')
+          throw error(
+            'EXECUTION_NOT_IN_PROGRESS',
+            'A execução não aceita evidências neste estado.',
+            409,
+          );
+        if (!(await this.repository.findExecutionItem(client, executionId, itemId, true))) {
+          throw error('EXECUTION_ITEM_NOT_FOUND', 'Etapa da execução não encontrada.', 404);
+        }
+        if (!(await this.repository.storageObjectAvailable(client, input.storageObjectId))) {
+          throw error(
+            'EVIDENCE_OBJECT_NOT_AVAILABLE',
+            'O arquivo não existe, não pertence ao tenant ou ainda não está disponível.',
+            422,
+          );
+        }
+        await this.repository.insertEvidence(
+          client,
+          user.tenantId,
+          execution,
+          itemId,
+          user.id,
+          input,
+        );
+        await this.repository.markEvidenceItemAnswered(client, itemId, user.id);
+        const detail = await this.requiredExecutionDetail(client, executionId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'EXECUTION_EVIDENCE_ADDED',
+          'EXECUTION_CHECKLIST_ITEM',
+          itemId,
+          { objeto_armazenamento_id: input.storageObjectId, tipo: input.evidenceType },
+        );
+        return detail;
+      },
+    );
+  }
+
+  async completeExecution(
+    user: AuthenticatedUser,
+    executionId: string,
+    input: CompletionInput,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const execution = await this.ownedExecution(client, executionId, user.id);
+        if (text(execution, 'status') !== 'IN_PROGRESS')
+          throw error(
+            'EXECUTION_NOT_IN_PROGRESS',
+            'Somente uma execução em andamento pode ser concluída.',
+            409,
+          );
+        const blockers = await this.repository.blockingExecutionItems(client, executionId);
+        if (
+          integer(blockers, 'pendentes') > 0 ||
+          integer(blockers, 'evidencias_pendentes') > 0 ||
+          integer(blockers, 'nao_conformes_bloqueantes') > 0
+        ) {
+          throw error(
+            'EXECUTION_HAS_BLOCKERS',
+            'Respostas, evidências ou não conformidades ainda bloqueiam a conclusão.',
+            409,
+            {
+              respostas_pendentes: integer(blockers, 'pendentes'),
+              evidencias_pendentes: integer(blockers, 'evidencias_pendentes'),
+              nao_conformes_bloqueantes: integer(blockers, 'nao_conformes_bloqueantes'),
+            },
+          );
+        }
+        await this.repository.completeExecution(client, execution, {
+          ...input,
+          result: input.result.trim(),
+          observation: nullableText(input.observation),
+        });
+        const detail = await this.requiredExecutionDetail(client, executionId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'EXECUTION_COMPLETED',
+          'EXECUTION',
+          executionId,
+          detail,
+        );
+        return detail;
+      },
+    );
+  }
+
+  private validateSignaturePolicy(input: ReviewSubmissionInput): void {
+    const expected = input.signaturePolicy === 'QUALIDADE_E_SEGURANCA' ? 2 : 1;
+    if (input.requiredSignatures !== expected) {
+      throw error(
+        'SIGNATURE_POLICY_COUNT_MISMATCH',
+        `A política selecionada exige exatamente ${expected} assinatura(s).`,
+        422,
+      );
+    }
+    if (
+      input.firstResponseDueAt &&
+      input.resolutionDueAt &&
+      new Date(input.resolutionDueAt) <= new Date(input.firstResponseDueAt)
+    ) {
+      throw error(
+        'SLA_PERIOD_INVALID',
+        'O prazo de resolução deve ser posterior ao prazo da primeira resposta.',
+        422,
+      );
+    }
+  }
+
+  private validateResponse(
+    item: OperationsRow,
+    input: ExecutionResponseInput,
+  ): {
+    readonly status: 'ANSWERED' | 'NONCOMPLIANT' | 'NOT_APPLICABLE';
+    readonly compliant: boolean | null;
+    readonly message: string | null;
+    readonly classification: string;
+  } {
+    if (input.notApplicable)
+      return {
+        status: 'NOT_APPLICABLE',
+        compliant: true,
+        message: null,
+        classification: 'UNCLASSIFIED',
+      };
+    const type = text(item, 'response_type_code');
+    if (type === 'EVIDENCIA')
+      throw error(
+        'EVIDENCE_ITEM_REQUIRES_FILE',
+        'Esta etapa é respondida pelo envio de evidência.',
+        422,
+      );
+    if (type === 'INSTRUCAO' || type === 'CONFIRMACAO') {
+      if (input.booleanValue !== true)
+        throw error(
+          'BOOLEAN_CONFIRMATION_REQUIRED',
+          'Confirme a leitura ou execução da etapa.',
+          422,
+        );
+      return { status: 'ANSWERED', compliant: true, message: null, classification: 'UNCLASSIFIED' };
+    }
+    if (type === 'OK_NOK') {
+      if (!input.optionValue || !['OK', 'NOK', 'NA'].includes(input.optionValue.toUpperCase()))
+        throw error('OK_NOK_RESPONSE_INVALID', 'Responda OK, NOK ou NA.', 422);
+      const compliant = input.optionValue.toUpperCase() !== 'NOK';
+      return {
+        status: compliant ? 'ANSWERED' : 'NONCOMPLIANT',
+        compliant,
+        message: compliant ? null : 'Condição não conforme registrada.',
+        classification: 'UNCLASSIFIED',
+      };
+    }
+    if (type === 'NUMERO' || type === 'PARAMETRO' || type === 'LEITURA_OPERACIONAL') {
+      if (input.numberValue === null || !Number.isFinite(input.numberValue))
+        throw error('NUMERIC_RESPONSE_REQUIRED', 'Informe uma leitura numérica válida.', 422);
+      const minimum = numberOrNull(item.minimum_value_snapshot);
+      const maximum = numberOrNull(item.maximum_value_snapshot);
+      const below = minimum !== null && input.numberValue < minimum;
+      const above = maximum !== null && input.numberValue > maximum;
+      const compliant = !below && !above;
+      return {
+        status: compliant ? 'ANSWERED' : 'NONCOMPLIANT',
+        compliant,
+        message: below
+          ? `Valor abaixo do mínimo ${minimum}.`
+          : above
+            ? `Valor acima do máximo ${maximum}.`
+            : null,
+        classification: below ? 'WARNING_LOW' : above ? 'WARNING_HIGH' : 'NORMAL',
+      };
+    }
+    if (type === 'SELECAO') {
+      const options = Array.isArray(item.options_snapshot) ? item.options_snapshot : [];
+      if (!input.optionValue || !options.includes(input.optionValue))
+        throw error('OPTION_RESPONSE_INVALID', 'Selecione uma das opções configuradas.', 422);
+      return { status: 'ANSWERED', compliant: true, message: null, classification: 'UNCLASSIFIED' };
+    }
+    if (type === 'TEXTO') {
+      if (!nullableText(input.textValue))
+        throw error('TEXT_RESPONSE_REQUIRED', 'Informe a resposta da etapa.', 422);
+      return { status: 'ANSWERED', compliant: true, message: null, classification: 'UNCLASSIFIED' };
+    }
+    throw error(
+      'RESPONSE_TYPE_UNSUPPORTED',
+      'O tipo de resposta não é suportado nesta execução.',
+      422,
+    );
+  }
+
+  private async ownedExecution(
+    client: PoolClient,
+    executionId: string,
+    userId: string,
+  ): Promise<OperationsRow> {
+    const execution = await this.repository.findExecution(client, executionId, true);
+    if (!execution) throw error('EXECUTION_NOT_FOUND', 'Execução não encontrada.', 404);
+    if (execution.operator_id !== userId)
+      throw error(
+        'EXECUTION_OWNERSHIP_REQUIRED',
+        'Somente o Operador responsável pode alterar esta execução.',
+        403,
+      );
+    return execution;
+  }
+
+  private async requiredWorkOrderDetail(client: PoolClient, id: string): Promise<OperationsRow> {
+    const detail = await this.repository.getWorkOrderDetail(client, id);
+    if (!detail) throw error('WORK_ORDER_NOT_FOUND', 'Ordem de serviço não encontrada.', 404);
+    return detail;
+  }
+
+  private async requiredExecutionDetail(client: PoolClient, id: string): Promise<OperationsRow> {
+    const detail = await this.repository.getExecutionDetail(client, id);
+    if (!detail) throw error('EXECUTION_NOT_FOUND', 'Execução não encontrada.', 404);
+    return detail;
+  }
+}

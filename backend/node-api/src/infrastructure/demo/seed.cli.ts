@@ -48,6 +48,17 @@ const ids = {
   periodicPlanVersion: '00000000-0000-4000-8000-000000001102',
   occurrencePlan: '00000000-0000-4000-8000-000000001103',
   occurrencePlanVersion: '00000000-0000-4000-8000-000000001104',
+  readyWorkOrder: '00000000-0000-4000-8000-000000001201',
+  readyDemand: '00000000-0000-4000-8000-000000001202',
+  readyQualityRequirement: '00000000-0000-4000-8000-000000001203',
+  readySafetyRequirement: '00000000-0000-4000-8000-000000001204',
+  readyQualitySignature: '00000000-0000-4000-8000-000000001205',
+  readySafetySignature: '00000000-0000-4000-8000-000000001206',
+  readyAction: '00000000-0000-4000-8000-000000001207',
+  reviewWorkOrder: '00000000-0000-4000-8000-000000001211',
+  reviewDemand: '00000000-0000-4000-8000-000000001212',
+  reviewQualityRequirement: '00000000-0000-4000-8000-000000001213',
+  reviewSafetyRequirement: '00000000-0000-4000-8000-000000001214',
 } as const;
 
 const capabilityCodes = [
@@ -67,6 +78,11 @@ const capabilityCodes = [
   'maintenance.plans.read',
   'maintenance.plans.manage',
   'maintenance.plans.publish',
+  'maintenance.work-orders.read',
+  'maintenance.work-orders.manage',
+  'maintenance.work-orders.review',
+  'maintenance.work-orders.release',
+  'maintenance.executions.read',
 ] as const;
 
 function requiredPassword(name: string): string {
@@ -183,6 +199,8 @@ async function seedIdentities(
     'cmms.readings.create',
     'maintenance.checklists.read',
     'maintenance.plans.read',
+    'maintenance.work-orders.read',
+    'maintenance.executions.read',
   ]) {
     await client.query(
       `
@@ -216,6 +234,32 @@ async function seedIdentities(
     `,
     [tenantId, ids.managerRole],
   );
+
+  for (const capabilityCode of ['maintenance.work-orders.review']) {
+    await client.query(
+      `
+        INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
+        SELECT $1, $2, capability.id, 'ALLOW'
+        FROM iam.capabilities capability
+        WHERE capability.code = $3
+        ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
+      `,
+      [tenantId, ids.managerRole, capabilityCode],
+    );
+  }
+
+  for (const capabilityCode of ['maintenance.executions.read', 'maintenance.executions.perform']) {
+    await client.query(
+      `
+        INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
+        SELECT $1, $2, capability.id, 'ALLOW'
+        FROM iam.capabilities capability
+        WHERE capability.code = $3
+        ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
+      `,
+      [tenantId, ids.operatorRole, capabilityCode],
+    );
+  }
 
   const userPasswords = [
     [ids.admin, passwords.admin],
@@ -1124,6 +1168,272 @@ async function seedChecklistsAndPlans(client: PoolClient, tenantId: string): Pro
   }
 }
 
+async function seedOperationalScenarios(client: PoolClient, tenantId: string): Promise<void> {
+  const readyHash = hashPolicy({
+    code: 'OS-HML-READY-001',
+    planVersionId: ids.periodicPlanVersion,
+    checklistVersionId: ids.pumpChecklistVersion,
+    title: 'Inspeção preventiva liberada para execução',
+    revision: 1,
+  });
+  const reviewHash = hashPolicy({
+    code: 'OS-HML-REVIEW-001',
+    planVersionId: ids.occurrencePlanVersion,
+    checklistVersionId: ids.pumpChecklistVersion,
+    title: 'Diagnóstico após alerta de temperatura',
+    revision: 1,
+  });
+
+  const workOrders = [
+    {
+      id: ids.readyWorkOrder,
+      demandId: ids.readyDemand,
+      code: 'OS-HML-READY-001',
+      planVersionId: ids.periodicPlanVersion,
+      workType: 'PREVENTIVE',
+      title: 'Inspeção preventiva liberada para execução',
+      description: 'Cenário homologável com checklist completo e validações permanentes.',
+      priority: 'HIGH',
+      stopMode: 'MANDATORY_STOP',
+      hash: readyHash,
+    },
+    {
+      id: ids.reviewWorkOrder,
+      demandId: ids.reviewDemand,
+      code: 'OS-HML-REVIEW-001',
+      planVersionId: ids.occurrencePlanVersion,
+      workType: 'CORRECTIVE',
+      title: 'Diagnóstico após alerta de temperatura',
+      description: 'Cenário pendente para testar a validação de Qualidade e Segurança.',
+      priority: 'CRITICAL',
+      stopMode: 'EXECUTOR_DECISION',
+      hash: reviewHash,
+    },
+  ] as const;
+
+  for (const workOrder of workOrders) {
+    await client.query(
+      `
+        INSERT INTO maintenance.work_orders (
+          id, tenant_id, code, asset_id, component_id, maintenance_plan_version_id,
+          origin_type, work_type, title, description, priority, status, requester_id,
+          maintenance_stop_mode, technical_analysis, scheduled_for
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, 'HOMOLOGATION', $7, $8, $9, $10, 'DRAFT', $11,
+          $12, $13::jsonb, clock_timestamp() + interval '1 day'
+        )
+        ON CONFLICT (tenant_id, code) DO NOTHING
+      `,
+      [
+        workOrder.id,
+        tenantId,
+        workOrder.code,
+        ids.pump,
+        ids.pumpBearing,
+        workOrder.planVersionId,
+        workOrder.workType,
+        workOrder.title,
+        workOrder.description,
+        workOrder.priority,
+        ids.admin,
+        workOrder.stopMode,
+        JSON.stringify({
+          objetivo: workOrder.description,
+          checklistTemplateVersionId: ids.pumpChecklistVersion,
+          homologation: true,
+        }),
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO workflow.technical_demands (
+          id, tenant_id, demand_type, entity_type, entity_id, origin_type,
+          title, description, priority, status, current_area_id,
+          current_technical_role_id, current_responsible_id, created_by,
+          creator_role_snapshot, signature_required, required_signature_count,
+          segregation_required, signature_policy, entity_version, payload_hash_sha256
+        )
+        VALUES (
+          $1, $2, 'WORK_ORDER_VALIDATION', 'WORK_ORDER', $3, 'ADMIN',
+          $4, $5, $6, 'AWAITING_SIGNATURE', $7, $8, $9, $10,
+          'ADMIN:ADMIN', true, 2, true, 'QUALIDADE_E_SEGURANCA', 1, $11
+        )
+        ON CONFLICT (id) DO NOTHING
+      `,
+      [
+        workOrder.demandId,
+        tenantId,
+        workOrder.id,
+        workOrder.title,
+        workOrder.description,
+        workOrder.priority,
+        ids.qualityArea,
+        ids.qualityTechnicalRole,
+        ids.quality,
+        ids.admin,
+        workOrder.hash,
+      ],
+    );
+
+    await client.query(
+      `
+        UPDATE maintenance.work_orders
+        SET technical_demand_id = $2,
+            content_hash_sha256 = $3,
+            submitted_at = COALESCE(submitted_at, clock_timestamp()),
+            status = 'IN_TECHNICAL_REVIEW'
+        WHERE tenant_id = $1
+          AND id = $4
+          AND status = 'DRAFT'
+      `,
+      [tenantId, workOrder.demandId, workOrder.hash, workOrder.id],
+    );
+  }
+
+  const requirements = [
+    [ids.readyQualityRequirement, ids.readyDemand, 'QUALITY_SIGNATURE', ids.qualityArea],
+    [ids.readySafetyRequirement, ids.readyDemand, 'SAFETY_SIGNATURE', ids.safetyArea],
+    [ids.reviewQualityRequirement, ids.reviewDemand, 'QUALITY_SIGNATURE', ids.qualityArea],
+    [ids.reviewSafetyRequirement, ids.reviewDemand, 'SAFETY_SIGNATURE', ids.safetyArea],
+  ] as const;
+  for (const [id, demandId, code, areaId] of requirements) {
+    await client.query(
+      `
+        INSERT INTO workflow.demand_validator_requirements (
+          id, tenant_id, technical_demand_id, requirement_code, technical_area_id,
+          required_count, status
+        )
+        VALUES ($1, $2, $3, $4, $5, 1, 'PENDING')
+        ON CONFLICT (tenant_id, technical_demand_id, requirement_code) DO NOTHING
+      `,
+      [id, tenantId, demandId, code, areaId],
+    );
+  }
+
+  const signatures = [
+    {
+      id: ids.readyQualitySignature,
+      requirementId: ids.readyQualityRequirement,
+      userId: ids.quality,
+      areaId: ids.qualityArea,
+      roleId: ids.qualityTechnicalRole,
+      roleSnapshot: 'GESTOR_TECNICO:QUALITY:QUALITY_INSPECTOR',
+      declaration: 'Conteúdo e requisitos da Qualidade aprovados para homologação.',
+    },
+    {
+      id: ids.readySafetySignature,
+      requirementId: ids.readySafetyRequirement,
+      userId: ids.safety,
+      areaId: ids.safetyArea,
+      roleId: ids.safetyTechnicalRole,
+      roleSnapshot: 'GESTOR_TECNICO:SAFETY:SAFETY_TECHNICIAN',
+      declaration: 'Riscos, bloqueio e requisitos de Segurança aprovados para homologação.',
+    },
+  ] as const;
+  for (const signature of signatures) {
+    await client.query(
+      `
+        INSERT INTO workflow.technical_signatures (
+          id, tenant_id, technical_demand_id, validator_requirement_id,
+          entity_type, entity_id, entity_version, user_id, role_snapshot,
+          technical_area_id, technical_role_id, meaning, declaration,
+          payload_hash_sha256, signature_hash_sha256
+        )
+        SELECT
+          $1, $2, $3, $4, 'WORK_ORDER', $5, 1, $6, $7,
+          $8, $9, 'APPROVAL', $10, $11, $12
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM workflow.technical_signatures existing
+          WHERE existing.tenant_id = $2 AND existing.id = $1
+        )
+      `,
+      [
+        signature.id,
+        tenantId,
+        ids.readyDemand,
+        signature.requirementId,
+        ids.readyWorkOrder,
+        signature.userId,
+        signature.roleSnapshot,
+        signature.areaId,
+        signature.roleId,
+        signature.declaration,
+        readyHash,
+        hashPolicy({ signatureId: signature.id, demandId: ids.readyDemand, payload: readyHash }),
+      ],
+    );
+  }
+
+  await client.query(
+    `
+      UPDATE workflow.technical_demands
+      SET status = 'TECHNICALLY_APPROVED',
+          completed_at = COALESCE(completed_at, clock_timestamp())
+      WHERE tenant_id = $1
+        AND id = $2
+        AND status = 'AWAITING_SIGNATURE'
+        AND completed_signature_count = required_signature_count
+    `,
+    [tenantId, ids.readyDemand],
+  );
+  await client.query(
+    `
+      UPDATE maintenance.work_orders work_order
+      SET status = 'APPROVED'
+      FROM workflow.technical_demands demand
+      WHERE work_order.tenant_id = $1
+        AND work_order.id = $2
+        AND work_order.status = 'IN_TECHNICAL_REVIEW'
+        AND demand.tenant_id = work_order.tenant_id
+        AND demand.id = work_order.technical_demand_id
+        AND demand.status = 'TECHNICALLY_APPROVED'
+    `,
+    [tenantId, ids.readyWorkOrder],
+  );
+  await client.query(
+    `
+      UPDATE maintenance.work_orders
+      SET status = 'RELEASED',
+          released_at = COALESCE(released_at, clock_timestamp()),
+          opened_at = COALESCE(opened_at, clock_timestamp())
+      WHERE tenant_id = $1 AND id = $2 AND status = 'APPROVED'
+    `,
+    [tenantId, ids.readyWorkOrder],
+  );
+  await client.query(
+    `
+      UPDATE workflow.technical_demands
+      SET status = 'RELEASED_TO_OPERATION'
+      WHERE tenant_id = $1 AND id = $2 AND status = 'TECHNICALLY_APPROVED'
+    `,
+    [tenantId, ids.readyDemand],
+  );
+  await client.query(
+    `
+      INSERT INTO maintenance.work_order_actions (
+        id, tenant_id, work_order_id, asset_id, component_id,
+        maintenance_plan_version_id, origin, action_type, title, description,
+        priority, status, maintenance_stop_mode, technical_analysis
+      )
+      SELECT
+        $1, work_order.tenant_id, work_order.id, work_order.asset_id,
+        work_order.component_id, work_order.maintenance_plan_version_id,
+        'WORK_ORDER_RELEASE', 'EXECUTE_CHECKLIST', work_order.title,
+        work_order.description, work_order.priority, 'READY',
+        work_order.maintenance_stop_mode, work_order.technical_analysis
+      FROM maintenance.work_orders work_order
+      WHERE work_order.tenant_id = $2
+        AND work_order.id = $3
+        AND work_order.status = 'RELEASED'
+      ON CONFLICT DO NOTHING
+    `,
+    [ids.readyAction, tenantId, ids.readyWorkOrder],
+  );
+}
+
 async function main(): Promise<void> {
   const environment = loadEnvironment();
   if (environment.nodeEnv === 'production' || environment.release.environment === 'PRODUCTION') {
@@ -1184,9 +1494,10 @@ async function main(): Promise<void> {
     await seedMaterials(client, environment.defaultTenantId);
     await seedParameters(client, environment.defaultTenantId);
     await seedChecklistsAndPlans(client, environment.defaultTenantId);
+    await seedOperationalScenarios(client, environment.defaultTenantId);
     await client.query('COMMIT');
     process.stdout.write(
-      'Massa de homologação aplicada: 5 perfis, 4 ativos, 9 tipos de etapa, 1 checklist com dupla validação e 2 planos publicados.\n',
+      'Massa de homologação aplicada: 5 perfis, 4 ativos, 9 tipos de etapa, 1 checklist, 2 planos, 1 validação pendente e 1 ação liberada.\n',
     );
   } catch (error) {
     await client.query('ROLLBACK');

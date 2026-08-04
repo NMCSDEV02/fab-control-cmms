@@ -87,6 +87,25 @@ Validação integral com PostgreSQL local isolado:
 | `POST`                | `/v1/maintenance/plans/:planId/publish`                   | publicação com checklist executável          |
 | `POST`                | `/v1/maintenance/plans/:planId/revisions`                 | nova revisão preservando o histórico         |
 
+### Ordens, validação e execução
+
+| Método       | Rota                                                             | Finalidade                                                         |
+| ------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `GET`/`POST` | `/v1/maintenance/work-orders`                                    | fila administrativa e criação de OS por plano publicado            |
+| `GET`        | `/v1/maintenance/work-orders/:workOrderId`                       | OS, conteúdo selado, requisitos, assinaturas e ações               |
+| `PATCH`      | `/v1/maintenance/work-orders/:workOrderId`                       | corrige OS devolvida e preserva a revisão anterior                 |
+| `POST`       | `/v1/maintenance/work-orders/:workOrderId/submit-review`         | envia conteúdo imutável à validação técnica                        |
+| `POST`       | `/v1/workflow/technical-demands/:demandId/sign`                  | assinatura permanente de Qualidade ou Segurança                    |
+| `POST`       | `/v1/workflow/technical-demands/:demandId/request-changes`       | devolução rastreável ao Administrador                              |
+| `POST`       | `/v1/maintenance/work-orders/:workOrderId/release`               | libera somente após cumprir plano, checklist e assinaturas         |
+| `GET`        | `/v1/maintenance/operator-actions`                               | fila do Operador sem ações concluídas                              |
+| `POST`       | `/v1/maintenance/operator-actions/:actionId/assume`              | atribui a ação e materializa a revisão publicada do checklist      |
+| `GET`        | `/v1/maintenance/executions/:executionId`                        | execução, etapas, respostas e contadores de evidência              |
+| `POST`       | `/v1/maintenance/executions/:executionId/start`                  | inicia execução atribuída                                          |
+| `PUT`        | `/v1/maintenance/executions/:executionId/items/:itemId/response` | valida e persiste resposta conforme o tipo da etapa                |
+| `POST`       | `/v1/maintenance/executions/:executionId/items/:itemId/evidence` | vincula objeto armazenado e atualiza a suficiência de evidências   |
+| `POST`       | `/v1/maintenance/executions/:executionId/complete`               | conclui sem permitir respostas ou evidências obrigatórias ausentes |
+
 Todas as rotas de domínio exigem sessão ativa e capacidade específica calculada no servidor.
 
 ## Massa controlada de homologação
@@ -102,7 +121,7 @@ $env:DEMO_OPERATOR_PASSWORD = '<senha-forte>'
 npm run seed:homologation
 ```
 
-A carga dos blocos 3.2 e 3.3 inclui cinco perfis, áreas de Qualidade, Segurança e Manutenção, estrutura fabril, quatro estados operacionais de ativos, componentes, materiais, parâmetros, faixas, leituras normais/críticas, alerta operacional, um checklist publicado contendo os nove tipos de etapa, pareceres permanentes de Qualidade e Segurança e dois planos publicados com disparos por periodicidade e ocorrência.
+A carga dos blocos 3.2 a 3.4 inclui cinco perfis, áreas de Qualidade, Segurança e Manutenção, estrutura fabril, quatro estados operacionais de ativos, componentes, materiais, parâmetros, faixas, leituras normais/críticas, alerta operacional, um checklist publicado contendo os nove tipos de etapa, pareceres permanentes de Qualidade e Segurança, dois planos publicados, uma OS aguardando dupla assinatura e uma ação liberada para o Operador.
 
 ## Segurança aplicada
 
@@ -127,6 +146,14 @@ A carga dos blocos 3.2 e 3.3 inclui cinco perfis, áreas de Qualidade, Seguranç
 - hash SHA-256 recalculado antes da publicação;
 - dupla validação opcional por Qualidade e Segurança;
 - plano impedido de publicar sem checklist publicado e executável.
+- OS impedida de nascer sem plano publicado e checklist com etapas ativas;
+- conteúdo da OS selado por SHA-256 antes da validação técnica;
+- assinaturas permanentes vinculadas à entidade, versão, conteúdo, área e identidade;
+- liberação bloqueada no PostgreSQL enquanto houver requisito técnico pendente;
+- checklist da execução materializado como snapshot para impedir alteração retroativa;
+- conclusão bloqueada no PostgreSQL enquanto faltarem respostas ou evidências;
+- etapa de parâmetro gera leitura técnica classificada e auditável;
+- registros concluídos desaparecem da fila operacional e permanecem no histórico.
 
 ## Regra operacional
 

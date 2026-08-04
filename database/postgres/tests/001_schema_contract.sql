@@ -435,7 +435,8 @@ INSERT INTO maintenance.work_orders (
   title,
   description,
   priority,
-  requester_id
+  requester_id,
+  content_hash_sha256
 )
 VALUES (
   '11111111-3500-4000-8000-000000000001',
@@ -450,7 +451,8 @@ VALUES (
   'OS de teste',
   'Validação do bloqueio de liberação.',
   'HIGH',
-  '11111111-0000-4000-8000-000000000001'
+  '11111111-0000-4000-8000-000000000001',
+  repeat('c', 64)
 );
 
 INSERT INTO workflow.technical_demands (
@@ -510,6 +512,13 @@ VALUES (
   'QUALIDADE',
   '11111111-1000-4000-8000-000000000001'
 );
+
+UPDATE maintenance.work_orders
+SET technical_demand_id = '11111111-4000-4000-8000-000000000001',
+    submitted_at = clock_timestamp(),
+    status = 'IN_TECHNICAL_REVIEW'
+WHERE tenant_id = '11111111-1111-4111-8111-111111111111'
+  AND id = '11111111-3500-4000-8000-000000000001';
 
 DO $$
 BEGIN
