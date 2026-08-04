@@ -14,6 +14,7 @@ export const operationsIdentifierParamsSchema = Type.Object(
     actionId: Type.Optional(uuid),
     executionId: Type.Optional(uuid),
     itemId: Type.Optional(uuid),
+    objectId: Type.Optional(uuid),
   },
   { additionalProperties: false },
 );

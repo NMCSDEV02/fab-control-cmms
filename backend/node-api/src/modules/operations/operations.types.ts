@@ -78,8 +78,17 @@ export interface EvidenceInput {
   readonly capturedAt: string | null;
 }
 
+export interface EvidenceUploadInput {
+  readonly originalName: string;
+  readonly mediaType: string;
+  readonly stream: Readable;
+  readonly observation: string | null;
+  readonly capturedAt: string | null;
+}
+
 export interface CompletionInput {
   readonly result: string;
   readonly observation: string | null;
   readonly stopMode: ExecutionStopMode;
 }
+import type { Readable } from 'node:stream';

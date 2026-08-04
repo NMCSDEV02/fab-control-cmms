@@ -220,6 +220,26 @@ export function createOperationsRoutes(
       },
       handler: controller.addEvidence,
     });
+    app.post('/v1/maintenance/executions/:executionId/items/:itemId/evidence-file', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
+      schema: {
+        ...secured,
+        consumes: ['multipart/form-data'],
+        params: operationsIdentifierParamsSchema,
+        summary: 'Armazena uma foto privada e a vincula à etapa da execução.',
+      },
+      handler: controller.addEvidenceFile,
+    });
+    app.get('/v1/maintenance/evidence-files/:objectId', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.read'),
+      schema: {
+        security: secured.security,
+        tags: secured.tags,
+        params: operationsIdentifierParamsSchema,
+        summary: 'Lê uma evidência privada autorizada do tenant.',
+      },
+      handler: controller.openEvidenceFile,
+    });
     app.post('/v1/maintenance/executions/:executionId/complete', {
       preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
       schema: {

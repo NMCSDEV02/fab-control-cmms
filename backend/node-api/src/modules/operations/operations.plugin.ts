@@ -6,7 +6,9 @@ import { OperationsService } from './operations.service.js';
 
 export const operationsPlugin = fastifyPlugin(
   async (app) => {
-    const controller = new OperationsController(new OperationsService(app.database));
+    const controller = new OperationsController(
+      new OperationsService(app.database, app.objectStorage),
+    );
     await app.register(createOperationsRoutes(controller));
   },
   { name: 'fab-control-operations', dependencies: ['fab-control-authentication'] },

@@ -1,4 +1,4 @@
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { AppError } from '../../core/errors/app-error.js';
 import { successEnvelope } from '../../core/http/envelope.js';
@@ -17,6 +17,7 @@ interface Params {
   readonly actionId?: string;
   readonly executionId?: string;
   readonly itemId?: string;
+  readonly objectId?: string;
 }
 interface WorkOrderQuery {
   readonly busca?: string;
@@ -116,6 +117,20 @@ function audit(request: FastifyRequest) {
     userAgent: typeof agent === 'string' ? agent.slice(0, 2_048) : null,
     roleSnapshot: authenticated.roles.join(',') || authenticated.profile,
   };
+}
+
+function multipartText(fields: Readonly<Record<string, unknown>>, name: string): string | null {
+  const field = fields[name];
+  if (field === null || typeof field !== 'object' || !('value' in field)) return null;
+  const value = (field as { readonly value?: unknown }).value;
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function contentDisposition(fileName: string): string {
+  const fallback = fileName.replaceAll(/[^\x20-\x7e]/gu, '_').replaceAll(/["\\]/gu, '_');
+  return `inline; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
 export class OperationsController {
@@ -390,6 +405,46 @@ export class OperationsController {
         audit(request),
       ),
     );
+
+  addEvidenceFile = async (request: FastifyRequest<{ Params: Params }>) => {
+    const part = await request.file({
+      limits: { fileSize: request.server.environment.storage.maxEvidenceBytes + 1, files: 1 },
+    });
+    if (!part) {
+      throw new AppError({
+        code: 'EVIDENCE_FILE_REQUIRED',
+        message: 'Selecione uma foto para registrar a evidência.',
+        statusCode: 400,
+      });
+    }
+
+    const detail = await this.service.addEvidenceFile(
+      user(request),
+      id(request.params, 'executionId'),
+      id(request.params, 'itemId'),
+      {
+        originalName: part.filename,
+        mediaType: part.mimetype,
+        stream: part.file,
+        observation: multipartText(part.fields, 'observacao'),
+        capturedAt: multipartText(part.fields, 'capturada_em'),
+      },
+      audit(request),
+    );
+    return successEnvelope(request, 'maintenance.executions.items.evidence.upload', detail);
+  };
+
+  openEvidenceFile = async (request: FastifyRequest<{ Params: Params }>, reply: FastifyReply) => {
+    const file = await this.service.openEvidenceFile(user(request), id(request.params, 'objectId'));
+    reply
+      .header('Cache-Control', 'private, no-store, max-age=0')
+      .header('Content-Disposition', contentDisposition(file.originalName))
+      .header('Content-Length', String(file.byteSize))
+      .header('Content-Type', file.mediaType)
+      .header('ETag', `"sha256-${file.checksumSha256}"`)
+      .header('X-Content-Type-Options', 'nosniff');
+    return reply.send(file.stream);
+  };
 
   completeExecution = async (request: FastifyRequest<{ Params: Params; Body: CompleteBody }>) =>
     successEnvelope(

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
 import test from 'node:test';
 
 import { Pool, type PoolClient } from 'pg';
@@ -54,6 +55,23 @@ function token(): { readonly raw: string; readonly hash: string } {
 
 function bearer(raw: string) {
   return { authorization: `Bearer ${raw}` };
+}
+
+function multipartPhoto(file: Buffer, fileName = 'condicao-final.jpg', mediaType = 'image/jpeg') {
+  const boundary = `fab-control-${randomUUID()}`;
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="observacao"\r\n\r\nCondição final segura.\r\n`,
+      'utf8',
+    ),
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="arquivo"; filename="${fileName}"\r\nContent-Type: ${mediaType}\r\n\r\n`,
+      'utf8',
+    ),
+    file,
+    Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'),
+  ]);
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
 async function transaction<T>(
@@ -310,6 +328,7 @@ test(
     context.after(async () => {
       await app.close();
       await pool.end();
+      await rm('./var/test-private-storage', { recursive: true, force: true });
     });
 
     const correctionDraft = await app.inject({
@@ -600,6 +619,64 @@ test(
     const evidenceFile = evidenceDetails.evidencias.at(0);
     assert.ok(evidenceFile);
     assert.equal(evidenceFile.nome_arquivo, 'teste.jpg');
+
+    const invalidPhoto = multipartPhoto(Buffer.from('não é uma foto', 'utf8'));
+    const rejectedUpload = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/executions/${executionId}/items/${evidence.id}/evidence-file`,
+      headers: {
+        ...bearer(identities.operator),
+        'content-type': invalidPhoto.contentType,
+      },
+      payload: invalidPhoto.body,
+    });
+    assert.equal(rejectedUpload.statusCode, 422, rejectedUpload.body);
+    assert.equal(rejectedUpload.json().error.code, 'FILE_CONTENT_INVALID');
+
+    const jpeg = Buffer.from([
+      0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9,
+    ]);
+    const validPhoto = multipartPhoto(jpeg);
+    const uploaded = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/executions/${executionId}/items/${evidence.id}/evidence-file`,
+      headers: {
+        ...bearer(identities.operator),
+        'content-type': validPhoto.contentType,
+      },
+      payload: validPhoto.body,
+    });
+    assert.equal(uploaded.statusCode, 200, uploaded.body);
+    const uploadedItems = uploaded.json().data.itens as readonly {
+      readonly id: string;
+      readonly quantidade_evidencias: number;
+      readonly evidencias: readonly {
+        readonly objeto_armazenamento_id: string;
+        readonly nome_arquivo: string;
+        readonly url: string;
+      }[];
+    }[];
+    const uploadedEvidence = uploadedItems
+      .find((item) => item.id === evidence.id)
+      ?.evidencias.at(-1);
+    assert.ok(uploadedEvidence);
+    assert.equal(uploadedEvidence.nome_arquivo, 'condicao-final.jpg');
+    assert.match(uploadedEvidence.url, /\/v1\/maintenance\/evidence-files\//u);
+
+    const unauthorizedDownload = await app.inject({
+      method: 'GET',
+      url: uploadedEvidence.url,
+    });
+    assert.equal(unauthorizedDownload.statusCode, 401, unauthorizedDownload.body);
+
+    const downloaded = await app.inject({
+      method: 'GET',
+      url: uploadedEvidence.url,
+      headers: bearer(identities.operator),
+    });
+    assert.equal(downloaded.statusCode, 200, downloaded.body);
+    assert.equal(downloaded.headers['content-type'], 'image/jpeg');
+    assert.deepEqual(downloaded.rawPayload, jpeg);
 
     const validCompletion = await app.inject({
       method: 'GET',

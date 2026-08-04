@@ -14,6 +14,13 @@ const environmentSchema = z
     BODY_LIMIT_BYTES: z.coerce.number().int().min(16_384).max(10_485_760).default(1_048_576),
     CORS_ALLOWED_ORIGINS: z.string().default(''),
     OPENAPI_ENABLED: booleanFromString.default(false),
+    STORAGE_LOCAL_ROOT: z.string().min(1).default('./var/private-storage'),
+    STORAGE_MAX_EVIDENCE_BYTES: z.coerce
+      .number()
+      .int()
+      .min(65_536)
+      .max(10_485_760)
+      .default(6_291_456),
 
     DATABASE_URL: z
       .string()
@@ -80,6 +87,10 @@ export interface Environment {
   readonly bodyLimitBytes: number;
   readonly corsAllowedOrigins: readonly string[];
   readonly openApiEnabled: boolean;
+  readonly storage: {
+    readonly localRoot: string;
+    readonly maxEvidenceBytes: number;
+  };
   readonly database: {
     readonly url: string;
     readonly sslMode: 'disable' | 'verify-full';
@@ -145,6 +156,10 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Enviro
     bodyLimitBytes: value.BODY_LIMIT_BYTES,
     corsAllowedOrigins: Object.freeze(origins),
     openApiEnabled: value.OPENAPI_ENABLED,
+    storage: Object.freeze({
+      localRoot: value.STORAGE_LOCAL_ROOT,
+      maxEvidenceBytes: value.STORAGE_MAX_EVIDENCE_BYTES,
+    }),
     database: Object.freeze({
       url: value.DATABASE_URL,
       sslMode: value.DATABASE_SSL_MODE,

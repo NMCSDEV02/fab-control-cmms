@@ -9,6 +9,7 @@ import type {
   RawChecklistItem,
 } from '../types/api'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
+import { EvidenceFileLink } from '../components/EvidenceFileLink'
 import { prepareEvidencePhoto } from '../services/media/imageEvidence'
 
 interface ChecklistExecutionPageProps {
@@ -895,19 +896,12 @@ export function ChecklistExecutionPage({
             {(current.evidencias?.length ?? 0) > 0 && (
               <div className="evidence-gallery">
                 {current.evidencias?.map((photo, photoIndex) => (
-                  <a
-                    href={photo.url || '#'}
-                    target="_blank"
-                    rel="noreferrer"
+                  <EvidenceFileLink
+                    evidence={photo}
+                    index={photoIndex}
                     key={photo.id || `${photo.nome_arquivo}-${photoIndex}`}
                     className="evidence-thumbnail"
-                  >
-                    {photo.thumbnail_url ? (
-                      <img src={photo.thumbnail_url} alt={photo.nome_arquivo || `Evidência ${photoIndex + 1}`} />
-                    ) : (
-                      <span>Foto {photoIndex + 1}</span>
-                    )}
-                  </a>
+                  />
                 ))}
               </div>
             )}

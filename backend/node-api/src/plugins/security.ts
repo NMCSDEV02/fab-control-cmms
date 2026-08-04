@@ -1,5 +1,6 @@
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import swagger from '@fastify/swagger';
@@ -14,6 +15,16 @@ export async function registerSecurityPlugins(
   environment: Environment,
 ): Promise<void> {
   await app.register(sensible);
+  await app.register(multipart, {
+    limits: {
+      fieldNameSize: 80,
+      fieldSize: 4_096,
+      fields: 3,
+      files: 1,
+      parts: 4,
+      fileSize: environment.storage.maxEvidenceBytes + 1,
+    },
+  });
   await app.register(helmet, {
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,

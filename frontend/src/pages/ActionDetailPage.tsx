@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MaintenanceStartDecision, MaintenanceStopMode, OperatorActionDetailData, OperatorStopData, RawChecklistItem } from '../types/api'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
+import { EvidenceFileLink } from '../components/EvidenceFileLink'
 
 interface ActionDetailPageProps {
   detail: OperatorActionDetailData | null
@@ -156,10 +157,12 @@ function CompletedActionSummary({ detail, onBack }: { detail: OperatorActionDeta
         {evidences.length ? (
           <div className="completed-evidence-grid">
             {evidences.slice(0, 4).map((evidence, index) => (
-              <a key={evidence.id || `${evidence.url}-${index}`} href={evidence.url || '#'} target="_blank" rel="noreferrer">
-                {evidence.thumbnail_url || evidence.url ? <img src={evidence.thumbnail_url || evidence.url} alt={evidence.nome_arquivo || `Evidência ${index + 1}`} /> : <span>Arquivo</span>}
-                <strong>{evidence.nome_arquivo || `Evidência ${index + 1}`}</strong>
-              </a>
+              <EvidenceFileLink
+                key={evidence.id || `${evidence.url}-${index}`}
+                evidence={evidence}
+                index={index}
+                showFileName
+              />
             ))}
           </div>
         ) : <p className="completed-empty">Nenhuma evidência foi anexada.</p>}

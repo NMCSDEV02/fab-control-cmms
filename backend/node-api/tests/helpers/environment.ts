@@ -13,6 +13,8 @@ export function createTestEnvironment(
     BODY_LIMIT_BYTES: '1048576',
     CORS_ALLOWED_ORIGINS: 'http://127.0.0.1:5173',
     OPENAPI_ENABLED: 'false',
+    STORAGE_LOCAL_ROOT: './var/test-private-storage',
+    STORAGE_MAX_EVIDENCE_BYTES: '6291456',
     DATABASE_URL: databaseUrl,
     DATABASE_SSL_MODE: 'disable',
     DATABASE_POOL_MAX: '4',

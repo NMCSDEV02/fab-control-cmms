@@ -4,11 +4,18 @@ import type { PoolClient } from 'pg';
 
 import { AppError } from '../../core/errors/app-error.js';
 import type { Database } from '../../infrastructure/database/database.js';
+import {
+  ObjectStorageError,
+  type ObjectStorage,
+  type StoredObject,
+  type StoredObjectReference,
+} from '../../infrastructure/storage/object-storage.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { OperationsRepository, type OperationsRow } from './operations.repository.js';
 import type {
   CompletionInput,
   EvidenceInput,
+  EvidenceUploadInput,
   ExecutionBatchItemInput,
   ExecutionStopMode,
   ExecutionResponseInput,
@@ -121,7 +128,10 @@ function workOrderHash(
 export class OperationsService {
   private readonly repository = new OperationsRepository();
 
-  constructor(private readonly database: Database) {}
+  constructor(
+    private readonly database: Database,
+    private readonly objectStorage: ObjectStorage,
+  ) {}
 
   async listWorkOrders(user: AuthenticatedUser, query: WorkOrderListQuery) {
     return this.database.withTransaction(
@@ -1075,6 +1085,110 @@ export class OperationsService {
         return detail;
       },
     );
+  }
+
+  async addEvidenceFile(
+    user: AuthenticatedUser,
+    executionId: string,
+    itemId: string,
+    input: EvidenceUploadInput,
+    audit: RequestAuditMetadata,
+  ) {
+    let stored: StoredObject;
+    try {
+      stored = await this.objectStorage.storeEvidence({
+        tenantId: user.tenantId,
+        originalName: input.originalName,
+        mediaType: input.mediaType,
+        stream: input.stream,
+      });
+    } catch (cause) {
+      if (cause instanceof ObjectStorageError) {
+        throw error(cause.code, cause.message, cause.code === 'FILE_TOO_LARGE' ? 413 : 422);
+      }
+      throw cause;
+    }
+
+    try {
+      const detail = await this.database.withTransaction(
+        { tenantId: user.tenantId, userId: user.id },
+        async (client) => {
+          const execution = await this.ownedExecution(client, executionId, user.id);
+          if (text(execution, 'status') !== 'IN_PROGRESS') {
+            throw error(
+              'EXECUTION_NOT_IN_PROGRESS',
+              'A execução não aceita evidências neste estado.',
+              409,
+            );
+          }
+          if (!(await this.repository.findExecutionItem(client, executionId, itemId, true))) {
+            throw error('EXECUTION_ITEM_NOT_FOUND', 'Etapa da execução não encontrada.', 404);
+          }
+
+          await this.repository.insertStorageObject(client, user.tenantId, user.id, stored);
+          await this.repository.insertEvidence(client, user.tenantId, execution, itemId, user.id, {
+            storageObjectId: stored.id,
+            evidenceType: stored.evidenceType,
+            observation: nullableText(input.observation),
+            capturedAt: input.capturedAt,
+          });
+          await this.repository.markEvidenceItemAnswered(client, itemId, user.id);
+          const updated = await this.requiredExecutionDetail(client, executionId);
+          await this.repository.writeAudit(
+            client,
+            user.tenantId,
+            user.id,
+            audit,
+            'EXECUTION_EVIDENCE_UPLOADED',
+            'EXECUTION_CHECKLIST_ITEM',
+            itemId,
+            {
+              objeto_armazenamento_id: stored.id,
+              tipo: stored.evidenceType,
+              tamanho_bytes: stored.byteSize,
+              checksum_sha256: stored.checksumSha256,
+            },
+          );
+          return updated;
+        },
+      );
+      return detail;
+    } catch (cause) {
+      await this.objectStorage.remove(stored).catch(() => undefined);
+      throw cause;
+    }
+  }
+
+  async openEvidenceFile(user: AuthenticatedUser, objectId: string) {
+    const object = await this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const found = await this.repository.findEvidenceStorageObject(client, objectId);
+        if (!found) throw error('EVIDENCE_FILE_NOT_FOUND', 'Evidência não encontrada.', 404);
+        return found;
+      },
+    );
+    const reference: StoredObjectReference = {
+      provider: text(object, 'provider'),
+      bucket: text(object, 'bucket'),
+      objectKey: text(object, 'object_key'),
+    };
+    try {
+      return {
+        stream: this.objectStorage.open(reference),
+        originalName: text(object, 'original_name'),
+        mediaType: text(object, 'media_type'),
+        byteSize: integer(object, 'byte_size'),
+        checksumSha256: text(object, 'checksum_sha256'),
+      };
+    } catch (cause) {
+      throw error(
+        'EVIDENCE_FILE_UNAVAILABLE',
+        'O conteúdo desta evidência não está disponível no armazenamento atual.',
+        404,
+        cause instanceof Error ? { reason: cause.message } : undefined,
+      );
+    }
   }
 
   async completeExecution(

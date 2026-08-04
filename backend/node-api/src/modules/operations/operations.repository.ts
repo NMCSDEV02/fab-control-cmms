@@ -1,5 +1,7 @@
 import type { PoolClient, QueryResultRow } from 'pg';
 
+import type { StoredObject } from '../../infrastructure/storage/object-storage.js';
+
 import type {
   CompletionInput,
   EvidenceInput,
@@ -733,6 +735,14 @@ export class OperationsRepository {
                    'id', evidence.id, 'tipo', evidence.evidence_type,
                    'objeto_armazenamento_id', evidence.storage_object_id,
                    'nome_arquivo', storage_object.original_name,
+                   'url', CASE
+                     WHEN storage_object.provider = 'LOCAL_PRIVATE'
+                       THEN '/v1/maintenance/evidence-files/' || evidence.storage_object_id
+                     WHEN storage_object.provider = 'LEGACY_GOOGLE'
+                       AND storage_object.object_key ~ '^https://(drive\\.google\\.com|docs\\.google\\.com|script\\.googleusercontent\\.com|lh[0-9]*\\.googleusercontent\\.com)/'
+                       THEN storage_object.object_key
+                     ELSE NULL
+                   END,
                    'tipo_midia', storage_object.media_type,
                    'tamanho_bytes', storage_object.byte_size,
                    'observacao', evidence.observation,
@@ -808,6 +818,55 @@ export class OperationsRepository {
       [id],
     );
     return result.rows[0]?.exists ?? false;
+  }
+
+  async insertStorageObject(
+    client: PoolClient,
+    tenantId: string,
+    userId: string,
+    object: StoredObject,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO platform.storage_objects
+       (id, tenant_id, provider, bucket, object_key, original_name, media_type,
+        byte_size, checksum_sha256, status, metadata, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'AVAILABLE',$10::jsonb,$11)`,
+      [
+        object.id,
+        tenantId,
+        object.provider,
+        object.bucket,
+        object.objectKey,
+        object.originalName,
+        object.mediaType,
+        object.byteSize,
+        object.checksumSha256,
+        JSON.stringify({ visibility: 'PRIVATE', purpose: 'MAINTENANCE_EVIDENCE' }),
+        userId,
+      ],
+    );
+  }
+
+  async findEvidenceStorageObject(
+    client: PoolClient,
+    objectId: string,
+  ): Promise<OperationsRow | null> {
+    const result = await client.query<OperationsRow>(
+      `SELECT storage_object.id, storage_object.provider, storage_object.bucket,
+              storage_object.object_key, storage_object.original_name,
+              storage_object.media_type, storage_object.byte_size,
+              storage_object.checksum_sha256
+       FROM platform.storage_objects storage_object
+       WHERE storage_object.id=$1
+         AND storage_object.status='AVAILABLE'
+         AND storage_object.deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM maintenance.evidence evidence
+           WHERE evidence.storage_object_id=storage_object.id
+         )`,
+      [objectId],
+    );
+    return result.rows[0] ?? null;
   }
 
   async insertEvidence(

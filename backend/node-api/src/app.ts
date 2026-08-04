@@ -4,6 +4,7 @@ import Fastify, { LogController, type FastifyInstance, type FastifyServerOptions
 
 import { loadEnvironment, type Environment } from './config/environment.js';
 import { createDatabase, type Database } from './infrastructure/database/database.js';
+import { LocalObjectStorage, type ObjectStorage } from './infrastructure/storage/object-storage.js';
 import { authPlugin } from './modules/auth/auth.plugin.js';
 import { catalogPlugin } from './modules/catalog/catalog.plugin.js';
 import { monitoringPlugin } from './modules/monitoring/monitoring.plugin.js';
@@ -16,6 +17,7 @@ import { registerSecurityPlugins } from './plugins/security.js';
 export interface BuildAppOptions {
   readonly environment?: Environment;
   readonly database?: Database;
+  readonly objectStorage?: ObjectStorage;
   readonly logger?: NonNullable<FastifyServerOptions['logger']>;
 }
 
@@ -64,9 +66,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
   const ownsDatabase = options.database === undefined;
   const database = options.database ?? createDatabase(environment, app.log);
+  const objectStorage =
+    options.objectStorage ??
+    new LocalObjectStorage(environment.storage.localRoot, environment.storage.maxEvidenceBytes);
 
   app.decorate('environment', environment);
   app.decorate('database', database);
+  app.decorate('objectStorage', objectStorage);
   app.decorateRequest('startedAt', 0n);
   app.decorateRequest('auth', null);
   app.addHook('onRequest', (request, _reply, done) => {
