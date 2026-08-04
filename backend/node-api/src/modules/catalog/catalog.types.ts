@@ -139,6 +139,12 @@ export interface AssetListQuery {
   readonly cursorId: string | null;
 }
 
+export interface ComponentListQuery {
+  readonly search: string;
+  readonly assetId: string | null;
+  readonly limit: number;
+}
+
 export interface ReadingListQuery {
   readonly limit: number;
   readonly before: Date | null;

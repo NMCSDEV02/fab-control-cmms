@@ -43,6 +43,19 @@ export interface WorkOrderListQuery {
   readonly limit: number;
 }
 
+export interface TechnicalDemandListQuery {
+  readonly search: string;
+  readonly statuses: readonly string[];
+  readonly limit: number;
+}
+
+export interface MaintenanceActionListQuery {
+  readonly search: string;
+  readonly statuses: readonly string[];
+  readonly assetId: string | null;
+  readonly limit: number;
+}
+
 export interface ReviewSubmissionInput {
   readonly signaturePolicy: SignaturePolicy;
   readonly requiredSignatures: number;

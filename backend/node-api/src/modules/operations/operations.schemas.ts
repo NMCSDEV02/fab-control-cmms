@@ -29,6 +29,25 @@ export const workOrderListQuerySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const technicalDemandListQuerySchema = Type.Object(
+  {
+    busca: Type.Optional(Type.String({ maxLength: 160 })),
+    status: Type.Optional(Type.String({ maxLength: 400 })),
+    limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 300 })),
+  },
+  { additionalProperties: false },
+);
+
+export const maintenanceActionListQuerySchema = Type.Object(
+  {
+    busca: Type.Optional(Type.String({ maxLength: 160 })),
+    status: Type.Optional(Type.String({ maxLength: 240 })),
+    ativo_id: Type.Optional(uuid),
+    limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 300 })),
+  },
+  { additionalProperties: false },
+);
+
 export const createWorkOrderBodySchema = Type.Object(
   {
     plano_versao_id: uuid,

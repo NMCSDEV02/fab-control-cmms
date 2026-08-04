@@ -10,6 +10,7 @@ import type {
   AssetInput,
   AssetListQuery,
   ComponentInput,
+  ComponentListQuery,
   MaterialInput,
   MaterialListQuery,
   ParameterDefinitionInput,
@@ -683,6 +684,16 @@ export class CatalogService {
         if (!(await this.repository.findAsset(client, assetId))) throw notFound('Ativo');
         return { itens: await this.repository.listComponents(client, assetId) };
       },
+    );
+  }
+
+  async listAllComponents(user: AuthenticatedUser, query: ComponentListQuery) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => ({
+        itens: await this.repository.listAllComponents(client, query),
+        limite: query.limit,
+      }),
     );
   }
 

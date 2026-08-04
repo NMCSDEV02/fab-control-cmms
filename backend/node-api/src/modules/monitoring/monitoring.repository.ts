@@ -127,6 +127,19 @@ export class MonitoringRepository {
     return first(result.rows);
   }
 
+  async findOccurrenceByStop(client: PoolClient, stopId: string): Promise<MonitoringRow | null> {
+    const result = await client.query<MonitoringRow>(
+      `SELECT *
+       FROM maintenance.operational_occurrences
+       WHERE equipment_stop_id=$1
+         AND status NOT IN ('RESOLVED','CLOSED','CANCELLED')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [stopId],
+    );
+    return first(result.rows);
+  }
+
   async getOccurrenceDetail(
     client: PoolClient,
     occurrenceId: string,

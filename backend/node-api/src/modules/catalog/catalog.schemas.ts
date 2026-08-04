@@ -140,6 +140,15 @@ export const listAssetsQuerySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const listComponentsQuerySchema = Type.Object(
+  {
+    busca: Type.Optional(Type.String({ maxLength: 160 })),
+    ativo_id: Type.Optional(uuid),
+    limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 300 })),
+  },
+  { additionalProperties: false },
+);
+
 const componentFields = Type.Object({
   ativo_id: uuid,
   tag: shortCode,

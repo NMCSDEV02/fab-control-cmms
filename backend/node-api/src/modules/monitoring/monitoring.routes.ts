@@ -101,6 +101,15 @@ export function createMonitoringRoutes(
       },
       handler: controller.transitionStop,
     });
+    app.post('/v1/maintenance/stops/:stopId/create-treatment', {
+      preHandler: (request) => app.authorize(request, 'maintenance.occurrences.triage'),
+      schema: {
+        ...secured,
+        params: monitoringIdentifierParamsSchema,
+        summary: 'Abre de forma idempotente o tratamento de uma parada tÃ©cnica.',
+      },
+      handler: controller.createStopTreatment,
+    });
 
     app.get('/v1/maintenance/alerts', {
       preHandler: (request) => app.authorize(request, 'maintenance.alerts.read'),

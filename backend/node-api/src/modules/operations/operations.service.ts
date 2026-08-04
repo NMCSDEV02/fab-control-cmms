@@ -19,10 +19,12 @@ import type {
   ExecutionBatchItemInput,
   ExecutionStopMode,
   ExecutionResponseInput,
+  MaintenanceActionListQuery,
   RequestAuditMetadata,
   ReviewSubmissionInput,
   SignatureInput,
   SignaturePolicy,
+  TechnicalDemandListQuery,
   WorkOrderCorrectionInput,
   WorkOrderInput,
   WorkOrderListQuery,
@@ -140,6 +142,138 @@ export class OperationsService {
         itens: await this.repository.listWorkOrders(client, query),
         limite: query.limit,
       }),
+    );
+  }
+
+  async getTechnicalContext(user: AuthenticatedUser) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const assignments = await this.repository.listTechnicalAssignments(client, user.id);
+        const catalog = await this.repository.listTechnicalAreasAndRoles(client);
+        const primary = assignments[0];
+        const canSign = assignments.some((assignment) => assignment.pode_assinar === true);
+        const validationMode = assignments.some((assignment) => assignment.area_validacao === true);
+        return {
+          identidade: {
+            usuario_id: user.id,
+            nome: user.name,
+            perfil: user.profile,
+            area_id: typeof primary?.area_id === 'string' ? primary.area_id : '',
+            area_nome: typeof primary?.area_nome === 'string' ? primary.area_nome : '',
+            cargo_id: typeof primary?.cargo_id === 'string' ? primary.cargo_id : '',
+            cargo_nome: typeof primary?.cargo_nome === 'string' ? primary.cargo_nome : '',
+            pode_assinar: canSign,
+            area_codigo: typeof primary?.area_codigo === 'string' ? primary.area_codigo : '',
+            validador_padrao: validationMode,
+            especialidades: assignments
+              .map((assignment) => assignment.cargo_nome)
+              .filter((value): value is string => typeof value === 'string'),
+            escopo_ids: assignments
+              .map((assignment) => assignment.area_id)
+              .filter((value): value is string => typeof value === 'string'),
+          },
+          areas: catalog.areas,
+          cargos: catalog.roles,
+          pode_encaminhar: user.profile !== 'OPERADOR',
+          pode_assinar: canSign,
+          pode_validar: validationMode || user.profile === 'ADMIN',
+          modo_trabalho: validationMode ? 'VALIDACAO' : 'ACOMPANHAMENTO',
+          politicas_assinatura: [
+            { codigo: 'QUALIDADE', nome: 'Qualidade', assinaturas: 1 },
+            { codigo: 'SEGURANCA', nome: 'SeguranÃ§a', assinaturas: 1 },
+            {
+              codigo: 'QUALIDADE_OU_SEGURANCA',
+              nome: 'Qualidade ou SeguranÃ§a',
+              assinaturas: 1,
+            },
+            {
+              codigo: 'QUALIDADE_E_SEGURANCA',
+              nome: 'Qualidade e SeguranÃ§a',
+              assinaturas: 2,
+            },
+          ],
+        };
+      },
+    );
+  }
+
+  async listTechnicalDemands(user: AuthenticatedUser, query: TechnicalDemandListQuery) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const demands = await this.repository.listTechnicalDemands(
+          client,
+          user.id,
+          user.profile === 'ADMIN',
+          query,
+        );
+        return { total: demands.length, demandas: demands, limite: query.limit };
+      },
+    );
+  }
+
+  async assumeTechnicalDemand(
+    user: AuthenticatedUser,
+    demandId: string,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const assumed = await this.repository.assumeTechnicalDemand(client, demandId, user.id);
+        if (!assumed) {
+          const demand = await this.repository.findDemand(client, demandId);
+          if (!demand) throw error('TECHNICAL_DEMAND_NOT_FOUND', 'Demanda nÃ£o encontrada.', 404);
+          if (demand.current_responsible_id === user.id) {
+            const visible = await this.repository.listTechnicalDemands(
+              client,
+              user.id,
+              user.profile === 'ADMIN',
+              { search: '', statuses: [], limit: 300 },
+            );
+            return {
+              assumed: true,
+              already_assumed: true,
+              demanda: visible.find((row) => row.id === demandId),
+            };
+          }
+          throw error(
+            'TECHNICAL_DEMAND_NOT_ELIGIBLE',
+            'A demanda nÃ£o estÃ¡ disponÃ­vel para o seu escopo tÃ©cnico.',
+            409,
+          );
+        }
+        await this.repository.appendDemandEvent(
+          client,
+          user.tenantId,
+          demandId,
+          'ASSUMED',
+          user.id,
+          null,
+          null,
+          hash({ demandId, userId: user.id, action: 'ASSUMED' }),
+        );
+        const visible = await this.repository.listTechnicalDemands(
+          client,
+          user.id,
+          user.profile === 'ADMIN',
+          { search: '', statuses: [], limit: 300 },
+        );
+        const demand = visible.find((row) => row.id === demandId);
+        if (!demand) throw error('TECHNICAL_DEMAND_NOT_FOUND', 'Demanda nÃ£o encontrada.', 404);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'TECHNICAL_DEMAND_ASSUMED',
+          'TECHNICAL_DEMAND',
+          demandId,
+          demand,
+        );
+        return { assumed: true, demanda: demand };
+      },
     );
   }
 
@@ -605,6 +739,31 @@ export class OperationsService {
         itens: await this.repository.listOperatorActions(client, user.id, limit),
         limite: limit,
       }),
+    );
+  }
+
+  async listMaintenanceActions(user: AuthenticatedUser, query: MaintenanceActionListQuery) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const actions = await this.repository.listMaintenanceActions(client, query);
+        return { total: actions.length, acoes: actions, limite: query.limit };
+      },
+    );
+  }
+
+  async getMaintenanceAction(user: AuthenticatedUser, actionId: string) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const action = await this.repository.getOperatorActionDetail(client, actionId);
+        if (!action) throw error('MAINTENANCE_ACTION_NOT_FOUND', 'AÃ§Ã£o nÃ£o encontrada.', 404);
+        const executionId = typeof action.execucao_id === 'string' ? action.execucao_id : null;
+        const execution = executionId
+          ? await this.repository.getExecutionDetail(client, executionId)
+          : null;
+        return { acao: action, execucao: execution };
+      },
     );
   }
 

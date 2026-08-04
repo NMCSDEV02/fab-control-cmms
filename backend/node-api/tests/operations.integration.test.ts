@@ -458,6 +458,31 @@ test(
     const demandId: string = submitted.json().data.validacao.id;
     assert.equal(submitted.json().data.checklist_itens.length, 3);
 
+    const technicalContext = await app.inject({
+      method: 'GET',
+      url: '/v1/workflow/technical-context',
+      headers: bearer(identities.quality),
+    });
+    assert.equal(technicalContext.statusCode, 200, technicalContext.body);
+    assert.equal(technicalContext.json().data.identidade.area_codigo, 'QUALITY');
+    assert.equal(technicalContext.json().data.pode_assinar, true);
+
+    const technicalQueue = await app.inject({
+      method: 'GET',
+      url: '/v1/workflow/technical-demands?status=AWAITING_SIGNATURE',
+      headers: bearer(identities.quality),
+    });
+    assert.equal(technicalQueue.statusCode, 200, technicalQueue.body);
+    assert.match(technicalQueue.body, new RegExp(demandId));
+
+    const assumedDemand = await app.inject({
+      method: 'POST',
+      url: `/v1/workflow/technical-demands/${demandId}/assume`,
+      headers: bearer(identities.quality),
+    });
+    assert.equal(assumedDemand.statusCode, 200, assumedDemand.body);
+    assert.equal(assumedDemand.json().data.demanda.responsavel_atual_id, ids.quality);
+
     const qualitySigned = await app.inject({
       method: 'POST',
       url: `/v1/workflow/technical-demands/${demandId}/sign`,
@@ -497,6 +522,15 @@ test(
     });
     assert.equal(released.statusCode, 200, released.body);
     assert.equal(released.json().data.status, 'RELEASED');
+
+    const managerActions = await app.inject({
+      method: 'GET',
+      url: '/v1/maintenance/actions?status=READY',
+      headers: bearer(identities.quality),
+    });
+    assert.equal(managerActions.statusCode, 200, managerActions.body);
+    assert.equal(managerActions.json().data.total, 1);
+    assert.equal(managerActions.json().data.acoes[0].ativo_tag, 'EQ-OPS-001');
 
     const queue = await app.inject({
       method: 'GET',
@@ -698,6 +732,15 @@ test(
     });
     assert.equal(completed.statusCode, 200, completed.body);
     assert.equal(completed.json().data.execucao.status, 'COMPLETED');
+
+    const completedAction = await app.inject({
+      method: 'GET',
+      url: `/v1/maintenance/actions/${actionId}`,
+      headers: bearer(identities.quality),
+    });
+    assert.equal(completedAction.statusCode, 200, completedAction.body);
+    assert.equal(completedAction.json().data.execucao.status, 'COMPLETED');
+    assert.equal(completedAction.json().data.execucao.itens.length, 3);
 
     const emptyQueue = await app.inject({
       method: 'GET',

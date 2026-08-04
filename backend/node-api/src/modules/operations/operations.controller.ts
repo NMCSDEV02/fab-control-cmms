@@ -25,6 +25,17 @@ interface WorkOrderQuery {
   readonly ativo_id?: string;
   readonly limite?: number;
 }
+interface TechnicalDemandQuery {
+  readonly busca?: string;
+  readonly status?: string;
+  readonly limite?: number;
+}
+interface MaintenanceActionQuery {
+  readonly busca?: string;
+  readonly status?: string;
+  readonly ativo_id?: string;
+  readonly limite?: number;
+}
 interface WorkOrderBody {
   readonly plano_versao_id: string;
   readonly tipo_origem: string;
@@ -119,6 +130,18 @@ function audit(request: FastifyRequest) {
   };
 }
 
+function statuses(value: string | undefined): string[] {
+  if (!value) return [];
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 function multipartText(fields: Readonly<Record<string, unknown>>, name: string): string | null {
   const field = fields[name];
   if (field === null || typeof field !== 'object' || !('value' in field)) return null;
@@ -146,6 +169,56 @@ export class OperationsController {
         assetId: request.query.ativo_id ?? null,
         limit: request.query.limite ?? 50,
       }),
+    );
+
+  getTechnicalContext = async (request: FastifyRequest) =>
+    successEnvelope(
+      request,
+      'workflow.technical-context.get',
+      await this.service.getTechnicalContext(user(request)),
+    );
+
+  listTechnicalDemands = async (request: FastifyRequest<{ Querystring: TechnicalDemandQuery }>) =>
+    successEnvelope(
+      request,
+      'workflow.technical-demands.list',
+      await this.service.listTechnicalDemands(user(request), {
+        search: request.query.busca?.trim() ?? '',
+        statuses: statuses(request.query.status),
+        limit: request.query.limite ?? 100,
+      }),
+    );
+
+  assumeTechnicalDemand = async (request: FastifyRequest<{ Params: Params }>) =>
+    successEnvelope(
+      request,
+      'workflow.technical-demands.assume',
+      await this.service.assumeTechnicalDemand(
+        user(request),
+        id(request.params, 'demandId'),
+        audit(request),
+      ),
+    );
+
+  listMaintenanceActions = async (
+    request: FastifyRequest<{ Querystring: MaintenanceActionQuery }>,
+  ) =>
+    successEnvelope(
+      request,
+      'maintenance.actions.list',
+      await this.service.listMaintenanceActions(user(request), {
+        search: request.query.busca?.trim() ?? '',
+        statuses: statuses(request.query.status),
+        assetId: request.query.ativo_id ?? null,
+        limit: request.query.limite ?? 100,
+      }),
+    );
+
+  getMaintenanceAction = async (request: FastifyRequest<{ Params: Params }>) =>
+    successEnvelope(
+      request,
+      'maintenance.actions.get',
+      await this.service.getMaintenanceAction(user(request), id(request.params, 'actionId')),
     );
 
   getWorkOrder = async (request: FastifyRequest<{ Params: Params }>) =>

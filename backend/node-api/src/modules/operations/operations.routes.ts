@@ -9,11 +9,13 @@ import {
   evidenceBodySchema,
   executionBatchResponseBodySchema,
   executionResponseBodySchema,
+  maintenanceActionListQuerySchema,
   operationsIdentifierParamsSchema,
   requestChangesBodySchema,
   signatureBodySchema,
   startExecutionBodySchema,
   submitReviewBodySchema,
+  technicalDemandListQuerySchema,
   workOrderListQuerySchema,
 } from './operations.schemas.js';
 
@@ -27,6 +29,50 @@ export function createOperationsRoutes(
   controller: OperationsController,
 ): FastifyPluginAsyncTypebox {
   return (app) => {
+    app.get('/v1/workflow/technical-context', {
+      preHandler: (request) => app.authorize(request, 'maintenance.work-orders.read'),
+      schema: {
+        ...secured,
+        summary: 'Consulta o escopo tÃ©cnico e as capacidades do Gestor.',
+      },
+      handler: controller.getTechnicalContext,
+    });
+    app.get('/v1/workflow/technical-demands', {
+      preHandler: (request) => app.authorize(request, 'maintenance.work-orders.read'),
+      schema: {
+        ...secured,
+        querystring: technicalDemandListQuerySchema,
+        summary: 'Consulta somente demandas visÃ­veis no escopo tÃ©cnico atual.',
+      },
+      handler: controller.listTechnicalDemands,
+    });
+    app.post('/v1/workflow/technical-demands/:demandId/assume', {
+      preHandler: (request) => app.authorize(request, 'maintenance.work-orders.review'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        summary: 'Assume uma demanda elegÃ­vel sem alterar sua polÃ­tica de assinatura.',
+      },
+      handler: controller.assumeTechnicalDemand,
+    });
+    app.get('/v1/maintenance/actions', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.read'),
+      schema: {
+        ...secured,
+        querystring: maintenanceActionListQuerySchema,
+        summary: 'Consulta aÃ§Ãµes ativas e concluÃ­das para acompanhamento tÃ©cnico.',
+      },
+      handler: controller.listMaintenanceActions,
+    });
+    app.get('/v1/maintenance/actions/:actionId', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.read'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        summary: 'Consulta a aÃ§Ã£o, o checklist materializado e suas evidÃªncias.',
+      },
+      handler: controller.getMaintenanceAction,
+    });
     app.get('/v1/maintenance/work-orders', {
       preHandler: (request) => app.authorize(request, 'maintenance.work-orders.read'),
       schema: {

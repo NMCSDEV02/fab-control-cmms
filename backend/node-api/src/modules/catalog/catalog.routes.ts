@@ -17,6 +17,7 @@ import {
   createSectorBodySchema,
   identifierParamsSchema,
   listAssetsQuerySchema,
+  listComponentsQuerySchema,
   listMaterialsQuerySchema,
   listReadingsQuerySchema,
   structureQuerySchema,
@@ -201,6 +202,16 @@ export function createCatalogRoutes(controller: CatalogController): FastifyPlugi
         summary: 'Lista os componentes de um ativo.',
       },
       handler: controller.listComponents,
+    });
+
+    app.get('/v1/cmms/components', {
+      preHandler: async (request) => app.authorize(request, 'cmms.assets.read'),
+      schema: {
+        ...securedResponse,
+        querystring: listComponentsQuerySchema,
+        summary: 'Pesquisa componentes no catÃ¡logo tÃ©cnico do tenant.',
+      },
+      handler: controller.listAllComponents,
     });
 
     app.post('/v1/cmms/components', {

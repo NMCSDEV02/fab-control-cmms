@@ -100,6 +100,12 @@ interface AssetListQuery {
   readonly cursor?: string;
 }
 
+interface ComponentListQuery {
+  readonly busca?: string;
+  readonly ativo_id?: string;
+  readonly limite?: number;
+}
+
 interface ComponentBody {
   readonly ativo_id: string;
   readonly tag: string;
@@ -515,6 +521,17 @@ export class CatalogController {
         user(request),
         requiredIdentifier(request.params, 'assetId'),
       ),
+    );
+
+  listAllComponents = async (request: FastifyRequest<{ Querystring: ComponentListQuery }>) =>
+    successEnvelope(
+      request,
+      'cmms.components.list',
+      await this.service.listAllComponents(user(request), {
+        search: request.query.busca?.trim() ?? '',
+        assetId: request.query.ativo_id ?? null,
+        limit: request.query.limite ?? 100,
+      }),
     );
 
   createComponent = async (request: FastifyRequest<{ Body: ComponentBody }>) =>

@@ -4,6 +4,7 @@ import type {
   AssetInput,
   AssetListQuery,
   ComponentInput,
+  ComponentListQuery,
   MaterialInput,
   MaterialListQuery,
   ParameterDefinitionInput,
@@ -523,6 +524,41 @@ export class CatalogRepository {
         ORDER BY created_at DESC, id DESC
       `,
       [assetId],
+    );
+    return result.rows;
+  }
+
+  async listAllComponents(
+    client: PoolClient,
+    query: ComponentListQuery,
+  ): Promise<readonly CatalogRow[]> {
+    const result = await client.query<CatalogRow>(
+      `
+        SELECT component.id, component.asset_id AS ativo_id, component.tag,
+               component.qr_payload, component.name AS nome,
+               component.component_type AS tipo, component.criticality AS criticidade,
+               component.operational_status AS status_operacional,
+               component.lifecycle_status AS status_ciclo_vida,
+               component.useful_life_hours AS vida_util_horas,
+               component.useful_life_days AS vida_util_dias,
+               component.accumulated_hours AS horas_acumuladas,
+               component.installed_at AS instalado_em,
+               component.manufacturer AS fabricante, component.model AS modelo,
+               component.serial_number AS numero_serie,
+               component.technical_location AS localizacao_tecnica,
+               component.metadata AS metadados, component.created_at, component.updated_at,
+               asset.tag AS ativo_tag, asset.name AS ativo_nome
+        FROM cmms.components component
+        JOIN cmms.assets asset ON asset.id = component.asset_id
+        WHERE component.deleted_at IS NULL
+          AND ($1 = '' OR component.tag ILIKE '%' || $1 || '%'
+                       OR component.name ILIKE '%' || $1 || '%'
+                       OR asset.tag ILIKE '%' || $1 || '%')
+          AND ($2::uuid IS NULL OR component.asset_id = $2)
+        ORDER BY component.created_at DESC, component.id DESC
+        LIMIT $3
+      `,
+      [query.search, query.assetId, query.limit],
     );
     return result.rows;
   }

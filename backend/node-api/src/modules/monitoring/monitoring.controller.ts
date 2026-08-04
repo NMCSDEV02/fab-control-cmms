@@ -220,6 +220,17 @@ export class MonitoringController {
       await this.service.getStop(user(request), identifier(request.params, 'stopId')),
     );
 
+  createStopTreatment = async (request: FastifyRequest<{ Params: Params }>) =>
+    successEnvelope(
+      request,
+      'maintenance.stops.treatment.create',
+      await this.service.createStopTreatment(
+        user(request),
+        identifier(request.params, 'stopId'),
+        audit(request),
+      ),
+    );
+
   createStop = async (request: FastifyRequest<{ Body: StopBody }>) =>
     successEnvelope(
       request,

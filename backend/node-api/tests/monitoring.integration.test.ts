@@ -367,5 +367,40 @@ test(
     });
     assert.equal(invalidTransition.statusCode, 409, invalidTransition.body);
     assert.equal(invalidTransition.json().error.code, 'INVALID_STOP_TRANSITION');
+
+    const directStop = await app.inject({
+      method: 'POST',
+      url: '/v1/maintenance/stops',
+      headers: bearer(tokens.manager),
+      payload: {
+        ativo_id: ids.asset,
+        componente_id: null,
+        origem: 'MANAGER',
+        tipo: 'UNPLANNED',
+        motivo: 'Parada direta aguardando triagem tÃ©cnica.',
+        iniciada_em: new Date().toISOString(),
+        tolerancia_retorno_minutos: 10,
+      },
+    });
+    assert.equal(directStop.statusCode, 200, directStop.body);
+    const directStopId: string = directStop.json().data.id;
+
+    const firstTreatment = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/stops/${directStopId}/create-treatment`,
+      headers: bearer(tokens.manager),
+    });
+    assert.equal(firstTreatment.statusCode, 200, firstTreatment.body);
+    assert.equal(firstTreatment.json().data.created, true);
+    const treatmentOccurrenceId: string = firstTreatment.json().data.occurrence.id;
+
+    const repeatedTreatment = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/stops/${directStopId}/create-treatment`,
+      headers: bearer(tokens.manager),
+    });
+    assert.equal(repeatedTreatment.statusCode, 200, repeatedTreatment.body);
+    assert.equal(repeatedTreatment.json().data.already_exists, true);
+    assert.equal(repeatedTreatment.json().data.occurrence.id, treatmentOccurrenceId);
   },
 );

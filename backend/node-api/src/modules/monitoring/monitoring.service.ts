@@ -302,6 +302,97 @@ export class MonitoringService {
     );
   }
 
+  async createStopTreatment(user: AuthenticatedUser, stopId: string, audit: RequestAuditMetadata) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const stop = await this.repository.findStop(client, stopId, true);
+        if (!stop) throw appError('STOP_NOT_FOUND', 'Parada nÃ£o encontrada.', 404);
+
+        const currentStatus = text(stop, 'status');
+        if (['COMPLETED', 'CANCELLED'].includes(currentStatus)) {
+          throw appError(
+            'STOP_ALREADY_CLOSED',
+            'Uma parada encerrada nÃ£o aceita um novo tratamento.',
+            409,
+          );
+        }
+
+        const existing = await this.repository.findOccurrenceByStop(client, stopId);
+        if (existing) {
+          return {
+            created: false,
+            already_exists: true,
+            parada_id: stopId,
+            occurrence: await this.requiredOccurrenceDetail(client, text(existing, 'id')),
+          };
+        }
+
+        const occurrenceId = randomUUID();
+        const reason = text(stop, 'reason');
+        await this.repository.createOccurrence(
+          client,
+          user.tenantId,
+          occurrenceId,
+          user.id,
+          roleSnapshot(user),
+          {
+            assetId: text(stop, 'asset_id'),
+            componentId: typeof stop.component_id === 'string' ? stop.component_id : null,
+            occurrenceType: 'EQUIPMENT_STOP_TREATMENT',
+            title: 'Tratar parada tÃ©cnica',
+            description: reason,
+            severity: 'CRITICAL',
+            equipmentStopped: true,
+            stopType: text(stop, 'stop_type'),
+            stopReason: reason,
+            occurredAt: dateTime(stop, 'started_at'),
+          },
+        );
+        await this.repository.attachStopToOccurrence(client, occurrenceId, stopId);
+        const occurrence = await this.requiredOccurrenceDetail(client, occurrenceId);
+        await this.repository.writeHistory(
+          client,
+          user.tenantId,
+          text(stop, 'asset_id'),
+          typeof stop.component_id === 'string' ? stop.component_id : null,
+          user.id,
+          roleSnapshot(user),
+          'STOP_TREATMENT_STARTED',
+          'Tratamento tÃ©cnico iniciado a partir da parada aberta.',
+          { stopId, occurrenceId },
+        );
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'STOP_TREATMENT_CREATED',
+          'OPERATIONAL_OCCURRENCE',
+          occurrenceId,
+          occurrence,
+        );
+        await this.notifyRoles(client, user, {
+          type: 'STOP_TREATMENT_STARTED',
+          title: 'Parada em tratamento',
+          message: reason,
+          entityType: 'OPERATIONAL_OCCURRENCE',
+          entityId: occurrenceId,
+          priority: 'CRITICAL',
+          actionRoute: `/maintenance/occurrences/${occurrenceId}`,
+          deduplicationKey: `equipment-stop:${stopId}:treatment`,
+          roles: ['ADMIN', 'MANAGER'],
+        });
+        return {
+          created: true,
+          already_exists: false,
+          parada_id: stopId,
+          occurrence,
+        };
+      },
+    );
+  }
+
   async createStop(
     user: AuthenticatedUser,
     rawInput: CreateStopInput,

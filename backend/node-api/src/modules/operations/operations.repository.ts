@@ -8,6 +8,8 @@ import type {
   ExecutionResponseInput,
   RequestAuditMetadata,
   ReviewSubmissionInput,
+  MaintenanceActionListQuery,
+  TechnicalDemandListQuery,
   WorkOrderInput,
   WorkOrderCorrectionInput,
   WorkOrderListQuery,
@@ -348,6 +350,157 @@ export class OperationsRepository {
     return result.rows[0] ?? null;
   }
 
+  async listTechnicalAssignments(
+    client: PoolClient,
+    userId: string,
+  ): Promise<readonly OperationsRow[]> {
+    const result = await client.query<OperationsRow>(
+      `
+        SELECT assignment.id, assignment.technical_area_id AS area_id,
+               area.code AS area_codigo, area.name AS area_nome,
+               area.validation_area AS area_validacao,
+               assignment.technical_role_id AS cargo_id,
+               role.code AS cargo_codigo, role.name AS cargo_nome,
+               COALESCE(assignment.can_sign_override, role.can_sign,
+                        area.default_signature_required, false) AS pode_assinar,
+               assignment.is_primary AS principal
+        FROM iam.user_technical_assignments assignment
+        JOIN iam.technical_areas area ON area.id = assignment.technical_area_id
+        LEFT JOIN iam.technical_roles role ON role.id = assignment.technical_role_id
+        WHERE assignment.user_id = $1
+          AND assignment.status = 'ACTIVE'
+          AND assignment.valid_from <= clock_timestamp()
+          AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
+          AND area.status = 'ACTIVE'
+          AND (role.id IS NULL OR role.status = 'ACTIVE')
+        ORDER BY assignment.is_primary DESC, area.name, role.name
+      `,
+      [userId],
+    );
+    return result.rows;
+  }
+
+  async listTechnicalAreasAndRoles(client: PoolClient): Promise<{
+    readonly areas: readonly OperationsRow[];
+    readonly roles: readonly OperationsRow[];
+  }> {
+    const areas = await client.query<OperationsRow>(
+      `SELECT id, code AS codigo, name AS nome, status, validation_area AS area_validacao
+       FROM iam.technical_areas WHERE status = 'ACTIVE' ORDER BY name`,
+    );
+    const roles = await client.query<OperationsRow>(
+      `SELECT id, technical_area_id AS area_id, code AS codigo, name AS nome,
+              status, can_sign AS pode_assinar
+       FROM iam.technical_roles WHERE status = 'ACTIVE' ORDER BY name`,
+    );
+    return { areas: areas.rows, roles: roles.rows };
+  }
+
+  async listTechnicalDemands(
+    client: PoolClient,
+    userId: string,
+    isAdmin: boolean,
+    query: TechnicalDemandListQuery,
+  ): Promise<readonly OperationsRow[]> {
+    const result = await client.query<OperationsRow>(
+      `
+        SELECT demand.id, demand.demand_type AS tipo, demand.entity_type AS entidade_tipo,
+               demand.entity_id AS entidade_id, demand.title AS titulo,
+               demand.description AS descricao, demand.priority AS prioridade,
+               demand.status, demand.current_area_id AS area_atual_id,
+               current_area.name AS area_atual_nome,
+               demand.current_technical_role_id AS cargo_atual_id,
+               technical_role.name AS cargo_atual_nome,
+               demand.current_responsible_id AS responsavel_atual_id,
+               responsible.name AS responsavel_atual_nome,
+               demand.signature_required AS exige_assinatura,
+               demand.signature_policy AS politica_assinatura,
+               demand.required_signature_count AS assinaturas_necessarias,
+               demand.completed_signature_count AS assinaturas_realizadas,
+               demand.completed_signature_count >= demand.required_signature_count
+                 AS assinatura_concluida,
+               demand.first_response_due_at AS prazo_primeira_resposta_em,
+               demand.resolution_due_at AS prazo_resolucao_em,
+               demand.first_response_due_at IS NOT NULL
+                 AND demand.first_attended_at IS NULL
+                 AND demand.first_response_due_at < clock_timestamp() AS sla_resposta_atrasado,
+               demand.resolution_due_at IS NOT NULL
+                 AND demand.completed_at IS NULL
+                 AND demand.resolution_due_at < clock_timestamp() AS sla_resolucao_atrasado,
+               demand.created_at AS criado_em, demand.updated_at AS atualizado_em,
+               COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                 'id', area.id, 'codigo', area.code, 'nome', area.name,
+                 'assinada', requirement.status IN ('FULFILLED','WAIVED'),
+                 'necessaria', requirement.status <> 'CANCELLED'
+               ) ORDER BY requirement.created_at)
+               FROM workflow.demand_validator_requirements requirement
+               JOIN iam.technical_areas area ON area.id = requirement.technical_area_id
+               WHERE requirement.technical_demand_id = demand.id), '[]'::jsonb)
+               AS areas_validadoras
+        FROM workflow.technical_demands demand
+        LEFT JOIN iam.technical_areas current_area ON current_area.id = demand.current_area_id
+        LEFT JOIN iam.technical_roles technical_role
+          ON technical_role.id = demand.current_technical_role_id
+        LEFT JOIN iam.users responsible ON responsible.id = demand.current_responsible_id
+        WHERE ($1 = '' OR demand.title ILIKE '%' || $1 || '%'
+                         OR demand.description ILIKE '%' || $1 || '%')
+          AND (cardinality($2::text[]) = 0 OR demand.status::text = ANY($2::text[]))
+          AND (
+            $3::boolean
+            OR demand.current_responsible_id = $4
+            OR EXISTS (
+              SELECT 1
+              FROM workflow.demand_validator_requirements requirement
+              JOIN iam.user_technical_assignments assignment
+                ON assignment.technical_area_id = requirement.technical_area_id
+               AND assignment.user_id = $4
+               AND assignment.status = 'ACTIVE'
+               AND assignment.valid_from <= clock_timestamp()
+               AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
+              WHERE requirement.technical_demand_id = demand.id
+                AND requirement.status IN ('PENDING','PARTIALLY_FULFILLED')
+            )
+          )
+        ORDER BY CASE demand.priority
+                   WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2
+                   WHEN 'MEDIUM' THEN 3 ELSE 4 END,
+                 demand.created_at, demand.id
+        LIMIT $5
+      `,
+      [query.search, query.statuses, isAdmin, userId, query.limit],
+    );
+    return result.rows;
+  }
+
+  async assumeTechnicalDemand(
+    client: PoolClient,
+    demandId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const result = await client.query(
+      `UPDATE workflow.technical_demands demand
+       SET current_responsible_id = $2,
+           first_attended_at = COALESCE(first_attended_at, clock_timestamp())
+       WHERE demand.id = $1
+         AND demand.status IN ('OPEN','TRIAGE','IN_TECHNICAL_REVIEW','AWAITING_SIGNATURE','FORWARDED')
+         AND (demand.current_responsible_id IS NULL OR demand.current_responsible_id = $2)
+         AND EXISTS (
+           SELECT 1
+           FROM workflow.demand_validator_requirements requirement
+           JOIN iam.user_technical_assignments assignment
+             ON assignment.technical_area_id = requirement.technical_area_id
+            AND assignment.user_id = $2
+            AND assignment.status = 'ACTIVE'
+            AND assignment.valid_from <= clock_timestamp()
+            AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
+           WHERE requirement.technical_demand_id = demand.id
+             AND requirement.status IN ('PENDING','PARTIALLY_FULFILLED')
+         )`,
+      [demandId, userId],
+    );
+    return (result.rowCount ?? 0) === 1;
+  }
+
   async matchingRequirement(
     client: PoolClient,
     demandId: string,
@@ -531,6 +684,63 @@ export class OperationsRepository {
                  action.generated_at, action.id LIMIT $2
       `,
       [userId, limit],
+    );
+    return result.rows;
+  }
+
+  async listMaintenanceActions(
+    client: PoolClient,
+    query: MaintenanceActionListQuery,
+  ): Promise<readonly OperationsRow[]> {
+    const result = await client.query<OperationsRow>(
+      `
+        SELECT action.id, action.status, action.title AS titulo,
+               action.description AS descricao, action.priority AS prioridade,
+               action.asset_id AS ativo_id, asset.tag AS ativo_tag,
+               asset.name AS ativo_nome, action.component_id AS componente_id,
+               component.tag AS componente_tag, component.name AS componente_nome,
+               action.action_type AS tipo, action.origin AS origem,
+               action.maintenance_stop_mode AS modo_parada,
+               action.generated_at AS gerado_em, action.started_at AS iniciado_em,
+               action.completed_at AS finalizado_em, action.updated_at AS atualizado_em,
+               action.responsible_id AS responsavel_id, responsible.name AS responsavel_nome,
+               work_order.id AS ordem_id, work_order.code AS ordem_codigo,
+               work_order.scheduled_for AS programada_para,
+               plan.id AS plano_id, plan.code AS plano_codigo, plan.name AS plano_nome,
+               execution.id AS execucao_id, execution.status AS execucao_status,
+               execution.operator_id AS operador_id, operator.name AS operador_nome,
+               execution.opened_at AS assumida_em, execution.started_at AS execucao_iniciada_em,
+               execution.completed_at AS execucao_concluida_em,
+               execution.duration_seconds AS duracao_segundos
+        FROM maintenance.work_order_actions action
+        JOIN maintenance.work_orders work_order ON work_order.id = action.work_order_id
+        JOIN maintenance.maintenance_plan_versions plan_version
+          ON plan_version.id = action.maintenance_plan_version_id
+        JOIN maintenance.maintenance_plans plan ON plan.id = plan_version.maintenance_plan_id
+        JOIN cmms.assets asset ON asset.id = action.asset_id
+        LEFT JOIN cmms.components component ON component.id = action.component_id
+        LEFT JOIN iam.users responsible ON responsible.id = action.responsible_id
+        LEFT JOIN LATERAL (
+          SELECT current_execution.*
+          FROM maintenance.executions current_execution
+          WHERE current_execution.work_order_action_id = action.id
+          ORDER BY current_execution.created_at DESC, current_execution.id DESC
+          LIMIT 1
+        ) execution ON true
+        LEFT JOIN iam.users operator ON operator.id = execution.operator_id
+        WHERE ($1 = '' OR action.title ILIKE '%' || $1 || '%'
+                         OR action.description ILIKE '%' || $1 || '%'
+                         OR asset.tag ILIKE '%' || $1 || '%'
+                         OR work_order.code ILIKE '%' || $1 || '%')
+          AND (cardinality($2::text[]) = 0 OR action.status = ANY($2::text[]))
+          AND ($3::uuid IS NULL OR action.asset_id = $3)
+        ORDER BY CASE action.priority
+                   WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2
+                   WHEN 'MEDIUM' THEN 3 ELSE 4 END,
+                 action.generated_at DESC, action.id DESC
+        LIMIT $4
+      `,
+      [query.search, query.statuses, query.assetId, query.limit],
     );
     return result.rows;
   }
