@@ -498,19 +498,31 @@ export class OperationsRepository {
         SELECT action.id, action.title AS titulo, action.description AS descricao,
                action.priority AS prioridade, action.status, action.asset_id AS ativo_id,
                asset.tag AS ativo_tag, asset.name AS ativo_nome,
-               action.component_id AS componente_id, action.generated_at AS liberada_em,
+               action.component_id AS componente_id, component.tag AS componente_tag,
+               component.name AS componente_nome, action.action_type AS tipo,
+               action.origin AS origem, action.maintenance_stop_mode AS modo_parada,
+               action.generated_at AS liberada_em, work_order.scheduled_for AS programada_para,
                work_order.id AS ordem_id, work_order.code AS ordem_codigo,
                plan_version.estimated_duration_minutes AS duracao_estimada_minutos,
                checklist_template.name AS checklist_nome,
+               execution.id AS execucao_id, execution.status AS execucao_status,
                (SELECT count(*)::integer FROM maintenance.checklist_items item
                 WHERE item.checklist_template_version_id = plan_version.checklist_template_version_id
                   AND item.status = 'ACTIVE') AS total_itens
         FROM maintenance.work_order_actions action
         JOIN maintenance.work_orders work_order ON work_order.id = action.work_order_id
         JOIN cmms.assets asset ON asset.id = action.asset_id
+        LEFT JOIN cmms.components component ON component.id = action.component_id
         JOIN maintenance.maintenance_plan_versions plan_version ON plan_version.id = action.maintenance_plan_version_id
         JOIN maintenance.checklist_template_versions checklist_version ON checklist_version.id = plan_version.checklist_template_version_id
         JOIN maintenance.checklist_templates checklist_template ON checklist_template.id = checklist_version.checklist_template_id
+        LEFT JOIN LATERAL (
+          SELECT current_execution.id, current_execution.status
+          FROM maintenance.executions current_execution
+          WHERE current_execution.work_order_action_id = action.id
+          ORDER BY current_execution.created_at DESC, current_execution.id DESC
+          LIMIT 1
+        ) execution ON true
         WHERE action.status IN ('READY','IN_PROGRESS','BLOCKED')
           AND (action.responsible_id IS NULL OR action.responsible_id = $1)
         ORDER BY CASE action.priority WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,
@@ -519,6 +531,87 @@ export class OperationsRepository {
       [userId, limit],
     );
     return result.rows;
+  }
+
+  async getOperatorActionDetail(
+    client: PoolClient,
+    actionId: string,
+  ): Promise<OperationsRow | null> {
+    const result = await client.query<OperationsRow>(
+      `
+        SELECT action.id, action.status, action.origin AS origem,
+               action.action_type AS tipo, action.title AS titulo,
+               action.description AS descricao, action.priority AS prioridade,
+               action.responsible_id AS responsavel_id,
+               action.maintenance_stop_mode AS modo_parada,
+               action.technical_analysis AS analise_tecnica,
+               action.generated_at AS gerada_em, action.started_at AS iniciada_em,
+               action.completed_at AS finalizada_em,
+               work_order.id AS ordem_id, work_order.code AS ordem_codigo,
+               work_order.status AS ordem_status, work_order.scheduled_for AS programada_para,
+               work_order.created_at AS ordem_criada_em,
+               asset.id AS ativo_id, asset.tag AS ativo_tag, asset.name AS ativo_nome,
+               asset.asset_type AS ativo_tipo, asset.criticality AS ativo_criticidade,
+               asset.lifecycle_status AS ativo_status, asset.manufacturer AS ativo_fabricante,
+               asset.model AS ativo_modelo, asset.serial_number AS ativo_numero_serie,
+               asset.technical_location AS ativo_localizacao,
+               component.id AS componente_id, component.tag AS componente_tag,
+               component.name AS componente_nome, component.component_type AS componente_tipo,
+               component.criticality AS componente_criticidade,
+               component.lifecycle_status AS componente_status,
+               component.manufacturer AS componente_fabricante,
+               component.model AS componente_modelo,
+               component.serial_number AS componente_numero_serie,
+               component.technical_location AS componente_localizacao,
+               plan.id AS plano_id, plan.code AS plano_codigo, plan.name AS plano_nome,
+               plan.plan_type AS plano_tipo, plan_version.id AS plano_versao_id,
+               plan_version.revision AS plano_revisao,
+               plan_version.estimated_duration_minutes AS duracao_estimada_minutos,
+               plan_version.lockout_required AS bloqueio_obrigatorio,
+               plan_version.evidence_required AS evidencia_obrigatoria,
+               checklist_template.name AS checklist_nome,
+               checklist_version.revision AS checklist_revisao,
+               execution.id AS execucao_id, execution.status AS execucao_status,
+               execution.operator_id AS operador_id,
+               operator.name AS operador_nome,
+               COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                 'id', item.id, 'sequencia', item.sequence, 'titulo', item.title,
+                 'instrucao', item.instruction, 'tipo_resposta', item.response_type_code,
+                 'categoria', item.category, 'obrigatorio', item.required,
+                 'evidencia_obrigatoria', item.evidence_required,
+                 'minimo_evidencias', item.minimum_evidence_photos,
+                 'bloqueia_conclusao', item.blocks_completion,
+                 'parametro_id', item.parameter_definition_id,
+                 'valor_esperado', item.expected_value, 'minimo', item.minimum_value,
+                 'maximo', item.maximum_value, 'unidade', item.unit, 'opcoes', item.options
+               ) ORDER BY item.sequence)
+               FROM maintenance.checklist_items item
+               WHERE item.checklist_template_version_id = plan_version.checklist_template_version_id
+                 AND item.status = 'ACTIVE'), '[]'::jsonb) AS checklist_itens
+        FROM maintenance.work_order_actions action
+        JOIN maintenance.work_orders work_order ON work_order.id = action.work_order_id
+        JOIN cmms.assets asset ON asset.id = action.asset_id
+        LEFT JOIN cmms.components component ON component.id = action.component_id
+        JOIN maintenance.maintenance_plan_versions plan_version
+          ON plan_version.id = action.maintenance_plan_version_id
+        JOIN maintenance.maintenance_plans plan ON plan.id = plan_version.maintenance_plan_id
+        JOIN maintenance.checklist_template_versions checklist_version
+          ON checklist_version.id = plan_version.checklist_template_version_id
+        JOIN maintenance.checklist_templates checklist_template
+          ON checklist_template.id = checklist_version.checklist_template_id
+        LEFT JOIN LATERAL (
+          SELECT current_execution.id, current_execution.status, current_execution.operator_id
+          FROM maintenance.executions current_execution
+          WHERE current_execution.work_order_action_id = action.id
+          ORDER BY current_execution.created_at DESC, current_execution.id DESC
+          LIMIT 1
+        ) execution ON true
+        LEFT JOIN iam.users operator ON operator.id = execution.operator_id
+        WHERE action.id = $1
+      `,
+      [actionId],
+    );
+    return result.rows[0] ?? null;
   }
 
   async findAction(client: PoolClient, id: string, lock = false): Promise<OperationsRow | null> {
@@ -599,6 +692,20 @@ export class OperationsRepository {
     return result.rows[0] ?? null;
   }
 
+  async findExecutionByAction(
+    client: PoolClient,
+    actionId: string,
+    lock = false,
+  ): Promise<OperationsRow | null> {
+    const result = await client.query<OperationsRow>(
+      `SELECT * FROM maintenance.executions
+       WHERE work_order_action_id = $1
+       ORDER BY created_at DESC, id DESC LIMIT 1 ${lock ? 'FOR UPDATE' : ''}`,
+      [actionId],
+    );
+    return result.rows[0] ?? null;
+  }
+
   async getExecutionDetail(client: PoolClient, id: string): Promise<OperationsRow | null> {
     const result = await client.query<OperationsRow>(
       `
@@ -606,7 +713,9 @@ export class OperationsRepository {
                operator.name AS operador_nome, execution.opened_at AS assumida_em,
                execution.started_at AS iniciada_em, execution.completed_at AS concluida_em,
                execution.duration_seconds AS duracao_segundos, execution.result AS resultado,
-               execution.observation AS observacao, work_order.code AS ordem_codigo,
+               execution.observation AS observacao,
+               execution.execution_stop_mode AS modo_parada,
+               work_order.code AS ordem_codigo,
                work_order.title AS titulo, asset.tag AS ativo_tag, asset.name AS ativo_nome,
                COALESCE((SELECT jsonb_agg(jsonb_build_object(
                  'id', item.id, 'sequencia', item.sequence, 'titulo', item.title_snapshot,
@@ -777,6 +886,13 @@ export class OperationsRepository {
     await client.query(
       `UPDATE maintenance.executions SET status='IN_PROGRESS', started_at=COALESCE(started_at,clock_timestamp()), execution_stop_mode=$2 WHERE id=$1`,
       [executionId, stopMode],
+    );
+    await client.query(
+      `UPDATE maintenance.work_order_actions action
+       SET started_at=COALESCE(action.started_at,clock_timestamp()), updated_at=clock_timestamp()
+       FROM maintenance.executions execution
+       WHERE execution.id=$1 AND action.id=execution.work_order_action_id`,
+      [executionId],
     );
   }
 

@@ -1188,6 +1188,52 @@ export class CatalogRepository {
     return result.rows;
   }
 
+  async findParameterByAssetScope(
+    client: PoolClient,
+    assetId: string,
+    componentId: string | null,
+    codeOrName: string,
+  ): Promise<ParameterContextRow | null> {
+    const result = await client.query<ParameterContextRow>(
+      `
+        SELECT
+          definition.id,
+          definition.asset_id,
+          definition.component_id,
+          definition.code,
+          definition.name,
+          definition.unit,
+          definition.value_type,
+          definition.source_type,
+          definition.status,
+          policy.id AS policy_id,
+          policy.version AS policy_version,
+          policy.warning_min,
+          policy.warning_max,
+          policy.critical_min,
+          policy.critical_max
+        FROM cmms.parameter_definitions definition
+        LEFT JOIN LATERAL (
+          SELECT current_policy.*
+          FROM cmms.parameter_policies current_policy
+          WHERE current_policy.parameter_definition_id = definition.id
+            AND current_policy.status = 'ACTIVE'
+          ORDER BY current_policy.version DESC
+          LIMIT 1
+        ) policy ON true
+        WHERE definition.asset_id = $1
+          AND definition.component_id IS NOT DISTINCT FROM $2::uuid
+          AND (upper(definition.code) = upper($3) OR upper(definition.name) = upper($3))
+          AND definition.status = 'ACTIVE'
+          AND definition.deleted_at IS NULL
+        ORDER BY CASE WHEN upper(definition.code) = upper($3) THEN 0 ELSE 1 END
+        LIMIT 1
+      `,
+      [assetId, componentId, codeOrName],
+    );
+    return result.rows[0] ?? null;
+  }
+
   async getAssetHistory(client: PoolClient, assetId: string): Promise<readonly CatalogRow[]> {
     const result = await client.query<CatalogRow>(
       `
@@ -1234,6 +1280,160 @@ export class CatalogRepository {
           last_detected_at DESC
       `,
       [assetId],
+    );
+    return result.rows;
+  }
+
+  async getQrPendingActions(
+    client: PoolClient,
+    assetId: string,
+    componentId: string | null,
+    userId: string,
+  ): Promise<readonly CatalogRow[]> {
+    const result = await client.query<CatalogRow>(
+      `
+        SELECT
+          action.id,
+          action.work_order_id AS os_id,
+          action.asset_id AS ativo_id,
+          action.component_id AS componente_id,
+          plan.id AS plano_id,
+          action.origin AS origem,
+          action.action_type AS tipo,
+          action.title AS titulo,
+          action.description AS descricao,
+          action.priority AS prioridade,
+          action.status,
+          action.generated_at AS gerado_em,
+          component.name AS componente_nome,
+          plan.name AS plano_nome,
+          plan.plan_type AS plano_tipo,
+          plan_version.estimated_duration_minutes AS tempo_estimado_min
+        FROM maintenance.work_order_actions action
+        JOIN maintenance.maintenance_plan_versions plan_version
+          ON plan_version.id = action.maintenance_plan_version_id
+        JOIN maintenance.maintenance_plans plan
+          ON plan.id = plan_version.maintenance_plan_id
+        LEFT JOIN cmms.components component ON component.id = action.component_id
+        WHERE action.asset_id = $1
+          AND ($2::uuid IS NULL OR action.component_id = $2)
+          AND action.status IN ('READY', 'IN_PROGRESS', 'BLOCKED')
+          AND (action.responsible_id IS NULL OR action.responsible_id = $3)
+        ORDER BY
+          CASE action.priority
+            WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4
+          END,
+          action.generated_at,
+          action.id
+        LIMIT 50
+      `,
+      [assetId, componentId, userId],
+    );
+    return result.rows;
+  }
+
+  async getQrOpenStop(client: PoolClient, assetId: string): Promise<CatalogRow | null> {
+    const result = await client.query<CatalogRow>(
+      `
+        SELECT
+          stop.id,
+          stop.asset_id AS ativo_id,
+          stop.component_id AS componente_id,
+          stop.origin AS origem,
+          stop.stop_type AS tipo,
+          stop.status,
+          stop.started_at AS iniciada_em,
+          stop.started_by AS iniciada_por,
+          stop.maintenance_started_at AS manutencao_iniciada_em,
+          stop.maintenance_completed_at AS manutencao_finalizada_em,
+          stop.completed_at AS finalizada_em,
+          stop.completed_by AS finalizada_por,
+          stop.downtime_seconds AS tempo_parada_segundos,
+          stop.maintenance_wait_seconds AS tempo_espera_manutencao_segundos,
+          stop.execution_seconds AS tempo_execucao_segundos,
+          stop.operational_return_seconds AS tempo_retorno_operacional_segundos,
+          EXTRACT(EPOCH FROM (clock_timestamp() - stop.started_at))::bigint AS elapsed_seconds,
+          stop.reason AS motivo_parada,
+          stop.return_category AS categoria_retorno,
+          stop.divergence_justification AS justificativa_divergencia,
+          stop.return_tolerance_minutes AS tolerancia_retorno_min
+        FROM maintenance.equipment_stops stop
+        WHERE stop.asset_id = $1
+          AND stop.status NOT IN ('COMPLETED', 'CANCELLED')
+        ORDER BY stop.started_at DESC, stop.id DESC
+        LIMIT 1
+      `,
+      [assetId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async getQrOpenOccurrences(
+    client: PoolClient,
+    assetId: string,
+    componentId: string | null,
+  ): Promise<readonly CatalogRow[]> {
+    const result = await client.query<CatalogRow>(
+      `
+        SELECT
+          occurrence.id,
+          occurrence.asset_id AS ativo_id,
+          occurrence.component_id AS componente_id,
+          occurrence.occurrence_type AS tipo,
+          occurrence.title AS titulo,
+          occurrence.description AS descricao,
+          occurrence.severity AS severidade,
+          occurrence.status,
+          occurrence.reported_by AS usuario_id,
+          occurrence.reporter_role_snapshot AS perfil,
+          occurrence.work_order_id AS os_id,
+          occurrence.technical_analysis_id AS analise_tecnica_id,
+          occurrence.treatment_status AS tratamento_status,
+          occurrence.created_at AS criado_em,
+          occurrence.updated_at AS atualizado_em
+        FROM maintenance.operational_occurrences occurrence
+        WHERE occurrence.asset_id = $1
+          AND ($2::uuid IS NULL OR occurrence.component_id = $2)
+          AND occurrence.status NOT IN ('RESOLVED', 'CLOSED', 'CANCELLED')
+        ORDER BY
+          CASE occurrence.severity
+            WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4
+          END,
+          occurrence.created_at DESC,
+          occurrence.id DESC
+        LIMIT 50
+      `,
+      [assetId, componentId],
+    );
+    return result.rows;
+  }
+
+  async getAssetHistoryPage(
+    client: PoolClient,
+    assetId: string,
+    componentId: string | null,
+    before: Date | null,
+    limit: number,
+  ): Promise<readonly CatalogRow[]> {
+    const result = await client.query<CatalogRow>(
+      `
+        SELECT
+          history.id,
+          history.asset_id AS ativo_id,
+          history.component_id AS componente_id,
+          history.event_type AS evento,
+          history.description AS descricao,
+          history.user_id AS usuario_id,
+          history.role_snapshot AS perfil,
+          history.occurred_at AS criado_em
+        FROM maintenance.history_events history
+        WHERE history.asset_id = $1
+          AND ($2::uuid IS NULL OR history.component_id = $2)
+          AND ($3::timestamptz IS NULL OR history.occurred_at < $3)
+        ORDER BY history.occurred_at DESC, history.id DESC
+        LIMIT $4
+      `,
+      [assetId, componentId, before, limit + 1],
     );
     return result.rows;
   }

@@ -64,6 +64,13 @@ export interface ExecutionResponseInput {
   readonly notApplicable: boolean;
 }
 
+export interface ExecutionBatchItemInput {
+  readonly itemId: string;
+  readonly response: string | null;
+  readonly numericValue: number | null;
+  readonly observation: string | null;
+}
+
 export interface EvidenceInput {
   readonly storageObjectId: string;
   readonly evidenceType: EvidenceType;

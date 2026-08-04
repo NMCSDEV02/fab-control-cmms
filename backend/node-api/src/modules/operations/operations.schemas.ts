@@ -106,6 +106,24 @@ export const executionResponseBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const executionBatchResponseBodySchema = Type.Object(
+  {
+    itens: Type.Array(
+      Type.Object(
+        {
+          item_id: uuid,
+          resposta: nullableText,
+          valor: nullableNumber,
+          observacao: nullableText,
+        },
+        { additionalProperties: false },
+      ),
+      { minItems: 1, maxItems: 200 },
+    ),
+  },
+  { additionalProperties: false },
+);
+
 export const evidenceBodySchema = Type.Object(
   {
     objeto_armazenamento_id: uuid,

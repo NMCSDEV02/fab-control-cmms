@@ -454,6 +454,132 @@ export class CatalogService {
     );
   }
 
+  async getQrContext(user: AuthenticatedUser, code: string) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const resolved = await this.repository.resolveCode(client, code.trim());
+        if (!resolved) throw notFound('Código técnico');
+
+        const assetId = text(resolved, 'ativo_id');
+        const componentId = nullableText(resolved, 'componente_id');
+        const asset = await this.repository.findAsset(client, assetId);
+        if (!asset) throw notFound('Ativo');
+        const component = componentId
+          ? await this.repository.findComponent(client, componentId)
+          : null;
+
+        // Uma transação usa uma conexão; consultas concorrentes no mesmo client não são seguras.
+        const components = await this.repository.listComponents(client, assetId);
+        const parameters = await this.repository.getAssetParameters(client, assetId);
+        const actions = await this.repository.getQrPendingActions(
+          client,
+          assetId,
+          componentId,
+          user.id,
+        );
+        const historyRows = await this.repository.getAssetHistoryPage(
+          client,
+          assetId,
+          componentId,
+          null,
+          4,
+        );
+        const stop = await this.repository.getQrOpenStop(client, assetId);
+        const occurrences = await this.repository.getQrOpenOccurrences(
+          client,
+          assetId,
+          componentId,
+        );
+
+        const history = historyRows.slice(0, 4);
+        const hasMoreHistory = historyRows.length > 4;
+        const lastHistory = history.at(-1);
+        const activeParameters = parameters.filter((parameter) =>
+          componentId
+            ? nullableText(parameter, 'componente_id') === componentId
+            : nullableText(parameter, 'componente_id') === null,
+        );
+
+        return {
+          encontrado: true,
+          tipo_contexto: text(resolved, 'tipo_registro'),
+          ativo: asset,
+          componente: component,
+          componentes: components,
+          acoes_pendentes: actions,
+          proxima_acao: actions[0] ?? null,
+          historico_recente: history,
+          historico_paginacao: {
+            proximo_cursor:
+              hasMoreHistory && lastHistory
+                ? lastHistory.criado_em instanceof Date
+                  ? lastHistory.criado_em.toISOString()
+                  : String(lastHistory.criado_em)
+                : null,
+            possui_mais: hasMoreHistory,
+            limite: 4,
+          },
+          parametros_atuais: activeParameters,
+          parada_ativa: stop,
+          ocorrencias_abertas: occurrences,
+          saude: {
+            percentual: nullableNumber(asset, 'saude_percentual'),
+            status: stop ? 'PARADO' : text(asset, 'status_operacional'),
+            acoes_abertas: actions.length,
+            ocorrencias_abertas: occurrences.length,
+          },
+          servidor_em: new Date().toISOString(),
+        };
+      },
+    );
+  }
+
+  async getAssetHistoryPage(
+    user: AuthenticatedUser,
+    assetId: string,
+    componentId: string | null,
+    before: Date | null,
+    limit: number,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        if (!(await this.repository.findAsset(client, assetId))) throw notFound('Ativo');
+        if (componentId) {
+          const component = await this.repository.findComponent(client, componentId);
+          if (!component || text(component, 'ativo_id') !== assetId) {
+            throw notFound('Componente do ativo');
+          }
+        }
+        const rows = await this.repository.getAssetHistoryPage(
+          client,
+          assetId,
+          componentId,
+          before,
+          limit,
+        );
+        const hasMore = rows.length > limit;
+        const items = hasMore ? rows.slice(0, limit) : rows;
+        const last = items.at(-1);
+        return {
+          itens: items,
+          ativo_id: assetId,
+          componente_id: componentId,
+          proximo_cursor:
+            hasMore && last
+              ? last.criado_em instanceof Date
+                ? last.criado_em.toISOString()
+                : String(last.criado_em)
+              : null,
+          possui_mais: hasMore,
+          limite: limit,
+          linhas_consultadas: items.length,
+        };
+      },
+    );
+  }
+
   async createAsset(user: AuthenticatedUser, input: AssetInput, audit: RequestAuditMetadata) {
     return this.database.withTransaction(
       { tenantId: user.tenantId, userId: user.id },
@@ -944,6 +1070,107 @@ export class CatalogService {
           );
         }
         return { ...result.reading, criada: result.created };
+      },
+    );
+  }
+
+  async createScopedReading(
+    user: AuthenticatedUser,
+    assetId: string,
+    componentId: string | null,
+    parameterCodeOrName: string,
+    numericValue: number,
+    idempotencyKey: string,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const asset = await this.repository.findAsset(client, assetId);
+        if (!asset) throw notFound('Ativo');
+        if (componentId) {
+          const component = await this.repository.findComponent(client, componentId);
+          if (!component || text(component, 'ativo_id') !== assetId) {
+            throw notFound('Componente do ativo');
+          }
+        }
+        const parameter = await this.repository.findParameterByAssetScope(
+          client,
+          assetId,
+          componentId,
+          parameterCodeOrName.trim(),
+        );
+        if (!parameter) throw notFound('Parâmetro técnico do ativo');
+        if (!['DECIMAL', 'INTEGER'].includes(parameter.value_type)) {
+          throw conflict(
+            'PARAMETER_NOT_NUMERIC',
+            'O parâmetro selecionado não aceita uma leitura numérica.',
+          );
+        }
+        const result = await this.repository.createReading(
+          client,
+          user.tenantId,
+          user.id,
+          parameter,
+          {
+            numericValue,
+            textValue: null,
+            booleanValue: null,
+            source: 'MANUAL',
+            sourceEntityType: componentId ? 'COMPONENT' : 'ASSET',
+            sourceEntityId: componentId ?? assetId,
+            recordedAt: new Date(),
+            rawValue: String(numericValue),
+            idempotencyKey,
+            metadata: { channel: 'QR' },
+          },
+        );
+        if (result.created) {
+          await this.repository.createOrRefreshParameterAlert(
+            client,
+            user.tenantId,
+            parameter,
+            result.reading,
+          );
+          await this.repository.writeHistory(
+            client,
+            user.tenantId,
+            user.id,
+            audit.roleSnapshot,
+            assetId,
+            componentId,
+            'PARAMETER_READING_RECORDED',
+            `Leitura registrada para ${parameter.code}.`,
+            {
+              classification: result.reading.classificacao,
+              parameterId: parameter.id,
+              readingId: result.reading.id,
+              channel: 'QR',
+            },
+          );
+          await this.repository.writeAudit(
+            client,
+            user.tenantId,
+            user.id,
+            audit,
+            'CMMS_PARAMETER_READING_RECORDED',
+            'PARAMETER_READING',
+            result.reading.id,
+            null,
+            result.reading,
+          );
+        }
+        return {
+          salva: true,
+          criada: result.created,
+          parametro: {
+            ...result.reading,
+            ativo_id: assetId,
+            componente_id: componentId,
+            parametro: parameter.name,
+            codigo: parameter.code,
+          },
+        };
       },
     );
   }

@@ -9,6 +9,8 @@ import { OperationsRepository, type OperationsRow } from './operations.repositor
 import type {
   CompletionInput,
   EvidenceInput,
+  ExecutionBatchItemInput,
+  ExecutionStopMode,
   ExecutionResponseInput,
   RequestAuditMetadata,
   ReviewSubmissionInput,
@@ -596,6 +598,285 @@ export class OperationsService {
     );
   }
 
+  async getOperatorAction(user: AuthenticatedUser, actionId: string) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const action = await this.repository.getOperatorActionDetail(client, actionId);
+        if (!action || !this.operatorCanSeeAction(action, user.id)) {
+          throw error('OPERATOR_ACTION_NOT_FOUND', 'Ação operacional não encontrada.', 404);
+        }
+        const executionId = typeof action.execucao_id === 'string' ? action.execucao_id : null;
+        const execution = executionId
+          ? await this.requiredExecutionDetail(client, executionId)
+          : null;
+        return { acao: action, execucao: execution };
+      },
+    );
+  }
+
+  async startOperatorAction(
+    user: AuthenticatedUser,
+    actionId: string,
+    stopMode: ExecutionStopMode,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const action = await this.repository.findAction(client, actionId, true);
+        if (!action) {
+          throw error('OPERATOR_ACTION_NOT_FOUND', 'Ação operacional não encontrada.', 404);
+        }
+        if (action.responsible_id !== null && action.responsible_id !== user.id) {
+          throw error(
+            'OPERATOR_ACTION_ASSIGNED_TO_ANOTHER_USER',
+            'A ação está atribuída a outro usuário.',
+            403,
+          );
+        }
+
+        const actionStatus = text(action, 'status');
+        let execution = await this.repository.findExecutionByAction(client, actionId, true);
+        if (actionStatus === 'READY') {
+          if (execution) {
+            throw error(
+              'OPERATOR_ACTION_EXECUTION_CONFLICT',
+              'A ação possui uma execução incompatível com seu estado atual.',
+              409,
+            );
+          }
+          const actionDetail = await this.repository.getOperatorActionDetail(client, actionId);
+          const checklist = Array.isArray(actionDetail?.checklist_itens)
+            ? actionDetail.checklist_itens
+            : [];
+          if (checklist.length === 0) {
+            throw error(
+              'OPERATOR_ACTION_WITHOUT_CHECKLIST',
+              'A ação não pode ser iniciada sem checklist publicado e com etapas ativas.',
+              422,
+            );
+          }
+          const executionId = randomUUID();
+          await this.repository.createExecution(
+            client,
+            user.tenantId,
+            executionId,
+            action,
+            user.id,
+          );
+          execution = await this.repository.findExecution(client, executionId, true);
+        } else if (actionStatus !== 'IN_PROGRESS') {
+          throw error(
+            'OPERATOR_ACTION_NOT_EXECUTABLE',
+            'A ação não está disponível para início ou retomada.',
+            409,
+          );
+        }
+
+        if (!execution) {
+          throw error(
+            'OPERATOR_ACTION_EXECUTION_MISSING',
+            'A ação em andamento não possui uma execução válida.',
+            409,
+          );
+        }
+        if (execution.operator_id !== user.id) {
+          throw error(
+            'EXECUTION_OWNERSHIP_REQUIRED',
+            'Somente o Operador responsável pode retomar esta execução.',
+            403,
+          );
+        }
+
+        const executionStatus = text(execution, 'status');
+        const alreadyStarted = executionStatus === 'IN_PROGRESS';
+        if (executionStatus === 'OPEN') {
+          await this.repository.startExecution(client, execution.id, stopMode);
+        } else if (!alreadyStarted) {
+          throw error(
+            'EXECUTION_NOT_STARTABLE',
+            'A execução não está em um estado que permita início ou retomada.',
+            409,
+          );
+        }
+
+        const detail = await this.requiredExecutionDetail(client, execution.id);
+        if (!alreadyStarted) {
+          await this.repository.writeAudit(
+            client,
+            user.tenantId,
+            user.id,
+            audit,
+            'OPERATOR_ACTION_STARTED',
+            'EXECUTION',
+            execution.id,
+            detail,
+          );
+        }
+        return { iniciada: true, ja_iniciada: alreadyStarted, execucao: detail };
+      },
+    );
+  }
+
+  async saveOperatorResponses(
+    user: AuthenticatedUser,
+    actionId: string,
+    inputs: readonly ExecutionBatchItemInput[],
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const { execution } = await this.ownedActionExecution(client, actionId, user.id, true);
+        if (text(execution, 'status') !== 'IN_PROGRESS') {
+          throw error(
+            'EXECUTION_NOT_IN_PROGRESS',
+            'Inicie a execução antes de responder o checklist.',
+            409,
+          );
+        }
+        const uniqueIds = new Set(inputs.map((item) => item.itemId));
+        if (uniqueIds.size !== inputs.length) {
+          throw error(
+            'EXECUTION_BATCH_DUPLICATE_ITEM',
+            'O mesmo item não pode aparecer duas vezes no lote.',
+            422,
+          );
+        }
+
+        const saved: Readonly<Record<string, unknown>>[] = [];
+        for (const input of inputs) {
+          const item = await this.repository.findExecutionItem(
+            client,
+            execution.id,
+            input.itemId,
+            true,
+          );
+          if (!item) {
+            throw error(
+              'EXECUTION_ITEM_NOT_FOUND',
+              'Uma das etapas informadas não pertence à execução.',
+              404,
+              { item_id: input.itemId },
+            );
+          }
+          const response = this.normalizeBatchResponse(item, input);
+          const validation = this.validateResponse(item, response);
+          await this.repository.answerExecutionItem(
+            client,
+            input.itemId,
+            user.id,
+            response,
+            validation.status,
+            validation.compliant,
+            validation.message,
+          );
+          if (item.parameter_definition_id !== null && response.numberValue !== null) {
+            await this.repository.insertParameterReading(
+              client,
+              user.tenantId,
+              execution.id,
+              item,
+              user.id,
+              response.numberValue,
+              validation.classification,
+            );
+          }
+          saved.push({
+            item_id: input.itemId,
+            status: validation.status,
+            conforme: validation.compliant,
+            mensagem_validacao: validation.message,
+          });
+        }
+
+        const detail = await this.requiredExecutionDetail(client, execution.id);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'EXECUTION_RESPONSES_SAVED',
+          'EXECUTION',
+          execution.id,
+          { quantidade: saved.length, itens: saved },
+        );
+        return {
+          acao_id: actionId,
+          execucao_id: execution.id,
+          salvos: saved,
+          quantidade_salva: saved.length,
+          execucao: detail,
+        };
+      },
+    );
+  }
+
+  async validateOperatorActionCompletion(user: AuthenticatedUser, actionId: string) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const { execution } = await this.ownedActionExecution(client, actionId, user.id, false);
+        const blockers = await this.repository.blockingExecutionItems(client, execution.id);
+        const detail = await this.requiredExecutionDetail(client, execution.id);
+        return this.completionState(execution, blockers, detail);
+      },
+    );
+  }
+
+  async completeOperatorAction(
+    user: AuthenticatedUser,
+    actionId: string,
+    input: CompletionInput,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const { execution } = await this.ownedActionExecution(client, actionId, user.id, true);
+        if (text(execution, 'status') !== 'IN_PROGRESS') {
+          throw error(
+            'EXECUTION_NOT_IN_PROGRESS',
+            'Somente uma execução em andamento pode ser concluída.',
+            409,
+          );
+        }
+        const blockers = await this.repository.blockingExecutionItems(client, execution.id);
+        const state = this.completionState(
+          execution,
+          blockers,
+          await this.requiredExecutionDetail(client, execution.id),
+        );
+        if (!state.pode_concluir) {
+          throw error(
+            'EXECUTION_HAS_BLOCKERS',
+            'Respostas, evidências ou não conformidades ainda bloqueiam a conclusão.',
+            409,
+            state,
+          );
+        }
+        await this.repository.completeExecution(client, execution, {
+          ...input,
+          result: input.result.trim(),
+          observation: nullableText(input.observation),
+        });
+        const detail = await this.requiredExecutionDetail(client, execution.id);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'OPERATOR_ACTION_COMPLETED',
+          'EXECUTION',
+          execution.id,
+          detail,
+        );
+        return { finalizada: true, acao_id: actionId, execucao: detail };
+      },
+    );
+  }
+
   async assumeAction(user: AuthenticatedUser, actionId: string, audit: RequestAuditMetadata) {
     return this.database.withTransaction(
       { tenantId: user.tenantId, userId: user.id },
@@ -639,6 +920,21 @@ export class OperationsService {
           throw error('EXECUTION_NOT_FOUND', 'Execução não encontrada.', 404);
         }
         return detail;
+      },
+    );
+  }
+
+  async validateExecutionCompletion(user: AuthenticatedUser, executionId: string) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const execution = await this.repository.findExecution(client, executionId);
+        if (!execution || (user.profile === 'OPERADOR' && execution.operator_id !== user.id)) {
+          throw error('EXECUTION_NOT_FOUND', 'Execução não encontrada.', 404);
+        }
+        const blockers = await this.repository.blockingExecutionItems(client, executionId);
+        const detail = await this.requiredExecutionDetail(client, executionId);
+        return this.completionState(execution, blockers, detail);
       },
     );
   }
@@ -937,6 +1233,34 @@ export class OperationsService {
     );
   }
 
+  private normalizeBatchResponse(
+    item: OperationsRow,
+    input: ExecutionBatchItemInput,
+  ): ExecutionResponseInput {
+    const type = text(item, 'response_type_code');
+    const raw = nullableText(input.response);
+    const normalized = raw
+      ?.normalize('NFD')
+      .replaceAll(/[\u0300-\u036f]/gu, '')
+      .trim()
+      .toUpperCase();
+    const numeric = input.numericValue;
+    return {
+      textValue: type === 'TEXTO' ? raw : null,
+      numberValue: ['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(type) ? numeric : null,
+      booleanValue: ['INSTRUCAO', 'CONFIRMACAO'].includes(type)
+        ? ['SIM', 'LIDO', 'TRUE', 'OK', 'CONFIRMADO'].includes(normalized ?? '')
+        : null,
+      optionValue: ['OK_NOK', 'SELECAO'].includes(type)
+        ? normalized === 'N/A' || normalized === 'NAO APLICAVEL'
+          ? 'NA'
+          : raw
+        : null,
+      observation: nullableText(input.observation),
+      notApplicable: false,
+    };
+  }
+
   private async ownedExecution(
     client: PoolClient,
     executionId: string,
@@ -951,6 +1275,60 @@ export class OperationsService {
         403,
       );
     return execution;
+  }
+
+  private operatorCanSeeAction(action: OperationsRow, userId: string): boolean {
+    const status = typeof action.status === 'string' ? action.status : '';
+    if (!['READY', 'IN_PROGRESS', 'BLOCKED'].includes(status)) return false;
+    const responsibleId = typeof action.responsavel_id === 'string' ? action.responsavel_id : null;
+    const operatorId = typeof action.operador_id === 'string' ? action.operador_id : null;
+    return (
+      (responsibleId === null || responsibleId === userId) &&
+      (operatorId === null || operatorId === userId)
+    );
+  }
+
+  private async ownedActionExecution(
+    client: PoolClient,
+    actionId: string,
+    userId: string,
+    lock: boolean,
+  ): Promise<{ readonly action: OperationsRow; readonly execution: OperationsRow }> {
+    const action = await this.repository.findAction(client, actionId, lock);
+    if (!action) throw error('OPERATOR_ACTION_NOT_FOUND', 'Ação operacional não encontrada.', 404);
+    const execution = await this.repository.findExecutionByAction(client, actionId, lock);
+    if (execution?.operator_id !== userId) {
+      throw error('EXECUTION_NOT_FOUND', 'Execução do Operador não encontrada.', 404);
+    }
+    return { action, execution };
+  }
+
+  private completionState(
+    execution: OperationsRow,
+    blockers: OperationsRow,
+    detail: OperationsRow,
+  ) {
+    const items = Array.isArray(detail.itens) ? detail.itens : [];
+    const pending = integer(blockers, 'pendentes');
+    const missingEvidence = integer(blockers, 'evidencias_pendentes');
+    const noncompliant = integer(blockers, 'nao_conformes_bloqueantes');
+    return {
+      execucao_id: execution.id,
+      pode_concluir:
+        text(execution, 'status') === 'IN_PROGRESS' &&
+        pending === 0 &&
+        missingEvidence === 0 &&
+        noncompliant === 0,
+      total: items.length,
+      respondidos: items.filter((item) => {
+        if (item === null || typeof item !== 'object') return false;
+        const status = (item as Record<string, unknown>).status;
+        return status === 'ANSWERED' || status === 'NOT_APPLICABLE';
+      }).length,
+      respostas_pendentes: pending,
+      evidencias_pendentes: missingEvidence,
+      nao_conformes_bloqueantes: noncompliant,
+    };
   }
 
   private async requiredWorkOrderDetail(client: PoolClient, id: string): Promise<OperationsRow> {

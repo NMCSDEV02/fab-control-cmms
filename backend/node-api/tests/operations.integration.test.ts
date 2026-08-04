@@ -487,6 +487,16 @@ test(
     assert.equal(queue.statusCode, 200, queue.body);
     assert.equal(queue.json().data.itens.length, 1);
     const actionId: string = queue.json().data.itens[0].id;
+    assert.equal(queue.json().data.itens[0].componente_tag, 'MOT-OPS-001');
+
+    const actionContext = await app.inject({
+      method: 'GET',
+      url: `/v1/maintenance/operator-actions/${actionId}`,
+      headers: bearer(identities.operator),
+    });
+    assert.equal(actionContext.statusCode, 200, actionContext.body);
+    assert.equal(actionContext.json().data.acao.checklist_itens.length, 3);
+    assert.equal(actionContext.json().data.execucao, null);
 
     const assumed = await app.inject({
       method: 'POST',
@@ -505,44 +515,45 @@ test(
     });
     assert.equal(started.statusCode, 200, started.body);
 
+    const resumedAtomically = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/operator-actions/${actionId}/start`,
+      headers: bearer(identities.operator),
+      payload: { modo_parada: 'STOPPED' },
+    });
+    assert.equal(resumedAtomically.statusCode, 200, resumedAtomically.body);
+    assert.equal(resumedAtomically.json().data.ja_iniciada, true);
+    assert.equal(resumedAtomically.json().data.execucao.id, executionId);
+
     const executionItems: readonly { id: string; tipo_resposta: string }[] =
       started.json().data.itens;
     const confirmation = executionItems.find((item) => item.tipo_resposta === 'CONFIRMACAO')!;
     const parameter = executionItems.find((item) => item.tipo_resposta === 'PARAMETRO')!;
     const evidence = executionItems.find((item) => item.tipo_resposta === 'EVIDENCIA')!;
 
-    for (const [itemId, payload] of [
-      [
-        confirmation.id,
-        {
-          resposta_texto: null,
-          resposta_numero: null,
-          resposta_booleano: true,
-          resposta_opcao: null,
-          observacao: null,
-          nao_aplicavel: false,
-        },
-      ],
-      [
-        parameter.id,
-        {
-          resposta_texto: null,
-          resposta_numero: 160,
-          resposta_booleano: null,
-          resposta_opcao: null,
-          observacao: 'Dentro da faixa.',
-          nao_aplicavel: false,
-        },
-      ],
-    ] as const) {
-      const answered = await app.inject({
-        method: 'PUT',
-        url: `/v1/maintenance/executions/${executionId}/items/${itemId}/response`,
-        headers: bearer(identities.operator),
-        payload,
-      });
-      assert.equal(answered.statusCode, 200, answered.body);
-    }
+    const answered = await app.inject({
+      method: 'PUT',
+      url: `/v1/maintenance/operator-actions/${actionId}/responses`,
+      headers: bearer(identities.operator),
+      payload: {
+        itens: [
+          {
+            item_id: confirmation.id,
+            resposta: 'SIM',
+            valor: null,
+            observacao: null,
+          },
+          {
+            item_id: parameter.id,
+            resposta: null,
+            valor: 160,
+            observacao: 'Dentro da faixa.',
+          },
+        ],
+      },
+    });
+    assert.equal(answered.statusCode, 200, answered.body);
+    assert.equal(answered.json().data.quantidade_salva, 2);
 
     const blockedCompletion = await app.inject({
       method: 'POST',
@@ -556,6 +567,15 @@ test(
     });
     assert.equal(blockedCompletion.statusCode, 409, blockedCompletion.body);
     assert.equal(blockedCompletion.json().error.code, 'EXECUTION_HAS_BLOCKERS');
+
+    const blockedValidation = await app.inject({
+      method: 'GET',
+      url: `/v1/maintenance/executions/${executionId}/validation`,
+      headers: bearer(identities.operator),
+    });
+    assert.equal(blockedValidation.statusCode, 200, blockedValidation.body);
+    assert.equal(blockedValidation.json().data.pode_concluir, false);
+    assert.equal(blockedValidation.json().data.evidencias_pendentes, 1);
 
     const evidenced = await app.inject({
       method: 'POST',
@@ -581,9 +601,17 @@ test(
     assert.ok(evidenceFile);
     assert.equal(evidenceFile.nome_arquivo, 'teste.jpg');
 
+    const validCompletion = await app.inject({
+      method: 'GET',
+      url: `/v1/maintenance/operator-actions/${actionId}/validation`,
+      headers: bearer(identities.operator),
+    });
+    assert.equal(validCompletion.statusCode, 200, validCompletion.body);
+    assert.equal(validCompletion.json().data.pode_concluir, true);
+
     const completed = await app.inject({
       method: 'POST',
-      url: `/v1/maintenance/executions/${executionId}/complete`,
+      url: `/v1/maintenance/operator-actions/${actionId}/complete`,
       headers: bearer(identities.operator),
       payload: {
         resultado: 'Preventiva concluída com sucesso.',
@@ -592,7 +620,7 @@ test(
       },
     });
     assert.equal(completed.statusCode, 200, completed.body);
-    assert.equal(completed.json().data.status, 'COMPLETED');
+    assert.equal(completed.json().data.execucao.status, 'COMPLETED');
 
     const emptyQueue = await app.inject({
       method: 'GET',

@@ -7,6 +7,7 @@ import {
   correctWorkOrderBodySchema,
   createWorkOrderBodySchema,
   evidenceBodySchema,
+  executionBatchResponseBodySchema,
   executionResponseBodySchema,
   operationsIdentifierParamsSchema,
   requestChangesBodySchema,
@@ -114,6 +115,54 @@ export function createOperationsRoutes(
       },
       handler: controller.listOperatorActions,
     });
+    app.get('/v1/maintenance/operator-actions/:actionId', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        summary: 'Consulta o contexto executável da ação e seu checklist publicado.',
+      },
+      handler: controller.getOperatorAction,
+    });
+    app.post('/v1/maintenance/operator-actions/:actionId/start', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        body: startExecutionBodySchema,
+        summary: 'Assume e inicia a ação de forma atômica e idempotente.',
+      },
+      handler: controller.startOperatorAction,
+    });
+    app.put('/v1/maintenance/operator-actions/:actionId/responses', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        body: executionBatchResponseBodySchema,
+        summary: 'Salva um lote de respostas de forma transacional.',
+      },
+      handler: controller.saveOperatorResponses,
+    });
+    app.get('/v1/maintenance/operator-actions/:actionId/validation', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        summary: 'Valida bloqueios da ação antes da conclusão.',
+      },
+      handler: controller.validateOperatorAction,
+    });
+    app.post('/v1/maintenance/operator-actions/:actionId/complete', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        body: completeExecutionBodySchema,
+        summary: 'Conclui a ação do Operador após validar todos os bloqueios.',
+      },
+      handler: controller.completeOperatorAction,
+    });
     app.post('/v1/maintenance/operator-actions/:actionId/assume', {
       preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),
       schema: {
@@ -131,6 +180,15 @@ export function createOperationsRoutes(
         summary: 'Consulta execução e respostas materializadas.',
       },
       handler: controller.getExecution,
+    });
+    app.get('/v1/maintenance/executions/:executionId/validation', {
+      preHandler: (request) => app.authorize(request, 'maintenance.executions.read'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        summary: 'Valida respostas e evidências antes da conclusão.',
+      },
+      handler: controller.validateExecutionCompletion,
     });
     app.post('/v1/maintenance/executions/:executionId/start', {
       preHandler: (request) => app.authorize(request, 'maintenance.executions.perform'),

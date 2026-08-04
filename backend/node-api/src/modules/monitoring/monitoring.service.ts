@@ -320,9 +320,8 @@ export class MonitoringService {
         await this.requireActiveAssetContext(client, input.assetId, input.componentId);
         const existing = await this.repository.findOpenStopForAsset(client, input.assetId, true);
         if (existing) {
-          throw appError('ASSET_ALREADY_STOPPED', 'O ativo já possui uma parada aberta.', 409, {
-            stopId: existing.id,
-          });
+          const detail = await this.requiredStopDetail(client, String(existing.id));
+          return { ...detail, ja_aberta: true };
         }
         const stopId = randomUUID();
         await this.repository.createStop(client, user.tenantId, stopId, user.id, input);

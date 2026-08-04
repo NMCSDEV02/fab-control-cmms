@@ -3,6 +3,7 @@ import { type FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { successEnvelopeSchema } from '../auth/auth.schemas.js';
 import type { CatalogController } from './catalog.controller.js';
 import {
+  assetHistoryQuerySchema,
   codeParamsSchema,
   createAssetBodySchema,
   createComponentBodySchema,
@@ -12,6 +13,7 @@ import {
   createPlantBodySchema,
   createPolicyBodySchema,
   createReadingBodySchema,
+  createScopedReadingBodySchema,
   createSectorBodySchema,
   identifierParamsSchema,
   listAssetsQuerySchema,
@@ -128,6 +130,16 @@ export function createCatalogRoutes(controller: CatalogController): FastifyPlugi
       handler: controller.resolveCode,
     });
 
+    app.get('/v1/cmms/qr-context/:code', {
+      preHandler: async (request) => app.authorize(request, 'cmms.assets.read'),
+      schema: {
+        ...securedResponse,
+        params: codeParamsSchema,
+        summary: 'Resolve QR/TAG e entrega o contexto operacional completo em uma consulta.',
+      },
+      handler: controller.getQrContext,
+    });
+
     app.get('/v1/cmms/assets/:assetId', {
       preHandler: async (request) => app.authorize(request, 'cmms.assets.read'),
       schema: {
@@ -138,6 +150,17 @@ export function createCatalogRoutes(controller: CatalogController): FastifyPlugi
       handler: controller.getAsset,
     });
 
+    app.get('/v1/cmms/assets/:assetId/history', {
+      preHandler: async (request) => app.authorize(request, 'cmms.assets.read'),
+      schema: {
+        ...securedResponse,
+        params: identifierParamsSchema,
+        querystring: assetHistoryQuerySchema,
+        summary: 'Consulta o histórico técnico paginado de um ativo ou componente.',
+      },
+      handler: controller.getAssetHistory,
+    });
+
     app.post('/v1/cmms/assets', {
       preHandler: async (request) => app.authorize(request, 'cmms.assets.manage'),
       schema: {
@@ -146,6 +169,17 @@ export function createCatalogRoutes(controller: CatalogController): FastifyPlugi
         summary: 'Cadastra um ativo e gera seu QR Code canônico.',
       },
       handler: controller.createAsset,
+    });
+
+    app.post('/v1/cmms/assets/:assetId/readings', {
+      preHandler: async (request) => app.authorize(request, 'cmms.readings.create'),
+      schema: {
+        ...securedResponse,
+        params: identifierParamsSchema,
+        body: createScopedReadingBodySchema,
+        summary: 'Registra leitura manual pelo contexto do equipamento ou componente.',
+      },
+      handler: controller.createScopedReading,
     });
 
     app.patch('/v1/cmms/assets/:assetId', {

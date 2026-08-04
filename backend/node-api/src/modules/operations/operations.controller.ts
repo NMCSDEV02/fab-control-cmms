@@ -65,6 +65,14 @@ interface ResponseBody {
   readonly observacao: string | null;
   readonly nao_aplicavel: boolean;
 }
+interface BatchResponseBody {
+  readonly itens: readonly {
+    readonly item_id: string;
+    readonly resposta: string | null;
+    readonly valor: number | null;
+    readonly observacao: string | null;
+  }[];
+}
 interface EvidenceBody {
   readonly objeto_armazenamento_id: string;
   readonly tipo: EvidenceType;
@@ -239,6 +247,72 @@ export class OperationsController {
       await this.service.listOperatorActions(user(request), request.query.limite ?? 50),
     );
 
+  getOperatorAction = async (request: FastifyRequest<{ Params: Params }>) =>
+    successEnvelope(
+      request,
+      'maintenance.operator-actions.get',
+      await this.service.getOperatorAction(user(request), id(request.params, 'actionId')),
+    );
+
+  startOperatorAction = async (request: FastifyRequest<{ Params: Params; Body: StartBody }>) =>
+    successEnvelope(
+      request,
+      'maintenance.operator-actions.start',
+      await this.service.startOperatorAction(
+        user(request),
+        id(request.params, 'actionId'),
+        request.body.modo_parada,
+        audit(request),
+      ),
+    );
+
+  saveOperatorResponses = async (
+    request: FastifyRequest<{ Params: Params; Body: BatchResponseBody }>,
+  ) =>
+    successEnvelope(
+      request,
+      'maintenance.operator-actions.responses',
+      await this.service.saveOperatorResponses(
+        user(request),
+        id(request.params, 'actionId'),
+        request.body.itens.map((item) => ({
+          itemId: item.item_id,
+          response: item.resposta,
+          numericValue: item.valor,
+          observation: item.observacao,
+        })),
+        audit(request),
+      ),
+    );
+
+  validateOperatorAction = async (request: FastifyRequest<{ Params: Params }>) =>
+    successEnvelope(
+      request,
+      'maintenance.operator-actions.validation',
+      await this.service.validateOperatorActionCompletion(
+        user(request),
+        id(request.params, 'actionId'),
+      ),
+    );
+
+  completeOperatorAction = async (
+    request: FastifyRequest<{ Params: Params; Body: CompleteBody }>,
+  ) =>
+    successEnvelope(
+      request,
+      'maintenance.operator-actions.complete',
+      await this.service.completeOperatorAction(
+        user(request),
+        id(request.params, 'actionId'),
+        {
+          result: request.body.resultado,
+          observation: request.body.observacao,
+          stopMode: request.body.modo_parada,
+        },
+        audit(request),
+      ),
+    );
+
   assumeAction = async (request: FastifyRequest<{ Params: Params }>) =>
     successEnvelope(
       request,
@@ -255,6 +329,16 @@ export class OperationsController {
       request,
       'maintenance.executions.get',
       await this.service.getExecution(user(request), id(request.params, 'executionId')),
+    );
+
+  validateExecutionCompletion = async (request: FastifyRequest<{ Params: Params }>) =>
+    successEnvelope(
+      request,
+      'maintenance.executions.validation',
+      await this.service.validateExecutionCompletion(
+        user(request),
+        id(request.params, 'executionId'),
+      ),
     );
 
   startExecution = async (request: FastifyRequest<{ Params: Params; Body: StartBody }>) =>

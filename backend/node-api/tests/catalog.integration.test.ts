@@ -346,6 +346,51 @@ test(
     assert.equal(resolveResponse.statusCode, 200, resolveResponse.body);
     assert.equal(resolveResponse.json().data.ativo_id, assetId);
 
+    const scopedReading = await app.inject({
+      method: 'POST',
+      url: `/v1/cmms/assets/${assetId}/readings`,
+      headers: authorization,
+      payload: {
+        componente_id: componentId,
+        parametro: 'BEARING_TEMPERATURE',
+        valor: 75,
+        unidade: '°C',
+        origem: 'MANUAL',
+        chave_idempotencia: 'catalog-test-reading-qr-scope',
+      },
+    });
+    assert.equal(scopedReading.statusCode, 200, scopedReading.body);
+    assert.equal(scopedReading.json().data.salva, true);
+    assert.equal(scopedReading.json().data.criada, true);
+    assert.equal(scopedReading.json().data.parametro.classificacao, 'WARNING_HIGH');
+    assert.equal(scopedReading.json().data.parametro.componente_id, componentId);
+
+    const qrContext = await app.inject({
+      method: 'GET',
+      url: '/v1/cmms/qr-context/CMP-ROL-001',
+      headers: authorization,
+    });
+    assert.equal(qrContext.statusCode, 200, qrContext.body);
+    assert.equal(qrContext.json().data.encontrado, true);
+    assert.equal(qrContext.json().data.tipo_contexto, 'COMPONENT');
+    assert.equal(qrContext.json().data.ativo.id, assetId);
+    assert.equal(qrContext.json().data.componente.id, componentId);
+    assert.equal(qrContext.json().data.parametros_atuais.length, 1);
+    assert.equal(qrContext.json().data.parametros_atuais[0].ultimo_valor_numerico, '75');
+    assert.ok(qrContext.json().data.historico_recente.length >= 1);
+
+    const technicalHistory = await app.inject({
+      method: 'GET',
+      url: `/v1/cmms/assets/${assetId}/history?componente_id=${componentId}&limite=2`,
+      headers: authorization,
+    });
+    assert.equal(technicalHistory.statusCode, 200, technicalHistory.body);
+    assert.equal(technicalHistory.json().data.itens.length, 2);
+    assert.equal(technicalHistory.json().data.ativo_id, assetId);
+    assert.equal(technicalHistory.json().data.componente_id, componentId);
+    assert.equal(technicalHistory.json().data.possui_mais, true);
+    assert.ok(technicalHistory.json().data.proximo_cursor);
+
     const assetDetail = await app.inject({
       method: 'GET',
       url: `/v1/cmms/assets/${assetId}`,
@@ -355,7 +400,7 @@ test(
     assert.equal(assetDetail.json().data.componentes.length, 1);
     assert.equal(assetDetail.json().data.parametros.length, 1);
     assert.equal(assetDetail.json().data.alertas_abertos.length, 1);
-    assert.equal(assetDetail.json().data.alertas_abertos[0].severidade, 'CRITICAL');
+    assert.equal(assetDetail.json().data.alertas_abertos[0].severidade, 'MEDIUM');
     assert.ok(assetDetail.json().data.historico.length >= 4);
 
     const persistence = await inTenantTransaction(pool, async (client) => {
@@ -380,8 +425,8 @@ test(
         audits: Number(audits.rows[0]!.count),
       };
     });
-    assert.equal(persistence.readings, 2);
-    assert.ok(persistence.audits >= 8);
+    assert.equal(persistence.readings, 3);
+    assert.ok(persistence.audits >= 9);
 
     await inTenantTransaction(pool, async (client) => {
       await client.query(

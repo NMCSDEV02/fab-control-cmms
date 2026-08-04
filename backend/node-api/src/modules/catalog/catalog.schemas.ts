@@ -58,6 +58,15 @@ export const codeParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const assetHistoryQuerySchema = Type.Object(
+  {
+    componente_id: Type.Optional(uuid),
+    antes_de: Type.Optional(Type.String({ format: 'date-time' })),
+    limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  },
+  { additionalProperties: false },
+);
+
 export const structureQuerySchema = Type.Object(
   { status: Type.Optional(recordStatus) },
   { additionalProperties: false },
@@ -269,6 +278,18 @@ export const createReadingBodySchema = Type.Object(
     ),
     chave_idempotencia: Type.String({ minLength: 8, maxLength: 160 }),
     metadados: Type.Optional(metadata),
+  },
+  { additionalProperties: false },
+);
+
+export const createScopedReadingBodySchema = Type.Object(
+  {
+    componente_id: Type.Optional(Type.Union([uuid, Type.Null()])),
+    parametro: Type.String({ minLength: 1, maxLength: 160 }),
+    valor: Type.Number(),
+    unidade: Type.Optional(Type.String({ maxLength: 40 })),
+    origem: Type.Optional(Type.Literal('MANUAL')),
+    chave_idempotencia: Type.String({ minLength: 8, maxLength: 160 }),
   },
   { additionalProperties: false },
 );

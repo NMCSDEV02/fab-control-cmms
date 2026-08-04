@@ -34,6 +34,12 @@ interface CodeParams {
   readonly code: string;
 }
 
+interface AssetHistoryQuery {
+  readonly componente_id?: string;
+  readonly antes_de?: string;
+  readonly limite?: number;
+}
+
 interface StructureQuery {
   readonly status?: RecordStatus;
 }
@@ -123,6 +129,15 @@ interface ParameterBody {
   readonly tipo_origem: ParameterSourceType;
   readonly descricao: string | null;
   readonly metadados: Readonly<Record<string, unknown>>;
+}
+
+interface ScopedReadingBody {
+  readonly componente_id?: string | null;
+  readonly parametro: string;
+  readonly valor: number;
+  readonly unidade?: string;
+  readonly origem?: 'MANUAL';
+  readonly chave_idempotencia: string;
 }
 
 interface MaterialBody {
@@ -411,6 +426,28 @@ export class CatalogController {
       await this.service.resolveCode(user(request), request.params.code),
     );
 
+  getQrContext = async (request: FastifyRequest<{ Params: CodeParams }>) =>
+    successEnvelope(
+      request,
+      'cmms.qr-context.get',
+      await this.service.getQrContext(user(request), request.params.code),
+    );
+
+  getAssetHistory = async (
+    request: FastifyRequest<{ Params: IdentifierParams; Querystring: AssetHistoryQuery }>,
+  ) =>
+    successEnvelope(
+      request,
+      'cmms.assets.history.list',
+      await this.service.getAssetHistoryPage(
+        user(request),
+        requiredIdentifier(request.params, 'assetId'),
+        request.query.componente_id ?? null,
+        request.query.antes_de ? new Date(request.query.antes_de) : null,
+        request.query.limite ?? 20,
+      ),
+    );
+
   createAsset = async (request: FastifyRequest<{ Body: AssetBody }>) =>
     successEnvelope(
       request,
@@ -661,6 +698,23 @@ export class CatalogController {
           idempotencyKey: request.body.chave_idempotencia,
           metadata: request.body.metadados ?? {},
         },
+        auditMetadata(request),
+      ),
+    );
+
+  createScopedReading = async (
+    request: FastifyRequest<{ Params: IdentifierParams; Body: ScopedReadingBody }>,
+  ) =>
+    successEnvelope(
+      request,
+      'cmms.assets.create-reading',
+      await this.service.createScopedReading(
+        user(request),
+        requiredIdentifier(request.params, 'assetId'),
+        request.body.componente_id ?? null,
+        request.body.parametro,
+        request.body.valor,
+        request.body.chave_idempotencia,
         auditMetadata(request),
       ),
     );
