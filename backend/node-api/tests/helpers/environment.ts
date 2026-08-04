@@ -23,7 +23,7 @@ export function createTestEnvironment(
     APP_ENVIRONMENT: 'DEVELOPMENT',
     APP_RELEASE_VERSION: '1.4.0',
     API_VERSION: '2.0.0',
-    SCHEMA_VERSION: 'postgres-0012',
+    SCHEMA_VERSION: 'postgres-0013',
     CONTRACT_VERSION: '2.0.0',
     FRONTEND_VERSION: '1.4.0',
     AUTH_SESSION_HOURS: '8',

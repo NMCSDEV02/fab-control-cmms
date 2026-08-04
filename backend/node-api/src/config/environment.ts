@@ -28,6 +28,13 @@ const environmentSchema = z
     DATABASE_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
     DATABASE_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(5_000),
     DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(15_000),
+    MIGRATION_DATABASE_URL: z
+      .string()
+      .refine(
+        (value) => value.startsWith('postgresql://') || value.startsWith('postgres://'),
+        'MIGRATION_DATABASE_URL deve usar o protocolo postgresql://.',
+      )
+      .optional(),
 
     DEFAULT_TENANT_ID: z.uuid(),
     APP_ENVIRONMENT: z.enum(['DEVELOPMENT', 'HOMOLOGATION', 'PRODUCTION']),
@@ -81,6 +88,7 @@ export interface Environment {
     readonly idleTimeoutMs: number;
     readonly connectionTimeoutMs: number;
     readonly statementTimeoutMs: number;
+    readonly migrationUrl: string | undefined;
   };
   readonly release: {
     readonly environment: 'DEVELOPMENT' | 'HOMOLOGATION' | 'PRODUCTION';
@@ -145,6 +153,7 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Enviro
       idleTimeoutMs: value.DATABASE_IDLE_TIMEOUT_MS,
       connectionTimeoutMs: value.DATABASE_CONNECTION_TIMEOUT_MS,
       statementTimeoutMs: value.DATABASE_STATEMENT_TIMEOUT_MS,
+      migrationUrl: value.MIGRATION_DATABASE_URL,
     }),
     release: Object.freeze({
       environment: value.APP_ENVIRONMENT,

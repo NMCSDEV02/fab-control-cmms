@@ -80,7 +80,7 @@ try {
   $env:APP_ENVIRONMENT = 'DEVELOPMENT'
   $env:APP_RELEASE_VERSION = '1.4.0'
   $env:API_VERSION = '2.0.0'
-  $env:SCHEMA_VERSION = 'postgres-0012'
+  $env:SCHEMA_VERSION = 'postgres-0013'
   $env:CONTRACT_VERSION = '2.0.0'
   $env:FRONTEND_VERSION = '1.4.0'
   $env:AUTH_SESSION_HOURS = '8'
@@ -176,6 +176,7 @@ GRANT fab_control_runtime TO fab_control_api_local;
   Set-Content -LiteralPath $databaseRecord -Value $databaseName -Encoding Ascii
 
   $env:TEST_DATABASE_URL = $runtimeUrl
+  $env:TEST_MIGRATION_DATABASE_URL = $adminUrl
   $env:DATABASE_URL = $runtimeUrl
 
   Write-Host '[5/6] Executando testes da API...'
@@ -207,6 +208,7 @@ finally {
     'PGPASSWORD',
     'DATABASE_URL',
     'TEST_DATABASE_URL',
+    'TEST_MIGRATION_DATABASE_URL',
     'AUTH_PASSWORD_PEPPER',
     'AUTH_RECOVERY_HMAC_SECRET',
     'DEMO_ADMIN_PASSWORD',
