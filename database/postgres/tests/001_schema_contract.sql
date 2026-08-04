@@ -6,6 +6,8 @@ DO $$
 DECLARE
   unprotected_tables integer;
   checklist_type_count integer;
+  monitoring_capability_count integer;
+  monitoring_trigger_count integer;
 BEGIN
   SELECT count(*)
   INTO unprotected_tables
@@ -40,6 +42,35 @@ BEGIN
 
   IF checklist_type_count <> 9 THEN
     RAISE EXCEPTION 'Catálogo de checklist inválido: esperado 9, encontrado %.', checklist_type_count;
+  END IF;
+  SELECT count(*)
+  INTO monitoring_capability_count
+  FROM iam.capabilities
+  WHERE code IN (
+    'maintenance.occurrences.read',
+    'maintenance.occurrences.report',
+    'maintenance.occurrences.triage',
+    'maintenance.stops.read',
+    'maintenance.stops.manage',
+    'maintenance.alerts.read',
+    'maintenance.alerts.manage',
+    'workflow.notifications.read',
+    'analytics.technical.read'
+  )
+    AND status = 'ACTIVE';
+
+  IF monitoring_capability_count <> 9 THEN
+    RAISE EXCEPTION 'Capacidades de monitoramento inválidas: esperado 9, encontrado %.', monitoring_capability_count;
+  END IF;
+
+  SELECT count(*)
+  INTO monitoring_trigger_count
+  FROM pg_catalog.pg_trigger
+  WHERE tgname IN ('equipment_stops_transition_guard', 'equipment_stops_asset_status_sync')
+    AND NOT tgisinternal;
+
+  IF monitoring_trigger_count <> 2 THEN
+    RAISE EXCEPTION 'Proteções de parada inválidas: esperado 2, encontrado %.', monitoring_trigger_count;
   END IF;
 END;
 $$;
@@ -762,6 +793,6 @@ RESET SESSION AUTHORIZATION;
 
 SELECT
   'PASS' AS result,
-  'RLS, catálogo, vínculos, publicação, assinatura, fila e notificações validados' AS contract;
+  'RLS, catálogo, vínculos, publicação, assinatura, fila, monitoramento e notificações validados' AS contract;
 
 ROLLBACK;

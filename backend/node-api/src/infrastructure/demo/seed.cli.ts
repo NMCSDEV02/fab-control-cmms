@@ -83,6 +83,15 @@ const capabilityCodes = [
   'maintenance.work-orders.review',
   'maintenance.work-orders.release',
   'maintenance.executions.read',
+  'maintenance.occurrences.read',
+  'maintenance.occurrences.report',
+  'maintenance.occurrences.triage',
+  'maintenance.stops.read',
+  'maintenance.stops.manage',
+  'maintenance.alerts.read',
+  'maintenance.alerts.manage',
+  'workflow.notifications.read',
+  'analytics.technical.read',
 ] as const;
 
 function requiredPassword(name: string): string {
@@ -248,7 +257,48 @@ async function seedIdentities(
     );
   }
 
+  for (const capabilityCode of [
+    'maintenance.occurrences.read',
+    'maintenance.occurrences.report',
+    'maintenance.occurrences.triage',
+    'maintenance.stops.read',
+    'maintenance.stops.manage',
+    'maintenance.alerts.read',
+    'maintenance.alerts.manage',
+    'workflow.notifications.read',
+    'analytics.technical.read',
+  ]) {
+    await client.query(
+      `
+        INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
+        SELECT $1, $2, capability.id, 'ALLOW'
+        FROM iam.capabilities capability
+        WHERE capability.code = $3
+        ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
+      `,
+      [tenantId, ids.managerRole, capabilityCode],
+    );
+  }
+
   for (const capabilityCode of ['maintenance.executions.read', 'maintenance.executions.perform']) {
+    await client.query(
+      `
+        INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
+        SELECT $1, $2, capability.id, 'ALLOW'
+        FROM iam.capabilities capability
+        WHERE capability.code = $3
+        ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
+      `,
+      [tenantId, ids.operatorRole, capabilityCode],
+    );
+  }
+
+  for (const capabilityCode of [
+    'maintenance.occurrences.read',
+    'maintenance.occurrences.report',
+    'maintenance.stops.read',
+    'workflow.notifications.read',
+  ]) {
     await client.query(
       `
         INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)

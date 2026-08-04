@@ -106,6 +106,27 @@ Validação integral com PostgreSQL local isolado:
 | `POST`       | `/v1/maintenance/executions/:executionId/items/:itemId/evidence` | vincula objeto armazenado e atualiza a suficiência de evidências   |
 | `POST`       | `/v1/maintenance/executions/:executionId/complete`               | conclui sem permitir respostas ou evidências obrigatórias ausentes |
 
+### Ocorrências, paradas, alertas e notificações
+
+| Método       | Rota                                                           | Finalidade                                      |
+| ------------ | -------------------------------------------------------------- | ----------------------------------------------- |
+| `GET`/`POST` | `/v1/maintenance/occurrences`                                  | consulta e registro de ocorrências operacionais |
+| `GET`        | `/v1/maintenance/occurrences/:occurrenceId`                    | ocorrência, parada, análise e OS relacionadas   |
+| `POST`       | `/v1/maintenance/occurrences/:occurrenceId/technical-analysis` | análise técnica enviada ao Administrador        |
+| `GET`/`POST` | `/v1/maintenance/stops`                                        | consulta e abertura de paradas rastreáveis      |
+| `GET`        | `/v1/maintenance/stops/:stopId`                                | tempos e estado atual da parada                 |
+| `POST`       | `/v1/maintenance/stops/:stopId/transition`                     | manutenção, retorno operacional e conclusão     |
+| `GET`        | `/v1/maintenance/alerts`                                       | fila deduplicada de alertas técnicos            |
+| `POST`       | `/v1/maintenance/alerts/:alertId/acknowledge`                  | reconhecimento do alerta                        |
+| `POST`       | `/v1/maintenance/alerts/:alertId/create-occurrence`            | converte alerta em ocorrência                   |
+| `GET`        | `/v1/notifications`                                            | central operacional e contadores persistentes   |
+| `PATCH`      | `/v1/notifications/:notificationId/read`                       | registra leitura por usuário                    |
+| `PATCH`      | `/v1/notifications/:notificationId/dismiss`                    | dispensa uma notificação                        |
+| `POST`       | `/v1/notifications/read-all`                                   | registra leitura em lote                        |
+| `GET`        | `/v1/analytics/technical-summary`                              | disponibilidade, MTTR, MTBF, SLA e ranking      |
+
+O backend não estima OEE sem dados de produção, ciclo ideal e qualidade.
+
 Todas as rotas de domínio exigem sessão ativa e capacidade específica calculada no servidor.
 
 ## Massa controlada de homologação
