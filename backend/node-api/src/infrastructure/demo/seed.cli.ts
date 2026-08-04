@@ -42,6 +42,12 @@ const ids = {
   pumpTemperaturePolicy: '00000000-0000-4000-8000-000000000901',
   motorVibrationPolicy: '00000000-0000-4000-8000-000000000902',
   compressorPressurePolicy: '00000000-0000-4000-8000-000000000903',
+  pumpChecklist: '00000000-0000-4000-8000-000000001001',
+  pumpChecklistVersion: '00000000-0000-4000-8000-000000001002',
+  periodicPlan: '00000000-0000-4000-8000-000000001101',
+  periodicPlanVersion: '00000000-0000-4000-8000-000000001102',
+  occurrencePlan: '00000000-0000-4000-8000-000000001103',
+  occurrencePlanVersion: '00000000-0000-4000-8000-000000001104',
 } as const;
 
 const capabilityCodes = [
@@ -54,6 +60,13 @@ const capabilityCodes = [
   'cmms.materials.read',
   'cmms.materials.manage',
   'cmms.readings.create',
+  'maintenance.checklists.read',
+  'maintenance.checklists.manage',
+  'maintenance.checklists.review',
+  'maintenance.checklists.publish',
+  'maintenance.plans.read',
+  'maintenance.plans.manage',
+  'maintenance.plans.publish',
 ] as const;
 
 function requiredPassword(name: string): string {
@@ -168,6 +181,8 @@ async function seedIdentities(
     'cmms.parameters.read',
     'cmms.materials.read',
     'cmms.readings.create',
+    'maintenance.checklists.read',
+    'maintenance.plans.read',
   ]) {
     await client.query(
       `
@@ -190,6 +205,17 @@ async function seedIdentities(
       [tenantId, ids.operatorRole, capabilityCode],
     );
   }
+
+  await client.query(
+    `
+      INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
+      SELECT $1, $2, capability.id, 'ALLOW'
+      FROM iam.capabilities capability
+      WHERE capability.code = 'maintenance.checklists.review'
+      ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
+    `,
+    [tenantId, ids.managerRole],
+  );
 
   const userPasswords = [
     [ids.admin, passwords.admin],
@@ -700,6 +726,404 @@ async function seedParameters(client: PoolClient, tenantId: string): Promise<voi
   );
 }
 
+async function seedChecklistsAndPlans(client: PoolClient, tenantId: string): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO maintenance.checklist_templates (
+        id, tenant_id, code, name, asset_id, component_id, checklist_type,
+        criticality, created_by
+      )
+      VALUES (
+        $1, $2, 'CHK-BOM-001', 'Inspeção completa da bomba de processo', $3, $4,
+        'PREVENTIVE', 'HIGH', $5
+      )
+      ON CONFLICT (tenant_id, code) DO UPDATE SET
+        name = EXCLUDED.name,
+        lifecycle_status = 'ACTIVE'
+    `,
+    [ids.pumpChecklist, tenantId, ids.pump, ids.pumpBearing, ids.admin],
+  );
+
+  const checklistHash = hashPolicy({
+    code: 'CHK-BOM-001',
+    revision: 1,
+    responseTypes: [
+      'INSTRUCAO',
+      'CONFIRMACAO',
+      'OK_NOK',
+      'NUMERO',
+      'PARAMETRO',
+      'TEXTO',
+      'SELECAO',
+      'EVIDENCIA',
+      'LEITURA_OPERACIONAL',
+    ],
+  });
+  await client.query(
+    `
+      INSERT INTO maintenance.checklist_template_versions (
+        id, tenant_id, checklist_template_id, revision, status, technical_area_id,
+        signature_policy, required_signatures, segregation_required, manager_guidance,
+        safety_requirements, content_hash_sha256, created_by
+      )
+      VALUES (
+        $1, $2, $3, 1, 'DRAFT', $4, 'QUALIDADE_E_SEGURANCA', 2, true,
+        'Confirmar integridade mecânica, condição segura e evidências antes da liberação.',
+        '["Aplicar bloqueio e etiquetagem antes da inspeção","Confirmar ausência de energia residual"]'::jsonb,
+        $5, $6
+      )
+      ON CONFLICT (tenant_id, checklist_template_id, revision) DO NOTHING
+    `,
+    [
+      ids.pumpChecklistVersion,
+      tenantId,
+      ids.pumpChecklist,
+      ids.qualityArea,
+      checklistHash,
+      ids.admin,
+    ],
+  );
+
+  const items = [
+    {
+      title: 'Ler as instruções de segurança',
+      instruction: 'Aplicar LOTO e confirmar condição segura antes de tocar no conjunto.',
+      type: 'INSTRUCAO',
+      category: 'SEGURANCA',
+      required: false,
+      evidence: false,
+      minimumPhotos: 0,
+      blocks: false,
+      parameterId: null,
+      expected: null,
+      minimum: null,
+      maximum: null,
+      unit: null,
+      options: [],
+    },
+    {
+      title: 'Confirmar bloqueio de energia',
+      instruction: 'Confirme somente após testar a ausência de energia residual.',
+      type: 'CONFIRMACAO',
+      category: 'SEGURANCA',
+      required: true,
+      evidence: false,
+      minimumPhotos: 0,
+      blocks: true,
+      parameterId: null,
+      expected: 'CONFIRMADO',
+      minimum: null,
+      maximum: null,
+      unit: null,
+      options: [],
+    },
+    {
+      title: 'Inspecionar condição do rolamento',
+      instruction: 'Avalie folga, ruído, vedação e sinais de superaquecimento.',
+      type: 'OK_NOK',
+      category: 'MECANICA',
+      required: true,
+      evidence: true,
+      minimumPhotos: 1,
+      blocks: true,
+      parameterId: null,
+      expected: 'OK',
+      minimum: null,
+      maximum: null,
+      unit: null,
+      options: [],
+    },
+    {
+      title: 'Registrar quantidade de reapertos',
+      instruction: 'Informe quantos pontos precisaram de reaperto.',
+      type: 'NUMERO',
+      category: 'MECANICA',
+      required: true,
+      evidence: false,
+      minimumPhotos: 0,
+      blocks: false,
+      parameterId: null,
+      expected: null,
+      minimum: 0,
+      maximum: 12,
+      unit: 'pontos',
+      options: [],
+    },
+    {
+      title: 'Medir temperatura do rolamento',
+      instruction: 'Registre a temperatura estabilizada em operação.',
+      type: 'PARAMETRO',
+      category: 'CONDICAO',
+      required: true,
+      evidence: true,
+      minimumPhotos: 1,
+      blocks: true,
+      parameterId: ids.pumpTemperature,
+      expected: null,
+      minimum: 30,
+      maximum: 90,
+      unit: '°C',
+      options: [],
+    },
+    {
+      title: 'Descrever observações da inspeção',
+      instruction: 'Registre achados relevantes ou informe que não houve desvios.',
+      type: 'TEXTO',
+      category: 'RELATORIO',
+      required: true,
+      evidence: false,
+      minimumPhotos: 0,
+      blocks: false,
+      parameterId: null,
+      expected: null,
+      minimum: null,
+      maximum: null,
+      unit: null,
+      options: [],
+    },
+    {
+      title: 'Classificar condição final',
+      instruction: 'Selecione a condição observada ao final da atividade.',
+      type: 'SELECAO',
+      category: 'DECISAO',
+      required: true,
+      evidence: false,
+      minimumPhotos: 0,
+      blocks: true,
+      parameterId: null,
+      expected: 'APTO',
+      minimum: null,
+      maximum: null,
+      unit: null,
+      options: ['APTO', 'APTO_COM_RESTRICAO', 'NAO_APTO'],
+    },
+    {
+      title: 'Registrar evidência da condição final',
+      instruction: 'Fotografe o conjunto montado e a identificação do equipamento.',
+      type: 'EVIDENCIA',
+      category: 'EVIDENCIA',
+      required: true,
+      evidence: true,
+      minimumPhotos: 2,
+      blocks: true,
+      parameterId: null,
+      expected: null,
+      minimum: null,
+      maximum: null,
+      unit: null,
+      options: [],
+    },
+    {
+      title: 'Confirmar leitura operacional final',
+      instruction: 'Faça a leitura final após o retorno seguro à operação.',
+      type: 'LEITURA_OPERACIONAL',
+      category: 'OPERACAO',
+      required: true,
+      evidence: false,
+      minimumPhotos: 0,
+      blocks: true,
+      parameterId: ids.pumpTemperature,
+      expected: null,
+      minimum: 30,
+      maximum: 90,
+      unit: '°C',
+      options: [],
+    },
+  ] as const;
+
+  for (const [index, item] of items.entries()) {
+    await client.query(
+      `
+        INSERT INTO maintenance.checklist_items (
+          tenant_id, checklist_template_version_id, sequence, title, instruction,
+          response_type_code, category, required, evidence_required,
+          minimum_evidence_photos, blocks_completion, parameter_definition_id,
+          expected_value, minimum_value, maximum_value, unit, options, weight
+        )
+        SELECT
+          $1, version.id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+          $13, $14, $15, $16, $17::jsonb, 1
+        FROM maintenance.checklist_template_versions version
+        WHERE version.id = $2
+          AND version.status = 'DRAFT'
+        ON CONFLICT (tenant_id, checklist_template_version_id, sequence) DO NOTHING
+      `,
+      [
+        tenantId,
+        ids.pumpChecklistVersion,
+        index + 1,
+        item.title,
+        item.instruction,
+        item.type,
+        item.category,
+        item.required,
+        item.evidence,
+        item.minimumPhotos,
+        item.blocks,
+        item.parameterId,
+        item.expected,
+        item.minimum,
+        item.maximum,
+        item.unit,
+        JSON.stringify(item.options),
+      ],
+    );
+  }
+
+  await client.query(
+    `
+      UPDATE maintenance.checklist_template_versions
+      SET status = 'IN_REVIEW', submitted_at = clock_timestamp(), content_hash_sha256 = $2
+      WHERE id = $1 AND status = 'DRAFT'
+    `,
+    [ids.pumpChecklistVersion, checklistHash],
+  );
+
+  const reviews = [
+    [ids.quality, 'GESTOR_TECNICO:QUALITY:QUALITY_INSPECTOR'],
+    [ids.safety, 'GESTOR_TECNICO:SAFETY:SAFETY_TECHNICIAN'],
+  ] as const;
+  for (const [reviewerId, roleSnapshot] of reviews) {
+    await client.query(
+      `
+        INSERT INTO maintenance.checklist_model_reviews (
+          tenant_id, checklist_template_version_id, decision, justification,
+          reviewer_id, reviewer_role_snapshot, payload_hash_sha256
+        )
+        SELECT
+          $1, version.id, 'APPROVED',
+          'Modelo demonstrativo aprovado para homologação integral.', $3, $4, $5
+        FROM maintenance.checklist_template_versions version
+        WHERE version.id = $2 AND version.status = 'IN_REVIEW'
+        ON CONFLICT (tenant_id, checklist_template_version_id, reviewer_id) DO NOTHING
+      `,
+      [tenantId, ids.pumpChecklistVersion, reviewerId, roleSnapshot, checklistHash],
+    );
+  }
+
+  await client.query(
+    `
+      UPDATE maintenance.checklist_template_versions
+      SET status = 'APPROVED'
+      WHERE id = $1 AND status = 'IN_REVIEW'
+    `,
+    [ids.pumpChecklistVersion],
+  );
+  await client.query(
+    `
+      UPDATE maintenance.checklist_template_versions
+      SET status = 'PUBLISHED', published_at = clock_timestamp()
+      WHERE id = $1 AND status = 'APPROVED'
+    `,
+    [ids.pumpChecklistVersion],
+  );
+
+  const plans = [
+    {
+      id: ids.periodicPlan,
+      versionId: ids.periodicPlanVersion,
+      code: 'PLN-BOM-30D',
+      name: 'Preventiva mensal da bomba de processo',
+      planType: 'PREVENTIVE',
+      criticality: 'HIGH',
+      triggerType: 'PERIODICITY',
+      triggerValue: null,
+      triggerUnit: 'DAYS',
+      recurrenceDays: 30,
+      duration: 90,
+      stopMode: 'MANDATORY_STOP',
+      analysis: {
+        objetivo: 'Prevenir falha do rolamento e perda de disponibilidade.',
+        origem: 'Massa controlada de homologação',
+      },
+    },
+    {
+      id: ids.occurrencePlan,
+      versionId: ids.occurrencePlanVersion,
+      code: 'PLN-BOM-OCO',
+      name: 'Inspeção não programada após ocorrência',
+      planType: 'CORRECTIVE',
+      criticality: 'CRITICAL',
+      triggerType: 'OCCURRENCE',
+      triggerValue: null,
+      triggerUnit: null,
+      recurrenceDays: null,
+      duration: 45,
+      stopMode: 'EXECUTOR_DECISION',
+      analysis: {
+        objetivo: 'Diagnosticar ocorrência antes da liberação operacional.',
+        origem: 'Ocorrência ou alerta crítico',
+      },
+    },
+  ] as const;
+
+  for (const plan of plans) {
+    await client.query(
+      `
+        INSERT INTO maintenance.maintenance_plans (
+          id, tenant_id, code, name, asset_id, component_id, plan_type, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (tenant_id, code) DO UPDATE SET
+          name = EXCLUDED.name,
+          lifecycle_status = 'ACTIVE'
+      `,
+      [
+        plan.id,
+        tenantId,
+        plan.code,
+        plan.name,
+        ids.pump,
+        ids.pumpBearing,
+        plan.planType,
+        ids.admin,
+      ],
+    );
+    const planHash = hashPolicy(plan.analysis);
+    await client.query(
+      `
+        INSERT INTO maintenance.maintenance_plan_versions (
+          id, tenant_id, maintenance_plan_id, checklist_template_version_id,
+          revision, status, criticality, trigger_type, trigger_value, trigger_unit,
+          recurrence_days, estimated_duration_minutes, lockout_required,
+          evidence_required, maximum_sessions, maintenance_stop_mode,
+          technical_analysis, technical_area_id, content_hash_sha256, created_by
+        )
+        VALUES (
+          $1, $2, $3, $4, 1, 'DRAFT', $5, $6, $7, $8, $9, $10,
+          true, true, 1, $11, $12::jsonb, $13, $14, $15
+        )
+        ON CONFLICT (tenant_id, maintenance_plan_id, revision) DO NOTHING
+      `,
+      [
+        plan.versionId,
+        tenantId,
+        plan.id,
+        ids.pumpChecklistVersion,
+        plan.criticality,
+        plan.triggerType,
+        plan.triggerValue,
+        plan.triggerUnit,
+        plan.recurrenceDays,
+        plan.duration,
+        plan.stopMode,
+        JSON.stringify(plan.analysis),
+        ids.maintenanceArea,
+        planHash,
+        ids.admin,
+      ],
+    );
+    await client.query(
+      `
+        UPDATE maintenance.maintenance_plan_versions
+        SET status = 'PUBLISHED', submitted_at = clock_timestamp(), published_at = clock_timestamp()
+        WHERE id = $1 AND status = 'DRAFT'
+      `,
+      [plan.versionId],
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const environment = loadEnvironment();
   if (environment.nodeEnv === 'production' || environment.release.environment === 'PRODUCTION') {
@@ -759,9 +1183,10 @@ async function main(): Promise<void> {
     await seedCatalog(client, environment.defaultTenantId);
     await seedMaterials(client, environment.defaultTenantId);
     await seedParameters(client, environment.defaultTenantId);
+    await seedChecklistsAndPlans(client, environment.defaultTenantId);
     await client.query('COMMIT');
     process.stdout.write(
-      'Massa de homologação aplicada: 5 perfis, 1 planta, 2 setores, 2 linhas, 4 ativos, 3 componentes, 3 materiais e 4 parâmetros.\n',
+      'Massa de homologação aplicada: 5 perfis, 4 ativos, 9 tipos de etapa, 1 checklist com dupla validação e 2 planos publicados.\n',
     );
   } catch (error) {
     await client.query('ROLLBACK');

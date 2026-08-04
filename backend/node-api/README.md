@@ -69,6 +69,24 @@ Validação integral com PostgreSQL local isolado:
 | `POST`         | `/v1/cmms/parameters/:parameterId/policies` | versão imutável de limites                   |
 | `GET`/`POST`   | `/v1/cmms/parameters/:parameterId/readings` | histórico e registro idempotente de leituras |
 
+### Checklists e planos de manutenção
+
+| Método                | Rota                                                      | Finalidade                                   |
+| --------------------- | --------------------------------------------------------- | -------------------------------------------- |
+| `GET`                 | `/v1/maintenance/checklist-item-types`                    | catálogo dos nove tipos de resposta          |
+| `GET`/`POST`          | `/v1/maintenance/checklists`                              | pesquisa e criação de modelos versionados    |
+| `GET`/`PATCH`         | `/v1/maintenance/checklists/:checklistId`                 | modelo, revisões, etapas e pareceres         |
+| `POST`/`PUT`/`DELETE` | `/v1/maintenance/checklists/:checklistId/items[/:itemId]` | composição do rascunho                       |
+| `POST`                | `/v1/maintenance/checklists/:checklistId/items/reorder`   | reordenação atômica das etapas               |
+| `POST`                | `/v1/maintenance/checklists/:checklistId/submit`          | selagem e envio ao filtro técnico            |
+| `POST`                | `/v1/maintenance/checklists/:checklistId/review`          | parecer permanente de Qualidade ou Segurança |
+| `POST`                | `/v1/maintenance/checklists/:checklistId/publish`         | publicação de revisão integralmente aprovada |
+| `POST`                | `/v1/maintenance/checklists/:checklistId/revisions`       | nova revisão sem alterar a publicada         |
+| `GET`/`POST`          | `/v1/maintenance/plans`                                   | pesquisa e criação de planos                 |
+| `GET`/`PATCH`         | `/v1/maintenance/plans/:planId`                           | consulta e alteração da revisão editável     |
+| `POST`                | `/v1/maintenance/plans/:planId/publish`                   | publicação com checklist executável          |
+| `POST`                | `/v1/maintenance/plans/:planId/revisions`                 | nova revisão preservando o histórico         |
+
 Todas as rotas de domínio exigem sessão ativa e capacidade específica calculada no servidor.
 
 ## Massa controlada de homologação
@@ -84,7 +102,7 @@ $env:DEMO_OPERATOR_PASSWORD = '<senha-forte>'
 npm run seed:homologation
 ```
 
-A carga do bloco 3.2 inclui cinco perfis, áreas de Qualidade, Segurança e Manutenção, estrutura fabril, quatro estados operacionais de ativos, componentes, materiais com e sem necessidade de reposição, parâmetros decimais e booleanos, faixas, leituras normais/críticas e alerta operacional.
+A carga dos blocos 3.2 e 3.3 inclui cinco perfis, áreas de Qualidade, Segurança e Manutenção, estrutura fabril, quatro estados operacionais de ativos, componentes, materiais, parâmetros, faixas, leituras normais/críticas, alerta operacional, um checklist publicado contendo os nove tipos de etapa, pareceres permanentes de Qualidade e Segurança e dois planos publicados com disparos por periodicidade e ocorrência.
 
 ## Segurança aplicada
 
@@ -105,6 +123,10 @@ A carga do bloco 3.2 inclui cinco perfis, áreas de Qualidade, Segurança e Manu
 - histórico imutável de ativos e auditoria de todas as mutações;
 - ausência de rotas de exclusão física no catálogo;
 - contexto RLS definido dentro da transação.
+- revisões publicadas de checklists e planos imutáveis;
+- hash SHA-256 recalculado antes da publicação;
+- dupla validação opcional por Qualidade e Segurança;
+- plano impedido de publicar sem checklist publicado e executável.
 
 ## Regra operacional
 

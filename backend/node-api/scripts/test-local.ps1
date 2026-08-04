@@ -50,6 +50,7 @@ if (-not (Test-Path -LiteralPath $credentialDirectory)) {
 $env:PGPASSWORD = $adminPassword
 
 try {
+  Write-Host "[1/6] Criando banco isolado $databaseName..."
   & $createdb `
     -h $HostName `
     -p $Port `
@@ -79,7 +80,7 @@ try {
   $env:APP_ENVIRONMENT = 'DEVELOPMENT'
   $env:APP_RELEASE_VERSION = '1.4.0'
   $env:API_VERSION = '2.0.0'
-  $env:SCHEMA_VERSION = 'postgres-0009'
+  $env:SCHEMA_VERSION = 'postgres-0010'
   $env:CONTRACT_VERSION = '2.0.0'
   $env:FRONTEND_VERSION = '1.4.0'
   $env:AUTH_SESSION_HOURS = '8'
@@ -90,6 +91,7 @@ try {
   $env:AUTH_PASSWORD_PEPPER = 'local-test-password-pepper-never-used-in-production'
   $env:AUTH_RECOVERY_HMAC_SECRET = 'local-test-recovery-secret-never-used-in-production'
 
+  Write-Host '[2/6] Aplicando migracoes...'
   & $npm run db:migrate
   if ($LASTEXITCODE -ne 0) {
     throw 'As migracoes da API falharam.'
@@ -116,6 +118,7 @@ END;
 $$;
 '@
 
+  Write-Host '[3/6] Preparando usuario runtime restrito...'
   & $psql `
     -X `
     -q `
@@ -150,6 +153,7 @@ GRANT fab_control_runtime TO fab_control_api_local;
     throw 'Falha ao proteger o usuario restrito da API.'
   }
 
+  Write-Host '[4/6] Validando contrato relacional...'
   & $psql `
     -X `
     -q `
@@ -174,6 +178,7 @@ GRANT fab_control_runtime TO fab_control_api_local;
   $env:TEST_DATABASE_URL = $runtimeUrl
   $env:DATABASE_URL = $runtimeUrl
 
+  Write-Host '[5/6] Executando testes da API...'
   & $npm test
   if ($LASTEXITCODE -ne 0) {
     throw 'Os testes da API falharam.'
@@ -185,6 +190,7 @@ GRANT fab_control_runtime TO fab_control_api_local;
   $env:DEMO_MAINTENANCE_PASSWORD = "Test!$([Guid]::NewGuid().ToString('N'))"
   $env:DEMO_OPERATOR_PASSWORD = "Test!$([Guid]::NewGuid().ToString('N'))"
 
+  Write-Host '[6/6] Validando seed idempotente em duas execucoes...'
   1..2 | ForEach-Object {
     & $npm run seed:homologation
     if ($LASTEXITCODE -ne 0) {

@@ -6,6 +6,7 @@ import { loadEnvironment, type Environment } from './config/environment.js';
 import { createDatabase, type Database } from './infrastructure/database/database.js';
 import { authPlugin } from './modules/auth/auth.plugin.js';
 import { catalogPlugin } from './modules/catalog/catalog.plugin.js';
+import { planningPlugin } from './modules/planning/planning.plugin.js';
 import { systemRoutes } from './modules/system/system.routes.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerSecurityPlugins } from './plugins/security.js';
@@ -76,6 +77,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(systemRoutes);
   await app.register(authPlugin);
   await app.register(catalogPlugin);
+  await app.register(planningPlugin);
 
   if (ownsDatabase) {
     app.addHook('onClose', async () => {

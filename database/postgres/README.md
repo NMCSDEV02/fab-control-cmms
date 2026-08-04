@@ -26,6 +26,7 @@ Este banco nasce em paralelo. Ele não substitui o Apps Script, não altera as p
 7. `0007_integrity_security_views.sql`
 8. `0008_runtime_access.sql`
 9. `0009_cmms_catalog_runtime.sql`
+10. `0010_checklists_plans_runtime.sql`
 
 Cada arquivo abre e confirma a própria transação. Uma falha interrompe a aplicação e não confirma o arquivo incompleto.
 

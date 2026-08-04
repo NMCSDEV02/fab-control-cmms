@@ -356,8 +356,14 @@ VALUES (
 );
 
 UPDATE maintenance.checklist_template_versions
-SET status = 'PUBLISHED',
+SET status = 'APPROVED',
     submitted_at = clock_timestamp(),
+    content_hash_sha256 = repeat('c', 64)
+WHERE tenant_id = '11111111-1111-4111-8111-111111111111'
+  AND id = '11111111-3100-4000-8000-000000000001';
+
+UPDATE maintenance.checklist_template_versions
+SET status = 'PUBLISHED',
     published_at = clock_timestamp()
 WHERE tenant_id = '11111111-1111-4111-8111-111111111111'
   AND id = '11111111-3100-4000-8000-000000000001';
