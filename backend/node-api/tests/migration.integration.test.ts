@@ -40,7 +40,7 @@ test(
         tenantId,
         environment: 'HOMOLOGATION',
         sourceRelease: '1.4.0',
-        targetSchemaVersion: 'postgres-0013',
+        targetSchemaVersion: 'postgres-0014',
         initiatedBy: 'node-test',
         mode: 'FULL',
       });
@@ -67,7 +67,7 @@ test(
         tenantId,
         environment: 'HOMOLOGATION',
         sourceRelease: '1.4.0',
-        targetSchemaVersion: 'postgres-0013',
+        targetSchemaVersion: 'postgres-0014',
         initiatedBy: 'node-test-rerun',
         mode: 'FULL',
       });

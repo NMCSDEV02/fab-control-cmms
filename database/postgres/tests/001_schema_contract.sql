@@ -763,6 +763,32 @@ BEGIN
 END;
 $$;
 
+DO $$
+DECLARE
+  admin_capabilities integer;
+BEGIN
+  IF to_regclass('platform.commercial_catalog_versions') IS NULL
+     OR to_regclass('platform.commercial_catalog_drafts') IS NULL THEN
+    RAISE EXCEPTION 'Tabelas do catÃ¡logo comercial versionado nÃ£o foram criadas.';
+  END IF;
+
+  SELECT count(*)
+  INTO admin_capabilities
+  FROM identity.capabilities
+  WHERE code IN (
+    'admin.identity.read',
+    'admin.identity.manage',
+    'admin.governance.read',
+    'admin.governance.manage',
+    'admin.configuration.manage'
+  );
+
+  IF admin_capabilities <> 5 THEN
+    RAISE EXCEPTION 'Capacidades administrativas incompletas: % de 5.', admin_capabilities;
+  END IF;
+END;
+$$;
+
 CREATE ROLE fab_schema_test_runtime NOLOGIN;
 GRANT USAGE ON SCHEMA platform TO fab_schema_test_runtime;
 GRANT SELECT ON platform.tenants TO fab_schema_test_runtime;

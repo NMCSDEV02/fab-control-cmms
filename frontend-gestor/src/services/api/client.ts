@@ -717,6 +717,268 @@ function nodeActionRequest(
           status: record(data.versao_atual).status ?? data.status,
         }),
       };
+    case "admin.usuarios.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/users", {
+          busca: payload.busca,
+          perfil: payload.perfil,
+          status: payload.status,
+          limite: payload.limite,
+        }),
+        token,
+      };
+    case "admin.usuarios.salvar": {
+      const data = record(payload.dados);
+      const userId = String(data.id ?? "");
+      return {
+        method: userId ? "PATCH" : "POST",
+        path: userId
+          ? `/v1/admin/users/${encodeURIComponent(userId)}`
+          : "/v1/admin/users",
+        body: {
+          nome: data.nome,
+          email: data.email || null,
+          matricula: data.matricula,
+          perfil: data.perfil,
+          status: data.status,
+          ...(data.senha_temporaria
+            ? { senha_temporaria: data.senha_temporaria }
+            : {}),
+          area_id: data.area_id || null,
+          cargo_id: data.cargo_id || null,
+          especialidades: Array.isArray(data.especialidades)
+            ? data.especialidades
+            : [],
+          escopo_ids: Array.isArray(data.escopo_ids) ? data.escopo_ids : [],
+        },
+        token,
+      };
+    }
+    case "admin.usuarios.desbloquear":
+      return {
+        method: "POST",
+        path: `/v1/admin/users/${encodeURIComponent(String(payload.usuario_id))}/unlock`,
+        body: {},
+        token,
+      };
+    case "admin.usuarios.redefinir_senha":
+      return {
+        method: "POST",
+        path: `/v1/admin/users/${encodeURIComponent(String(payload.usuario_id))}/reset-password`,
+        body: { senha_temporaria: payload.senha_temporaria },
+        token,
+      };
+    case "admin.usuarios.revogar_sessoes":
+      return {
+        method: "POST",
+        path: `/v1/admin/users/${encodeURIComponent(String(payload.usuario_id))}/revoke-sessions`,
+        body: {},
+        token,
+      };
+    case "admin.areas_tecnicas.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/technical-areas", {
+          status: payload.status,
+        }),
+        token,
+      };
+    case "admin.areas_tecnicas.salvar": {
+      const data = record(payload.dados);
+      const areaId = String(data.id ?? "");
+      return {
+        method: areaId ? "PATCH" : "POST",
+        path: areaId
+          ? `/v1/admin/technical-areas/${encodeURIComponent(areaId)}`
+          : "/v1/admin/technical-areas",
+        body: {
+          codigo: data.codigo,
+          nome: data.nome,
+          descricao: data.descricao ?? "",
+          status: data.status,
+          exige_assinatura_padrao:
+            data.exige_assinatura_padrao === true ||
+            String(data.exige_assinatura_padrao).toUpperCase() === "SIM",
+        },
+        token,
+      };
+    }
+    case "admin.cargos_tecnicos.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/technical-roles", {
+          area_id: payload.area_id,
+          status: payload.status,
+        }),
+        token,
+      };
+    case "admin.cargos_tecnicos.salvar": {
+      const data = record(payload.dados);
+      const roleId = String(data.id ?? "");
+      return {
+        method: roleId ? "PATCH" : "POST",
+        path: roleId
+          ? `/v1/admin/technical-roles/${encodeURIComponent(roleId)}`
+          : "/v1/admin/technical-roles",
+        body: {
+          area_id: data.area_id,
+          codigo: data.codigo,
+          nome: data.nome,
+          descricao: data.descricao ?? "",
+          status: data.status,
+          pode_assinar:
+            data.pode_assinar === true ||
+            String(data.pode_assinar).toUpperCase() === "SIM",
+        },
+        token,
+      };
+    }
+    case "admin.permissoes.obter":
+      return { method: "GET", path: "/v1/admin/permissions", token };
+    case "admin.permissoes.salvar":
+      return {
+        method: "PATCH",
+        path: `/v1/admin/permissions/${encodeURIComponent(String(payload.perfil))}`,
+        body: { permissoes: payload.permissoes },
+        token,
+      };
+    case "admin.empresa.obter":
+      return { method: "GET", path: "/v1/admin/company", token };
+    case "admin.empresa.salvar": {
+      const data = record(payload.dados);
+      return {
+        method: "PATCH",
+        path: "/v1/admin/company",
+        body: {
+          nome: data.nome,
+          logo_data_url: data.logo_data_url ?? "",
+        },
+        token,
+      };
+    }
+    case "admin.acesso.estado":
+      return { method: "GET", path: "/v1/admin/commercial-access", token };
+    case "admin.configuracao.estado":
+      return { method: "GET", path: "/v1/admin/configuration", token };
+    case "admin.configuracao.validar":
+      return {
+        method: "POST",
+        path: "/v1/admin/configuration/validate",
+        body: { configuracao: payload.configuracao },
+        token,
+      };
+    case "admin.configuracao.rascunho.salvar":
+      return {
+        method: "POST",
+        path: "/v1/admin/configuration/drafts",
+        body: {
+          configuracao: payload.configuracao,
+          base_versao_id: payload.base_versao_id ?? "",
+        },
+        token,
+      };
+    case "admin.configuracao.versoes":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/configuration/versions", {
+          limite: payload.limite,
+        }),
+        token,
+      };
+    case "admin.configuracao.publicar":
+      return {
+        method: "POST",
+        path: "/v1/admin/configuration/publish",
+        body: { rascunho_id: payload.rascunho_id },
+        token,
+      };
+    case "admin.configuracao.rollback":
+      return {
+        method: "POST",
+        path: "/v1/admin/configuration/rollback",
+        body: {
+          versao_id: payload.versao_id,
+          base_versao_id: payload.base_versao_id ?? "",
+          motivo: payload.motivo,
+        },
+        token,
+      };
+    case "platform.motor.catalogo":
+      return { method: "GET", path: "/v1/platform/motor/catalog", token };
+    case "platform.motor.catalogo.validar":
+      return {
+        method: "POST",
+        path: "/v1/platform/motor/catalog/validate",
+        body: { planos: payload.planos },
+        token,
+      };
+    case "platform.motor.catalogo.rascunho.salvar":
+      return {
+        method: "POST",
+        path: "/v1/platform/motor/catalog/drafts",
+        body: {
+          planos: payload.planos,
+          base_versao_id: payload.base_versao_id ?? "",
+        },
+        token,
+      };
+    case "platform.motor.catalogo.versoes":
+      return {
+        method: "GET",
+        path: queryPath("/v1/platform/motor/catalog/versions", {
+          limite: payload.limite,
+        }),
+        token,
+      };
+    case "platform.motor.catalogo.publicar":
+      return {
+        method: "POST",
+        path: "/v1/platform/motor/catalog/publish",
+        body: { rascunho_id: payload.rascunho_id },
+        token,
+      };
+    case "platform.motor.catalogo.rollback":
+      return {
+        method: "POST",
+        path: "/v1/platform/motor/catalog/rollback",
+        body: {
+          versao_id: payload.versao_id,
+          base_versao_id: payload.base_versao_id ?? "",
+          motivo: payload.motivo,
+        },
+        token,
+      };
+    case "admin.auditoria.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/audit", {
+          busca: payload.busca,
+          grupo_acao: payload.grupo_acao,
+          entidade: payload.entidade,
+          responsavel_id: payload.responsavel_id,
+          limite: payload.limite,
+        }),
+        token,
+      };
+    case "admin.analises_tecnicas.listar":
+      return {
+        method: "GET",
+        path: "/v1/admin/technical-analyses",
+        token,
+      };
+    case "admin.demandas_tecnicas.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/technical-demands", {
+          limite: payload.limite,
+        }),
+        token,
+        transform: (data) => ({
+          ...data,
+          demandas: records(data.demandas).map(mapDemand),
+        }),
+      };
     case "admin.listar": {
       if (payload.entidade === "componentes") {
         return {

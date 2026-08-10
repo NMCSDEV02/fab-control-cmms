@@ -6,6 +6,7 @@ import { loadEnvironment, type Environment } from './config/environment.js';
 import { createDatabase, type Database } from './infrastructure/database/database.js';
 import { LocalObjectStorage, type ObjectStorage } from './infrastructure/storage/object-storage.js';
 import { authPlugin } from './modules/auth/auth.plugin.js';
+import { adminPlugin } from './modules/admin/admin.plugin.js';
 import { catalogPlugin } from './modules/catalog/catalog.plugin.js';
 import { monitoringPlugin } from './modules/monitoring/monitoring.plugin.js';
 import { operationsPlugin } from './modules/operations/operations.plugin.js';
@@ -84,6 +85,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   registerErrorHandler(app);
   await app.register(systemRoutes);
   await app.register(authPlugin);
+  await app.register(adminPlugin);
   await app.register(catalogPlugin);
   await app.register(planningPlugin);
   await app.register(operationsPlugin);

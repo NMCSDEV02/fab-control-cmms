@@ -80,7 +80,7 @@ try {
   $env:APP_ENVIRONMENT = 'DEVELOPMENT'
   $env:APP_RELEASE_VERSION = '1.4.0'
   $env:API_VERSION = '2.0.0'
-  $env:SCHEMA_VERSION = 'postgres-0013'
+  $env:SCHEMA_VERSION = 'postgres-0014'
   $env:CONTRACT_VERSION = '2.0.0'
   $env:FRONTEND_VERSION = '1.4.0'
   $env:AUTH_SESSION_HOURS = '8'
