@@ -772,9 +772,13 @@ BEGIN
     RAISE EXCEPTION 'Tabelas do catÃ¡logo comercial versionado nÃ£o foram criadas.';
   END IF;
 
+  IF to_regclass('maintenance.checklist_version_validator_users') IS NULL THEN
+    RAISE EXCEPTION 'Tabela de validadores nominais de checklist não foi criada.';
+  END IF;
+
   SELECT count(*)
   INTO admin_capabilities
-  FROM identity.capabilities
+  FROM iam.capabilities
   WHERE code IN (
     'admin.identity.read',
     'admin.identity.manage',

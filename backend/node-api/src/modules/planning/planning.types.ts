@@ -94,6 +94,26 @@ export interface ChecklistItemInput {
   readonly weight: number;
 }
 
+export interface ChecklistAggregateItemInput extends ChecklistItemInput {
+  readonly id: string | null;
+  readonly parameterName: string | null;
+}
+
+export interface ChecklistAggregateInput {
+  readonly checklistId: string | null;
+  readonly sourceTechnicalAnalysisId: string | null;
+  readonly checklist: ChecklistInput;
+  readonly items: readonly ChecklistAggregateItemInput[];
+}
+
+export interface ChecklistSubmissionRoute {
+  readonly signaturePolicy: SignaturePolicy;
+  readonly segregationRequired: boolean;
+  readonly managerGuidance: string;
+  readonly responsibleUserId: string | null;
+  readonly validatorUserIds: readonly string[];
+}
+
 export interface ChecklistListQuery {
   readonly search: string;
   readonly status: ChecklistVersionStatus | null;

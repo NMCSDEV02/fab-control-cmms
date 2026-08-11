@@ -123,24 +123,45 @@ export const updateChecklistBodySchema = Type.Partial(
   { additionalProperties: false, minProperties: 1 },
 );
 
-export const checklistItemBodySchema = Type.Object(
+const checklistItemFields = {
+  titulo: Type.String({ minLength: 1, maxLength: 300 }),
+  instrucao: nullableText,
+  tipo_resposta: responseType,
+  categoria: Type.String({ minLength: 1, maxLength: 50 }),
+  obrigatoria: Type.Boolean(),
+  exige_evidencia: Type.Boolean(),
+  minimo_fotos: Type.Integer({ minimum: 0, maximum: 20 }),
+  bloqueia_conclusao: Type.Boolean(),
+  parametro_id: Type.Union([Type.Null(), uuid]),
+  valor_esperado: nullableText,
+  valor_minimo: nullableNumber,
+  valor_maximo: nullableNumber,
+  unidade: Type.Union([Type.Null(), Type.String({ minLength: 1, maxLength: 30 })]),
+  opcoes: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 100 }),
+  regra_validacao: Type.Union([Type.Null(), Type.String({ minLength: 1, maxLength: 80 })]),
+  peso: Type.Number({ minimum: 0, maximum: 1_000 }),
+};
+
+export const checklistItemBodySchema = Type.Object(checklistItemFields, {
+  additionalProperties: false,
+});
+
+export const checklistAggregateBodySchema = Type.Object(
   {
-    titulo: Type.String({ minLength: 1, maxLength: 300 }),
-    instrucao: nullableText,
-    tipo_resposta: responseType,
-    categoria: Type.String({ minLength: 1, maxLength: 50 }),
-    obrigatoria: Type.Boolean(),
-    exige_evidencia: Type.Boolean(),
-    minimo_fotos: Type.Integer({ minimum: 0, maximum: 20 }),
-    bloqueia_conclusao: Type.Boolean(),
-    parametro_id: Type.Union([Type.Null(), uuid]),
-    valor_esperado: nullableText,
-    valor_minimo: nullableNumber,
-    valor_maximo: nullableNumber,
-    unidade: Type.Union([Type.Null(), Type.String({ minLength: 1, maxLength: 30 })]),
-    opcoes: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 100 }),
-    regra_validacao: Type.Union([Type.Null(), Type.String({ minLength: 1, maxLength: 80 })]),
-    peso: Type.Number({ minimum: 0, maximum: 1_000 }),
+    checklist_id: Type.Union([Type.Null(), uuid]),
+    analise_tecnica_origem_id: Type.Union([Type.Null(), uuid]),
+    checklist: checklistFields,
+    itens: Type.Array(
+      Type.Object(
+        {
+          id: Type.Union([Type.Null(), uuid]),
+          parametro_nome: Type.Union([Type.Null(), Type.String({ maxLength: 160 })]),
+          ...checklistItemFields,
+        },
+        { additionalProperties: false },
+      ),
+      { maxItems: 500 },
+    ),
   },
   { additionalProperties: false },
 );
@@ -158,6 +179,17 @@ export const reviewChecklistBodySchema = Type.Object(
       Type.Literal('REJECTED'),
     ]),
     justificativa: Type.String({ minLength: 3, maxLength: 2_000 }),
+  },
+  { additionalProperties: false },
+);
+
+export const submitChecklistConfiguredBodySchema = Type.Object(
+  {
+    politica_assinatura: signaturePolicy,
+    comentario: Type.String({ minLength: 3, maxLength: 2_000 }),
+    exige_segregacao: Type.Boolean(),
+    responsavel_atual_id: Type.Union([Type.Null(), uuid]),
+    usuarios_validadores: Type.Array(uuid, { maxItems: 50 }),
   },
   { additionalProperties: false },
 );

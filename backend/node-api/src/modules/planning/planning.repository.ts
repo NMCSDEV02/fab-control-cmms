@@ -129,6 +129,132 @@ export class PlanningRepository {
     return result.rows[0]?.valid ?? false;
   }
 
+  async validatorAssignment(client: PoolClient, userId: string): Promise<PlanningRow | null> {
+    const result = await client.query<PlanningRow>(
+      `
+        SELECT assignment.technical_area_id AS area_id,
+               assignment.technical_role_id AS role_id,
+               technical_role.can_sign
+        FROM iam.user_technical_assignments assignment
+        JOIN iam.users user_account
+          ON user_account.id = assignment.user_id
+         AND user_account.status = 'ACTIVE'
+        LEFT JOIN iam.technical_roles technical_role
+          ON technical_role.id = assignment.technical_role_id
+         AND technical_role.status = 'ACTIVE'
+        WHERE assignment.user_id = $1
+          AND assignment.status = 'ACTIVE'
+        ORDER BY assignment.is_primary DESC, assignment.created_at
+        LIMIT 1
+      `,
+      [userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async updateChecklistSubmissionRoute(
+    client: PoolClient,
+    versionId: string,
+    input: {
+      readonly technicalAreaId: string | null;
+      readonly technicalRoleId: string | null;
+      readonly signaturePolicy: string;
+      readonly requiredSignatures: number;
+      readonly segregationRequired: boolean;
+      readonly managerGuidance: string;
+    },
+  ): Promise<void> {
+    await client.query(
+      `
+        UPDATE maintenance.checklist_template_versions
+        SET technical_area_id = $2,
+            technical_role_id = $3,
+            signature_policy = $4,
+            required_signatures = $5,
+            segregation_required = $6,
+            manager_guidance = $7
+        WHERE id = $1
+      `,
+      [
+        versionId,
+        input.technicalAreaId,
+        input.technicalRoleId,
+        input.signaturePolicy,
+        input.requiredSignatures,
+        input.segregationRequired,
+        input.managerGuidance,
+      ],
+    );
+  }
+
+  async replaceChecklistValidatorUsers(
+    client: PoolClient,
+    tenantId: string,
+    versionId: string,
+    userId: string,
+    validatorUserIds: readonly string[],
+  ): Promise<void> {
+    await client.query(
+      'DELETE FROM maintenance.checklist_version_validator_users WHERE checklist_template_version_id = $1',
+      [versionId],
+    );
+    if (validatorUserIds.length === 0) return;
+    const valid = await client.query<{ id: string }>(
+      `
+        SELECT DISTINCT user_account.id
+        FROM iam.users user_account
+        JOIN iam.user_technical_assignments assignment
+          ON assignment.user_id = user_account.id
+         AND assignment.status = 'ACTIVE'
+        LEFT JOIN iam.technical_roles technical_role
+          ON technical_role.id = assignment.technical_role_id
+         AND technical_role.status = 'ACTIVE'
+        WHERE user_account.id = ANY($1::uuid[])
+          AND user_account.status = 'ACTIVE'
+          AND COALESCE(technical_role.can_sign, false)
+      `,
+      [validatorUserIds],
+    );
+    if (valid.rows.length !== validatorUserIds.length) {
+      throw new Error('VALIDATOR_USERS_INVALID');
+    }
+    for (const validatorId of validatorUserIds) {
+      await client.query(
+        `
+          INSERT INTO maintenance.checklist_version_validator_users (
+            tenant_id, checklist_template_version_id, user_id, created_by
+          ) VALUES ($1, $2, $3, $4)
+        `,
+        [tenantId, versionId, validatorId, userId],
+      );
+    }
+  }
+
+  async checklistValidatorUserEligible(
+    client: PoolClient,
+    versionId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const result = await client.query<{ eligible: boolean }>(
+      `
+        SELECT
+          NOT EXISTS (
+            SELECT 1
+            FROM maintenance.checklist_version_validator_users requirement
+            WHERE requirement.checklist_template_version_id = $1
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM maintenance.checklist_version_validator_users requirement
+            WHERE requirement.checklist_template_version_id = $1
+              AND requirement.user_id = $2
+          ) AS eligible
+      `,
+      [versionId, userId],
+    );
+    return result.rows[0]?.eligible ?? false;
+  }
+
   async listChecklists(
     client: PoolClient,
     query: ChecklistListQuery,
@@ -440,6 +566,208 @@ export class PlanningRepository {
         ),
       ],
     );
+  }
+
+  async updateChecklistAggregate(
+    client: PoolClient,
+    checklistId: string,
+    versionId: string,
+    input: ChecklistInput,
+  ): Promise<void> {
+    await client.query(
+      `
+        UPDATE maintenance.checklist_templates
+        SET code = $2,
+            name = $3,
+            asset_id = $4,
+            component_id = $5,
+            checklist_type = $6,
+            criticality = $7,
+            lifecycle_status = 'ACTIVE'
+        WHERE id = $1
+      `,
+      [
+        checklistId,
+        input.code,
+        input.name,
+        input.assetId,
+        input.componentId,
+        input.checklistType,
+        input.criticality,
+      ],
+    );
+    await client.query(
+      `
+        UPDATE maintenance.checklist_template_versions
+        SET technical_area_id = $2,
+            technical_role_id = $3,
+            signature_policy = $4,
+            required_signatures = $5,
+            segregation_required = $6,
+            manager_guidance = $7,
+            safety_requirements = $8
+        WHERE id = $1
+      `,
+      [
+        versionId,
+        input.technicalAreaId,
+        input.technicalRoleId,
+        input.signaturePolicy,
+        input.requiredSignatures,
+        input.segregationRequired,
+        input.managerGuidance,
+        JSON.stringify(input.safetyRequirements),
+      ],
+    );
+  }
+
+  async findParameterByName(
+    client: PoolClient,
+    assetId: string,
+    componentId: string | null,
+    name: string,
+  ): Promise<PlanningRow | null> {
+    const result = await client.query<PlanningRow>(
+      `
+        SELECT id, code, name, unit, value_type, status
+        FROM cmms.parameter_definitions
+        WHERE asset_id = $1
+          AND component_id IS NOT DISTINCT FROM $2::uuid
+          AND deleted_at IS NULL
+          AND status = 'ACTIVE'
+          AND (upper(code) = upper($3) OR upper(name) = upper($3))
+        ORDER BY CASE WHEN upper(code) = upper($3) THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 1
+      `,
+      [assetId, componentId, name],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async createChecklistParameter(
+    client: PoolClient,
+    tenantId: string,
+    assetId: string,
+    componentId: string | null,
+    code: string,
+    name: string,
+    unit: string,
+  ): Promise<PlanningRow> {
+    const result = await client.query<PlanningRow>(
+      `
+        INSERT INTO cmms.parameter_definitions (
+          tenant_id, asset_id, component_id, code, name, unit,
+          value_type, source_type, description, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'DECIMAL', 'CHECKLIST',
+          'Parâmetro criado pelo construtor assistido de checklist.',
+          '{"origem":"CHECKLIST_BUILDER"}'::jsonb)
+        RETURNING id, code, name, unit, value_type, status
+      `,
+      [tenantId, assetId, componentId, code, name, unit],
+    );
+    const created = result.rows[0];
+    if (!created) throw new Error('O PostgreSQL não retornou o parâmetro criado.');
+    return created;
+  }
+
+  async replaceChecklistItems(
+    client: PoolClient,
+    tenantId: string,
+    versionId: string,
+    items: readonly { readonly id: string; readonly input: ChecklistItemInput }[],
+  ): Promise<void> {
+    await client.query(
+      'DELETE FROM maintenance.checklist_items WHERE checklist_template_version_id = $1',
+      [versionId],
+    );
+    for (const [index, item] of items.entries()) {
+      await client.query(
+        `
+          INSERT INTO maintenance.checklist_items (
+            id, tenant_id, checklist_template_version_id, sequence, title,
+            instruction, response_type_code, category, required,
+            evidence_required, minimum_evidence_photos, blocks_completion,
+            parameter_definition_id, expected_value, minimum_value, maximum_value,
+            unit, options, validation_rule_code, weight
+          )
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+          )
+        `,
+        [
+          item.id,
+          tenantId,
+          versionId,
+          index + 1,
+          item.input.title,
+          item.input.instruction,
+          item.input.responseTypeCode,
+          item.input.category,
+          item.input.required,
+          item.input.evidenceRequired,
+          item.input.minimumEvidencePhotos,
+          item.input.blocksCompletion,
+          item.input.parameterDefinitionId,
+          item.input.expectedValue,
+          item.input.minimumValue,
+          item.input.maximumValue,
+          item.input.unit,
+          JSON.stringify(item.input.options),
+          item.input.validationRuleCode,
+          item.input.weight,
+        ],
+      );
+    }
+  }
+
+  async softDeleteChecklistDraft(client: PoolClient, checklistId: string): Promise<boolean> {
+    const deleted = await client.query(
+      `
+        UPDATE maintenance.checklist_templates template
+        SET deleted_at = clock_timestamp(), lifecycle_status = 'ARCHIVED'
+        WHERE template.id = $1
+          AND template.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM maintenance.checklist_template_versions version
+            WHERE version.checklist_template_id = template.id
+              AND version.status NOT IN ('DRAFT', 'CHANGES_REQUESTED')
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM maintenance.maintenance_plan_versions plan_version
+            JOIN maintenance.checklist_template_versions version
+              ON version.id = plan_version.checklist_template_version_id
+            WHERE version.checklist_template_id = template.id
+          )
+        RETURNING template.id
+      `,
+      [checklistId],
+    );
+    return deleted.rowCount === 1;
+  }
+
+  async acceptTechnicalAnalysisAsChecklist(
+    client: PoolClient,
+    analysisId: string,
+    checklistId: string,
+  ): Promise<boolean> {
+    const updated = await client.query(
+      `
+        UPDATE workflow.technical_analyses
+        SET status = 'ACCEPTED',
+            report = report || jsonb_build_object(
+              'checklist_template_id', $2::text,
+              'converted_at', clock_timestamp()
+            )
+        WHERE id = $1
+          AND status IN ('DRAFT', 'SENT_TO_ADMIN')
+      `,
+      [analysisId, checklistId],
+    );
+    return updated.rowCount === 1;
   }
 
   async listChecklistItems(client: PoolClient, versionId: string): Promise<readonly PlanningRow[]> {

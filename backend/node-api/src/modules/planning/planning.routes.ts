@@ -3,6 +3,7 @@ import { type FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { successEnvelopeSchema } from '../auth/auth.schemas.js';
 import type { PlanningController } from './planning.controller.js';
 import {
+  checklistAggregateBodySchema,
   checklistItemBodySchema,
   checklistListQuerySchema,
   createChecklistBodySchema,
@@ -11,6 +12,7 @@ import {
   planListQuerySchema,
   reorderChecklistItemsBodySchema,
   reviewChecklistBodySchema,
+  submitChecklistConfiguredBodySchema,
   updateChecklistBodySchema,
   updatePlanBodySchema,
 } from './planning.schemas.js';
@@ -50,6 +52,16 @@ export function createPlanningRoutes(controller: PlanningController): FastifyPlu
         summary: 'Cria um modelo com sua primeira revisão em rascunho.',
       },
       handler: controller.createChecklist,
+    });
+
+    app.post('/v1/maintenance/checklists/save', {
+      preHandler: async (request) => app.authorize(request, 'maintenance.checklists.manage'),
+      schema: {
+        ...securedResponse,
+        body: checklistAggregateBodySchema,
+        summary: 'Cria ou atualiza um rascunho completo com suas etapas em uma transação.',
+      },
+      handler: controller.saveChecklistAggregate,
     });
 
     app.get('/v1/maintenance/checklists/:checklistId', {
@@ -126,6 +138,17 @@ export function createPlanningRoutes(controller: PlanningController): FastifyPlu
       handler: controller.submitChecklist,
     });
 
+    app.post('/v1/maintenance/checklists/:checklistId/submit-configured', {
+      preHandler: async (request) => app.authorize(request, 'maintenance.checklists.manage'),
+      schema: {
+        ...securedResponse,
+        params: planningIdentifierParamsSchema,
+        body: submitChecklistConfiguredBodySchema,
+        summary: 'Sela o checklist e registra a rota nominal de validação.',
+      },
+      handler: controller.submitChecklistConfigured,
+    });
+
     app.post('/v1/maintenance/checklists/:checklistId/review', {
       preHandler: async (request) => app.authorize(request, 'maintenance.checklists.review'),
       schema: {
@@ -155,6 +178,16 @@ export function createPlanningRoutes(controller: PlanningController): FastifyPlu
         summary: 'Clona a revisão finalizada em um novo rascunho.',
       },
       handler: controller.createChecklistRevision,
+    });
+
+    app.delete('/v1/maintenance/checklists/:checklistId', {
+      preHandler: async (request) => app.authorize(request, 'maintenance.checklists.manage'),
+      schema: {
+        ...securedResponse,
+        params: planningIdentifierParamsSchema,
+        summary: 'Arquiva somente rascunhos sem histórico operacional.',
+      },
+      handler: controller.deleteChecklistDraft,
     });
 
     app.get('/v1/maintenance/plans', {

@@ -315,7 +315,7 @@ function itemPayload(
 
 test(
   'fluxo versionado: nove tipos, dupla validação, publicação, imutabilidade e planos',
-  { skip: !integrationEnabled, timeout: 45_000 },
+  { skip: !integrationEnabled, timeout: 60_000 },
   async (context) => {
     assert.ok(databaseUrl);
     const pool = new Pool({ connectionString: databaseUrl, max: 3 });
@@ -500,5 +500,121 @@ test(
     assert.equal(checklistRevisionResponse.json().data.versao_atual.status, 'DRAFT');
     assert.equal(checklistRevisionResponse.json().data.versao_atual.revisao, 2);
     assert.equal(checklistRevisionResponse.json().data.itens.length, 9);
+
+    const aggregateResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/maintenance/checklists/save',
+      headers: adminHeaders,
+      payload: {
+        checklist_id: null,
+        analise_tecnica_origem_id: null,
+        checklist: {
+          codigo: 'CHK-PLN-AGGREGATE',
+          nome: 'Checklist atômico com rota nominal',
+          ativo_id: ids.asset,
+          componente_id: ids.component,
+          tipo: 'INSPECTION',
+          criticidade: 'CRITICAL',
+          area_tecnica_id: null,
+          cargo_tecnico_id: null,
+          politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+          assinaturas_exigidas: 1,
+          segregacao_exigida: true,
+          orientacao_gestor: null,
+          requisitos_seguranca: ['Confirmar bloqueio antes da inspeção'],
+        },
+        itens: [
+          {
+            id: null,
+            parametro_nome: 'Pressão do rolamento',
+            ...itemPayload('PARAMETRO', {
+              parametro_id: null,
+              unidade: 'bar',
+              valor_minimo: 2,
+              valor_maximo: 6,
+            }),
+          },
+          { id: null, parametro_nome: null, ...itemPayload('TEXTO') },
+        ],
+      },
+    });
+    assert.equal(aggregateResponse.statusCode, 200, aggregateResponse.body);
+    assert.equal(aggregateResponse.json().data.itens.length, 2);
+    assert.ok(aggregateResponse.json().data.itens[0].parametro_id);
+    const aggregateChecklistId: string = aggregateResponse.json().data.id;
+
+    const configuredSubmit = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/checklists/${aggregateChecklistId}/submit-configured`,
+      headers: adminHeaders,
+      payload: {
+        politica_assinatura: 'PERSONALIZADA',
+        comentario: 'Validar os limites e a segurança da leitura.',
+        exige_segregacao: true,
+        responsavel_atual_id: ids.quality,
+        usuarios_validadores: [ids.quality],
+      },
+    });
+    assert.equal(configuredSubmit.statusCode, 200, configuredSubmit.body);
+    assert.equal(configuredSubmit.json().data.versao_atual.status, 'IN_REVIEW');
+    assert.equal(configuredSubmit.json().data.versao_atual.assinaturas_exigidas, 1);
+
+    const unselectedReview = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/checklists/${aggregateChecklistId}/review`,
+      headers: bearer(identities.safetyToken),
+      payload: { decisao: 'APPROVED', justificativa: 'Tentativa fora da rota.' },
+    });
+    assert.equal(unselectedReview.statusCode, 403, unselectedReview.body);
+
+    const selectedReview = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/checklists/${aggregateChecklistId}/review`,
+      headers: bearer(identities.qualityToken),
+      payload: { decisao: 'APPROVED', justificativa: 'Rota nominal aprovada.' },
+    });
+    assert.equal(selectedReview.statusCode, 200, selectedReview.body);
+    assert.equal(selectedReview.json().data.versao_atual.status, 'APPROVED');
+
+    const protectedDelete = await app.inject({
+      method: 'DELETE',
+      url: `/v1/maintenance/checklists/${aggregateChecklistId}`,
+      headers: adminHeaders,
+    });
+    assert.equal(protectedDelete.statusCode, 409, protectedDelete.body);
+
+    const draftToDelete = await app.inject({
+      method: 'POST',
+      url: '/v1/maintenance/checklists/save',
+      headers: adminHeaders,
+      payload: {
+        checklist_id: null,
+        analise_tecnica_origem_id: null,
+        checklist: {
+          codigo: 'CHK-PLN-DELETE',
+          nome: 'Rascunho descartável',
+          ativo_id: ids.asset,
+          componente_id: null,
+          tipo: 'INSPECTION',
+          criticidade: 'LOW',
+          area_tecnica_id: null,
+          cargo_tecnico_id: null,
+          politica_assinatura: 'QUALIDADE',
+          assinaturas_exigidas: 1,
+          segregacao_exigida: true,
+          orientacao_gestor: null,
+          requisitos_seguranca: [],
+        },
+        itens: [{ id: null, parametro_nome: null, ...itemPayload('CONFIRMACAO') }],
+      },
+    });
+    assert.equal(draftToDelete.statusCode, 200, draftToDelete.body);
+    const deleteDraft = await app.inject({
+      method: 'DELETE',
+      url: `/v1/maintenance/checklists/${draftToDelete.json().data.id}`,
+      headers: adminHeaders,
+    });
+    assert.equal(deleteDraft.statusCode, 200, deleteDraft.body);
+    assert.equal(deleteDraft.json().data.deleted, true);
   },
 );

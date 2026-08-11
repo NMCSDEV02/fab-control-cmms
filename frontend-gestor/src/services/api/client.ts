@@ -122,7 +122,7 @@ async function executeAppsScriptCall<T>(
 }
 
 interface NodeActionRequest {
-  method: "GET" | "POST" | "PATCH";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: Record<string, unknown>;
   token?: string;
@@ -221,6 +221,191 @@ function mapDemand(value: unknown): JsonRecord {
   const item = record(value);
   const status = String(item.status ?? "").toUpperCase();
   return { ...item, status: demandStatusFromNode[status] ?? status };
+}
+
+const checklistStatusFromNode: Readonly<Record<string, string>> = {
+  DRAFT: "RASCUNHO",
+  IN_REVIEW: "EM_VALIDACAO_GESTAO",
+  CHANGES_REQUESTED: "DEVOLVIDO_CORRECAO",
+  APPROVED: "VALIDADO",
+  PUBLISHED: "ATIVO",
+  SUPERSEDED: "OBSOLETO",
+  REJECTED: "DEVOLVIDO_CORRECAO",
+};
+
+const criticalityFromNode: Readonly<Record<string, string>> = {
+  LOW: "BAIXA",
+  MEDIUM: "MEDIA",
+  HIGH: "ALTA",
+  CRITICAL: "CRITICA",
+};
+
+const criticalityToNode: Readonly<Record<string, string>> = {
+  BAIXA: "LOW",
+  MEDIA: "MEDIUM",
+  ALTA: "HIGH",
+  CRITICA: "CRITICAL",
+};
+
+function yes(value: unknown): boolean {
+  return value === true || String(value ?? "").toUpperCase() === "SIM";
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function checklistPlan(value: unknown): JsonRecord {
+  const item = record(value);
+  const version = record(item.versao_atual);
+  const status = String(version.status ?? item.status ?? "DRAFT").toUpperCase();
+  return {
+    ...item,
+    ...version,
+    criticidade:
+      criticalityFromNode[
+        String(item.criticidade ?? version.criticidade ?? "").toUpperCase()
+      ] ??
+      item.criticidade ??
+      version.criticidade,
+    workflow_status: checklistStatusFromNode[status] ?? status,
+    status: status === "PUBLISHED" ? "ATIVO" : "INATIVO",
+    itens_count: Number(item.total_itens ?? records(item.itens).length),
+    operacional: status === "PUBLISHED",
+    atualizado_em: item.updated_at,
+    gatilho_tipo: item.gatilho_tipo ?? "DIAS",
+    gatilho_valor: item.gatilho_valor ?? 30,
+    unidade: item.unidade ?? "dias",
+    recorrencia_dias: item.recorrencia_dias ?? 30,
+    tempo_estimado_min: item.tempo_estimado_min ?? 60,
+    requer_bloqueio: item.requer_bloqueio ?? "SIM",
+    requer_evidencia: item.requer_evidencia ?? "NAO",
+    max_sessoes: item.max_sessoes ?? 1,
+    modo_parada_manutencao: item.modo_parada_manutencao ?? "DECISAO_EXECUTOR",
+  };
+}
+
+function checklistItemFromNode(value: unknown): JsonRecord {
+  const item = record(value);
+  return {
+    ...item,
+    ordem: Number(item.sequencia ?? item.ordem ?? 0),
+    obrigatorio: item.obrigatoria === true ? "SIM" : "NAO",
+    evidencia_obrigatoria: item.exige_evidencia === true ? "SIM" : "NAO",
+    evidencia_min_fotos: Number(item.minimo_fotos ?? 0),
+    bloqueia_finalizacao: item.bloqueia_conclusao === true ? "SIM" : "NAO",
+    limite_min: item.valor_minimo ?? "",
+    limite_max: item.valor_maximo ?? "",
+    opcoes_json: JSON.stringify(Array.isArray(item.opcoes) ? item.opcoes : []),
+  };
+}
+
+function adminChecklistDetail(data: JsonRecord): JsonRecord {
+  const reviews = records(data.revisoes_tecnicas);
+  const current = record(data.versao_atual);
+  const plan = checklistPlan(data);
+  return {
+    plano: plan,
+    ativo: data.ativo_id
+      ? { id: data.ativo_id, tag: data.ativo_tag, nome: data.ativo_nome }
+      : null,
+    componente: data.componente_id
+      ? {
+          id: data.componente_id,
+          tag: data.componente_tag,
+          nome: data.componente_nome,
+        }
+      : null,
+    itens: records(data.itens).map(checklistItemFromNode),
+    validacoes: reviews,
+    ultimo_parecer: reviews[0] ?? null,
+    correcoes_pendentes: current.status === "CHANGES_REQUESTED",
+    operacional: current.status === "PUBLISHED",
+  };
+}
+
+function checklistAggregateBody(payload: JsonRecord): JsonRecord {
+  const plan = record(payload.plano);
+  const policy = String(plan.politica_assinatura ?? "QUALIDADE_OU_SEGURANCA");
+  const requiredByPolicy: Readonly<Record<string, number>> = {
+    QUALIDADE: 1,
+    SEGURANCA: 1,
+    QUALIDADE_OU_SEGURANCA: 1,
+    QUALIDADE_E_SEGURANCA: 2,
+  };
+  const items = records(payload.itens);
+  const code = String(
+    plan.codigo ??
+      `CHK-${String(plan.nome ?? "MODELO")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/gu, "")
+        .replace(/[^a-zA-Z0-9]+/gu, "-")
+        .replace(/^-+|-+$/gu, "")
+        .slice(0, 45)
+        .toUpperCase()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+  );
+  return {
+    checklist_id: plan.id || null,
+    analise_tecnica_origem_id: payload.analise_id || null,
+    checklist: {
+      codigo: code,
+      nome: plan.nome,
+      ativo_id: plan.ativo_id,
+      componente_id: plan.componente_id || null,
+      tipo: plan.tipo || "INSPECAO",
+      criticidade:
+        criticalityToNode[String(plan.criticidade ?? "MEDIA").toUpperCase()] ??
+        "MEDIUM",
+      area_tecnica_id: plan.area_tecnica_id || null,
+      cargo_tecnico_id: plan.cargo_tecnico_id || null,
+      politica_assinatura: policy,
+      assinaturas_exigidas:
+        requiredByPolicy[policy] ??
+        Math.max(1, Number(plan.assinaturas_exigidas ?? 1)),
+      segregacao_exigida:
+        plan.segregacao_exigida === undefined
+          ? true
+          : yes(plan.segregacao_exigida),
+      orientacao_gestor: plan.orientacao_gestor || null,
+      requisitos_seguranca: Array.isArray(plan.requisitos_seguranca)
+        ? plan.requisitos_seguranca
+        : [],
+    },
+    itens: items.map((item) => ({
+      id: item.id || null,
+      parametro_nome: item.parametro_nome || null,
+      titulo: item.titulo,
+      instrucao: item.instrucao || null,
+      tipo_resposta: item.tipo_resposta,
+      categoria: item.categoria || "OPERACIONAL",
+      obrigatoria: yes(item.obrigatorio ?? item.obrigatoria),
+      exige_evidencia: yes(item.evidencia_obrigatoria ?? item.exige_evidencia),
+      minimo_fotos: Math.max(
+        0,
+        Number(item.evidencia_min_fotos ?? item.minimo_fotos ?? 0),
+      ),
+      bloqueia_conclusao: yes(
+        item.bloqueia_finalizacao ?? item.bloqueia_conclusao,
+      ),
+      parametro_id: item.parametro_id || null,
+      valor_esperado: item.valor_esperado || null,
+      valor_minimo: nullableNumber(item.limite_min ?? item.valor_minimo),
+      valor_maximo: nullableNumber(item.limite_max ?? item.valor_maximo),
+      unidade: item.unidade || null,
+      opcoes: (() => {
+        try {
+          const parsed = JSON.parse(String(item.opcoes_json || "[]"));
+          return Array.isArray(parsed) ? parsed.map(String) : [];
+        } catch {
+          return [];
+        }
+      })(),
+      regra_validacao: item.regra_validacao || null,
+      peso: Math.max(0, Number(item.peso ?? 1)),
+    })),
+  };
 }
 
 function mapNotification(value: unknown): JsonRecord {
@@ -717,6 +902,109 @@ function nodeActionRequest(
           status: record(data.versao_atual).status ?? data.status,
         }),
       };
+    case "admin.listar_modelos_checklist":
+      return {
+        method: "GET",
+        path: queryPath("/v1/maintenance/checklists", {
+          busca: payload.busca,
+          limite: Math.min(Number(payload.limite ?? 100), 100),
+        }),
+        token,
+        transform: (data) => {
+          const models = records(data.itens).map(checklistPlan);
+          return { total: models.length, modelos: models };
+        },
+      };
+    case "admin.detalhe_modelo_checklist":
+      return {
+        method: "GET",
+        path: `/v1/maintenance/checklists/${encodeURIComponent(String(payload.plano_id))}`,
+        token,
+        transform: adminChecklistDetail,
+      };
+    case "admin.salvar_modelo_checklist":
+    case "admin.analises_tecnicas.converter":
+      return {
+        method: "POST",
+        path: "/v1/maintenance/checklists/save",
+        body: checklistAggregateBody(payload),
+        token,
+        transform: (data) => {
+          const detail = adminChecklistDetail(data);
+          const plan = record(detail.plano);
+          return {
+            saved: true,
+            plano: plan,
+            itens: detail.itens,
+            workflow_status: plan.workflow_status,
+          };
+        },
+      };
+    case "admin.enviar_modelo_checklist_validacao":
+      return {
+        method: "POST",
+        path: `/v1/maintenance/checklists/${encodeURIComponent(String(payload.plano_id))}/submit-configured`,
+        body: {
+          politica_assinatura: payload.politica_assinatura,
+          comentario: payload.comentario,
+          exige_segregacao: yes(payload.exige_segregacao),
+          responsavel_atual_id: payload.responsavel_atual_id || null,
+          usuarios_validadores: Array.isArray(payload.usuarios_validadores)
+            ? payload.usuarios_validadores
+            : [],
+        },
+        token,
+        transform: (data) => {
+          const current = record(data.versao_atual);
+          return {
+            sent: true,
+            plano_id: data.id,
+            workflow_status:
+              checklistStatusFromNode[String(current.status ?? "IN_REVIEW")] ??
+              current.status,
+            demanda_tecnica: null,
+          };
+        },
+      };
+    case "admin.criar_revisao_modelo_checklist":
+      return {
+        method: "POST",
+        path: `/v1/maintenance/checklists/${encodeURIComponent(String(payload.plano_id))}/revisions`,
+        body: {},
+        token,
+        transform: (data) => {
+          const detail = adminChecklistDetail(data);
+          const plan = record(detail.plano);
+          return {
+            created: true,
+            plano_id: plan.id,
+            revisao: Number(plan.revisao ?? 1),
+            workflow_status: plan.workflow_status,
+            status: plan.status,
+            operacional: detail.operacional,
+            itens_count: records(detail.itens).length,
+            plano: plan,
+            itens: detail.itens,
+          };
+        },
+      };
+    case "admin.entidade.acao":
+      if (payload.entidade === "planos" && payload.acao === "EXCLUIR") {
+        return {
+          method: "DELETE",
+          path: `/v1/maintenance/checklists/${encodeURIComponent(String(payload.id))}`,
+          token,
+          transform: (data) => ({
+            acted: data.deleted === true,
+            acao: "EXCLUIR",
+            entidade: "planos",
+            id: payload.id,
+            deleted: data.deleted === true,
+            itens_rascunho_excluidos: 0,
+          }),
+        };
+      }
+      return null;
     case "admin.usuarios.listar":
       return {
         method: "GET",

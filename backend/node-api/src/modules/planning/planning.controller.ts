@@ -78,6 +78,18 @@ interface ChecklistItemBody {
   readonly peso: number;
 }
 
+interface ChecklistAggregateItemBody extends ChecklistItemBody {
+  readonly id: string | null;
+  readonly parametro_nome: string | null;
+}
+
+interface ChecklistAggregateBody {
+  readonly checklist_id: string | null;
+  readonly analise_tecnica_origem_id: string | null;
+  readonly checklist: ChecklistBody;
+  readonly itens: readonly ChecklistAggregateItemBody[];
+}
+
 interface ReorderBody {
   readonly itens_ids: readonly string[];
 }
@@ -85,6 +97,14 @@ interface ReorderBody {
 interface ReviewBody {
   readonly decisao: ReviewDecision;
   readonly justificativa: string;
+}
+
+interface SubmitChecklistConfiguredBody {
+  readonly politica_assinatura: SignaturePolicy;
+  readonly comentario: string;
+  readonly exige_segregacao: boolean;
+  readonly responsavel_atual_id: string | null;
+  readonly usuarios_validadores: readonly string[];
 }
 
 interface PlanListQuery {
@@ -247,6 +267,43 @@ export class PlanningController {
       ),
     );
 
+  saveChecklistAggregate = async (request: FastifyRequest<{ Body: ChecklistAggregateBody }>) => {
+    const body = request.body;
+    const checklist = body.checklist;
+    return successEnvelope(
+      request,
+      'maintenance.checklists.aggregate.save',
+      await this.service.saveChecklistAggregate(
+        user(request),
+        {
+          checklistId: body.checklist_id,
+          sourceTechnicalAnalysisId: body.analise_tecnica_origem_id,
+          checklist: {
+            code: checklist.codigo,
+            name: checklist.nome,
+            assetId: checklist.ativo_id,
+            componentId: checklist.componente_id,
+            checklistType: checklist.tipo,
+            criticality: checklist.criticidade,
+            technicalAreaId: checklist.area_tecnica_id,
+            technicalRoleId: checklist.cargo_tecnico_id,
+            signaturePolicy: checklist.politica_assinatura,
+            requiredSignatures: checklist.assinaturas_exigidas,
+            segregationRequired: checklist.segregacao_exigida,
+            managerGuidance: checklist.orientacao_gestor,
+            safetyRequirements: checklist.requisitos_seguranca,
+          },
+          items: body.itens.map((item) => ({
+            ...checklistItem(item),
+            id: item.id,
+            parameterName: item.parametro_nome,
+          })),
+        },
+        auditMetadata(request),
+      ),
+    );
+  };
+
   updateChecklist = async (
     request: FastifyRequest<{ Params: IdentifierParams; Body: ChecklistPatchBody }>,
   ) => {
@@ -355,6 +412,29 @@ export class PlanningController {
       ),
     );
 
+  submitChecklistConfigured = async (
+    request: FastifyRequest<{
+      Params: IdentifierParams;
+      Body: SubmitChecklistConfiguredBody;
+    }>,
+  ) =>
+    successEnvelope(
+      request,
+      'maintenance.checklists.submit-configured',
+      await this.service.submitChecklistConfigured(
+        user(request),
+        requiredIdentifier(request.params, 'checklistId'),
+        {
+          signaturePolicy: request.body.politica_assinatura,
+          managerGuidance: request.body.comentario,
+          segregationRequired: request.body.exige_segregacao,
+          responsibleUserId: request.body.responsavel_atual_id,
+          validatorUserIds: request.body.usuarios_validadores,
+        },
+        auditMetadata(request),
+      ),
+    );
+
   reviewChecklist = async (
     request: FastifyRequest<{ Params: IdentifierParams; Body: ReviewBody }>,
   ) =>
@@ -386,6 +466,17 @@ export class PlanningController {
       request,
       'maintenance.checklists.revisions.create',
       await this.service.createChecklistRevision(
+        user(request),
+        requiredIdentifier(request.params, 'checklistId'),
+        auditMetadata(request),
+      ),
+    );
+
+  deleteChecklistDraft = async (request: FastifyRequest<{ Params: IdentifierParams }>) =>
+    successEnvelope(
+      request,
+      'maintenance.checklists.delete',
+      await this.service.deleteChecklistDraft(
         user(request),
         requiredIdentifier(request.params, 'checklistId'),
         auditMetadata(request),

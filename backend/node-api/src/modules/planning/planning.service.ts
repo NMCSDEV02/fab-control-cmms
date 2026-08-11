@@ -12,10 +12,12 @@ import {
   type ValidatorContextRow,
 } from './planning.repository.js';
 import type {
+  ChecklistAggregateInput,
   ChecklistInput,
   ChecklistItemInput,
   ChecklistListQuery,
   ChecklistPatch,
+  ChecklistSubmissionRoute,
   MaintenancePlanInput,
   MaintenancePlanPatch,
   PlanListQuery,
@@ -430,6 +432,210 @@ export class PlanningService {
     );
   }
 
+  async saveChecklistAggregate(
+    user: AuthenticatedUser,
+    input: ChecklistAggregateInput,
+    audit: RequestAuditMetadata,
+  ) {
+    if (input.items.length > 500) {
+      throw invalid(
+        'CHECKLIST_ITEM_LIMIT_EXCEEDED',
+        'Um checklist pode possuir no máximo 500 etapas.',
+      );
+    }
+    const informedIds = input.items.flatMap((item) => (item.id ? [item.id] : []));
+    if (new Set(informedIds).size !== informedIds.length) {
+      throw invalid('CHECKLIST_ITEM_ID_DUPLICATED', 'Existem etapas repetidas no checklist.');
+    }
+    const checklist = normalizeChecklistInput(input.checklist);
+
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        await this.requireActiveAssetContext(client, checklist.assetId, checklist.componentId);
+        await this.requireTechnicalScope(
+          client,
+          checklist.technicalAreaId,
+          checklist.technicalRoleId,
+        );
+
+        const checklistId = input.checklistId ?? randomUUID();
+        let versionId: string;
+        let before: PlanningRow | null = null;
+        if (input.checklistId) {
+          const template = await this.repository.findChecklistTemplate(client, checklistId, true);
+          if (!template) throw notFound('Checklist');
+          const editable = await this.repository.findEditableChecklistVersion(
+            client,
+            checklistId,
+            true,
+          );
+          if (!editable) {
+            throw conflict(
+              'CHECKLIST_REVISION_NOT_EDITABLE',
+              'Crie uma nova revisão antes de alterar um checklist submetido ou publicado.',
+            );
+          }
+          versionId = text(editable, 'id');
+          before = await this.requiredChecklistDetail(client, checklistId);
+          await this.repository.updateChecklistAggregate(client, checklistId, versionId, checklist);
+        } else {
+          versionId = randomUUID();
+          await this.repository.createChecklist(
+            client,
+            user.tenantId,
+            checklistId,
+            versionId,
+            user.id,
+            checklist,
+            hashPayload({ checklist, items: [] }),
+          );
+        }
+
+        const template = await this.repository.findChecklistTemplate(client, checklistId, true);
+        if (!template) throw notFound('Checklist');
+        const normalizedItems: { id: string; input: ChecklistItemInput }[] = [];
+        for (const [index, aggregateItem] of input.items.entries()) {
+          const responseType = aggregateItem.responseTypeCode;
+          const parameterType =
+            responseType === 'PARAMETRO' || responseType === 'LEITURA_OPERACIONAL';
+          let parameterId = aggregateItem.parameterDefinitionId;
+          let unit = aggregateItem.unit;
+          if (parameterType && parameterId === null) {
+            const parameterName = normalizeNullableText(aggregateItem.parameterName);
+            if (!parameterName) {
+              throw invalid(
+                'CHECKLIST_ITEM_PARAMETER_NAME_REQUIRED',
+                `Informe o parâmetro técnico da etapa ${index + 1}.`,
+              );
+            }
+            const existing = await this.repository.findParameterByName(
+              client,
+              checklist.assetId,
+              checklist.componentId,
+              parameterName,
+            );
+            if (existing) {
+              parameterId = text(existing, 'id');
+              unit = unit ?? text(existing, 'unit');
+            } else {
+              const normalizedUnit = normalizeNullableText(unit);
+              if (!normalizedUnit) {
+                throw invalid(
+                  'CHECKLIST_ITEM_PARAMETER_UNIT_REQUIRED',
+                  `Informe a unidade do parâmetro da etapa ${index + 1}.`,
+                );
+              }
+              const slug = parameterName
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/gu, '')
+                .replace(/[^a-zA-Z0-9]+/gu, '-')
+                .replace(/^-+|-+$/gu, '')
+                .slice(0, 45)
+                .toUpperCase();
+              const created = await this.repository.createChecklistParameter(
+                client,
+                user.tenantId,
+                checklist.assetId,
+                checklist.componentId,
+                `CHK-${slug || 'PARAMETRO'}-${randomUUID().slice(0, 8).toUpperCase()}`,
+                parameterName,
+                normalizedUnit,
+              );
+              parameterId = text(created, 'id');
+              unit = text(created, 'unit');
+            }
+          }
+          const normalizedItem = normalizeItem({
+            ...aggregateItem,
+            parameterDefinitionId: parameterType ? parameterId : null,
+            unit,
+          });
+          await this.validateItemParameter(client, template, normalizedItem);
+          normalizedItems.push({
+            id: aggregateItem.id ?? randomUUID(),
+            input: normalizedItem,
+          });
+        }
+
+        await this.repository.replaceChecklistItems(
+          client,
+          user.tenantId,
+          versionId,
+          normalizedItems,
+        );
+        if (
+          input.sourceTechnicalAnalysisId &&
+          !(await this.repository.acceptTechnicalAnalysisAsChecklist(
+            client,
+            input.sourceTechnicalAnalysisId,
+            checklistId,
+          ))
+        ) {
+          throw conflict(
+            'TECHNICAL_ANALYSIS_CONVERSION_INVALID',
+            'A análise técnica já foi tratada ou não está disponível para conversão.',
+          );
+        }
+        const contentHash = await this.checklistContentHash(client, checklistId, versionId);
+        const editable = await this.repository.findEditableChecklistVersion(client, checklistId);
+        if (!editable)
+          throw conflict('CHECKLIST_REVISION_NOT_EDITABLE', 'A revisão deixou de ser editável.');
+        await this.repository.updateChecklistVersionStatus(
+          client,
+          versionId,
+          text(editable, 'status') as 'DRAFT' | 'CHANGES_REQUESTED',
+          contentHash,
+        );
+        const after = await this.requiredChecklistDetail(client, checklistId);
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          before ? 'CHECKLIST_AGGREGATE_UPDATED' : 'CHECKLIST_AGGREGATE_CREATED',
+          'CHECKLIST_TEMPLATE',
+          checklistId,
+          before,
+          after,
+        );
+        return after;
+      },
+    );
+  }
+
+  async deleteChecklistDraft(
+    user: AuthenticatedUser,
+    checklistId: string,
+    audit: RequestAuditMetadata,
+  ) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const before = await this.repository.getChecklistDetail(client, checklistId);
+        if (!before) throw notFound('Checklist');
+        if (!(await this.repository.softDeleteChecklistDraft(client, checklistId))) {
+          throw conflict(
+            'CHECKLIST_DELETE_PROTECTED',
+            'Somente rascunhos sem histórico operacional podem ser excluídos.',
+          );
+        }
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'CHECKLIST_DRAFT_ARCHIVED',
+          'CHECKLIST_TEMPLATE',
+          checklistId,
+          before,
+          { deleted: true },
+        );
+        return { deleted: true, checklist_id: checklistId };
+      },
+    );
+  }
+
   async addChecklistItem(
     user: AuthenticatedUser,
     checklistId: string,
@@ -614,6 +820,119 @@ export class PlanningService {
     );
   }
 
+  async submitChecklistConfigured(
+    user: AuthenticatedUser,
+    checklistId: string,
+    route: ChecklistSubmissionRoute,
+    audit: RequestAuditMetadata,
+  ) {
+    const guidance = normalizeText(route.managerGuidance);
+    const validatorUserIds = [...new Set(route.validatorUserIds.filter(Boolean))];
+    if (validatorUserIds.length !== route.validatorUserIds.length) {
+      throw invalid(
+        'CHECKLIST_VALIDATOR_DUPLICATED',
+        'A rota de validação contém pessoas repetidas.',
+      );
+    }
+    if (route.responsibleUserId && !validatorUserIds.includes(route.responsibleUserId)) {
+      validatorUserIds.push(route.responsibleUserId);
+    }
+
+    const fixedRequirements: Readonly<Partial<Record<SignaturePolicy, number>>> = {
+      QUALIDADE: 1,
+      SEGURANCA: 1,
+      QUALIDADE_OU_SEGURANCA: 1,
+      QUALIDADE_E_SEGURANCA: 2,
+    };
+    const requiredSignatures =
+      fixedRequirements[route.signaturePolicy] ?? Math.max(1, validatorUserIds.length);
+    if (route.signaturePolicy === 'PERSONALIZADA' && validatorUserIds.length === 0) {
+      throw invalid(
+        'CHECKLIST_CUSTOM_VALIDATOR_REQUIRED',
+        'Selecione ao menos uma pessoa autorizada para a validação personalizada.',
+      );
+    }
+
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const version = await this.requireEditableChecklistVersion(client, checklistId);
+        const versionId = text(version, 'id');
+        if ((await this.repository.countActiveChecklistItems(client, versionId)) === 0) {
+          throw invalid(
+            'CHECKLIST_WITHOUT_ITEMS',
+            'Adicione ao menos uma etapa ativa antes de enviar o checklist.',
+          );
+        }
+
+        let technicalAreaId = version.technical_area_id as string | null;
+        let technicalRoleId = version.technical_role_id as string | null;
+        for (const validatorUserId of validatorUserIds) {
+          const assignment = await this.repository.validatorAssignment(client, validatorUserId);
+          if (assignment?.can_sign !== true) {
+            throw invalid(
+              'CHECKLIST_VALIDATOR_NOT_AUTHORIZED',
+              'Uma das pessoas selecionadas não possui atribuição técnica ativa com permissão de assinatura.',
+              { usuario_id: validatorUserId },
+            );
+          }
+          if (validatorUserId === route.responsibleUserId || technicalAreaId === null) {
+            technicalAreaId = text(assignment, 'area_id');
+            technicalRoleId = (assignment.role_id as string | null) ?? null;
+          }
+        }
+        if (route.signaturePolicy === 'PERSONALIZADA' && technicalAreaId === null) {
+          throw invalid(
+            'CHECKLIST_CUSTOM_VALIDATION_SCOPE_REQUIRED',
+            'A pessoa selecionada precisa possuir uma área técnica ativa.',
+          );
+        }
+
+        await this.repository.updateChecklistSubmissionRoute(client, versionId, {
+          technicalAreaId,
+          technicalRoleId,
+          signaturePolicy: route.signaturePolicy,
+          requiredSignatures,
+          segregationRequired: route.segregationRequired,
+          managerGuidance: guidance,
+        });
+        await this.repository.replaceChecklistValidatorUsers(
+          client,
+          user.tenantId,
+          versionId,
+          user.id,
+          validatorUserIds,
+        );
+        const contentHash = await this.checklistContentHash(client, checklistId, versionId);
+        await this.repository.updateChecklistVersionStatus(
+          client,
+          versionId,
+          'IN_REVIEW',
+          contentHash,
+        );
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'CHECKLIST_SUBMITTED_WITH_ROUTE',
+          'CHECKLIST_TEMPLATE_VERSION',
+          versionId,
+          version,
+          {
+            status: 'IN_REVIEW',
+            politica_assinatura: route.signaturePolicy,
+            assinaturas_exigidas: requiredSignatures,
+            responsavel_atual_id: route.responsibleUserId,
+            usuarios_validadores: validatorUserIds,
+            hash_conteudo: contentHash,
+          },
+        );
+        return this.requiredChecklistDetail(client, checklistId);
+      },
+    );
+  }
+
   async reviewChecklist(
     user: AuthenticatedUser,
     checklistId: string,
@@ -635,7 +954,13 @@ export class PlanningService {
         const context = await this.repository.getValidatorContext(client, user.id);
         const policy = text(version, 'signature_policy') as SignaturePolicy;
         const targetAreaId = version.technical_area_id as string | null;
-        if (!context || !canReviewPolicy(policy, targetAreaId, context)) {
+        const versionId = text(version, 'id');
+        const selectedForRoute = await this.repository.checklistValidatorUserEligible(
+          client,
+          versionId,
+          user.id,
+        );
+        if (!context || !selectedForRoute || !canReviewPolicy(policy, targetAreaId, context)) {
           throw new AppError({
             code: 'CHECKLIST_REVIEWER_NOT_ELIGIBLE',
             message: 'Seu perfil técnico não atende à política de validação deste checklist.',
@@ -647,7 +972,7 @@ export class PlanningService {
         await this.repository.insertChecklistReview(
           client,
           user.tenantId,
-          text(version, 'id'),
+          versionId,
           decision,
           normalizedJustification,
           user.id,
@@ -658,14 +983,14 @@ export class PlanningService {
         if (decision === 'CHANGES_REQUESTED') nextStatus = 'CHANGES_REQUESTED';
         if (decision === 'REJECTED') nextStatus = 'REJECTED';
         if (decision === 'APPROVED') {
-          const progress = await this.repository.reviewProgress(client, text(version, 'id'));
+          const progress = await this.repository.reviewProgress(client, versionId);
           if (approvalReached(policy, integer(version, 'required_signatures'), progress)) {
             nextStatus = 'APPROVED';
           }
         }
         await this.repository.updateChecklistVersionStatus(
           client,
-          text(version, 'id'),
+          versionId,
           nextStatus,
           contentHash,
         );
@@ -676,7 +1001,7 @@ export class PlanningService {
           audit,
           'CHECKLIST_REVIEW_RECORDED',
           'CHECKLIST_TEMPLATE_VERSION',
-          text(version, 'id'),
+          versionId,
           version,
           { decisao: decision, status: nextStatus, hash_conteudo: contentHash },
         );
