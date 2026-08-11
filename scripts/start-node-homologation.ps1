@@ -58,7 +58,9 @@ function Stop-ExpectedLocalProcess {
 
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId"
   $commandLine = [string]$process.CommandLine
-  if (-not $process -or -not $commandLine.ToLowerInvariant().Contains($ExpectedFragment.ToLowerInvariant())) {
+  $normalizedCommandLine = $commandLine.Replace('\', '/').ToLowerInvariant()
+  $normalizedExpectedFragment = $ExpectedFragment.Replace('\', '/').ToLowerInvariant()
+  if (-not $process -or -not $normalizedCommandLine.Contains($normalizedExpectedFragment)) {
     throw "A porta está ocupada por outro aplicativo e não será encerrada: PID $ProcessId."
   }
   Stop-Process -Id $ProcessId -Force
@@ -102,6 +104,59 @@ function Wait-HttpEndpoint {
     }
   }
   throw "O endpoint não respondeu dentro do prazo: $Uri"
+}
+
+function Assert-AdminBootstrap {
+  param(
+    [Parameter(Mandatory)][string]$EmployeeNumber,
+    [Parameter(Mandatory)][string]$Password
+  )
+
+  $loginBody = @{
+    matricula = $EmployeeNumber
+    senha = $Password
+  } | ConvertTo-Json
+  $login = Invoke-RestMethod `
+    -Method Post `
+    -Uri 'http://127.0.0.1:3333/v1/auth/login' `
+    -ContentType 'application/json' `
+    -Body $loginBody `
+    -TimeoutSec 10
+  $token = [string]$login.data.access_token
+  if ([string]::IsNullOrWhiteSpace($token)) {
+    throw 'A API não devolveu a sessão administrativa de homologação.'
+  }
+
+  $capabilities = @($login.data.user.capacidades)
+  $requiredCapabilities = @(
+    'admin.identity.read',
+    'admin.identity.manage',
+    'admin.governance.read',
+    'admin.governance.manage',
+    'admin.configuration.manage'
+  )
+  $missingCapabilities = @($requiredCapabilities | Where-Object { $_ -notin $capabilities })
+  if ($missingCapabilities.Count -gt 0) {
+    throw "O Administrador de homologação não recebeu: $($missingCapabilities -join ', ')."
+  }
+
+  $headers = @{ Authorization = "Bearer $token" }
+  $bootstrapEndpoints = @(
+    '/v1/admin/commercial-access',
+    '/v1/admin/company',
+    '/v1/admin/users?limite=500',
+    '/v1/admin/permissions'
+  )
+  foreach ($endpoint in $bootstrapEndpoints) {
+    $response = Invoke-WebRequest `
+      -Uri "http://127.0.0.1:3333$endpoint" `
+      -Headers $headers `
+      -UseBasicParsing `
+      -TimeoutSec 10
+    if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
+      throw "O pré-carregamento administrativo falhou em $endpoint."
+    }
+  }
 }
 
 $passwords = [ordered]@{
@@ -182,6 +237,9 @@ try {
     -RedirectStandardOutput $apiOut `
     -RedirectStandardError $apiErr | Out-Null
   Wait-HttpEndpoint -Uri 'http://127.0.0.1:3333/health/ready'
+  Assert-AdminBootstrap `
+    -EmployeeNumber 'USR-ADMIN-DEMO' `
+    -Password $passwords.Administrador
 
   foreach ($application in ($applications | Where-Object Type -eq 'web')) {
     $env:VITE_API_BASE_URL = 'http://127.0.0.1:3333'

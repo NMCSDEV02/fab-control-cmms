@@ -61,39 +61,6 @@ const ids = {
   reviewSafetyRequirement: '00000000-0000-4000-8000-000000001214',
 } as const;
 
-const capabilityCodes = [
-  'cmms.structure.read',
-  'cmms.structure.manage',
-  'cmms.assets.read',
-  'cmms.assets.manage',
-  'cmms.parameters.read',
-  'cmms.parameters.manage',
-  'cmms.materials.read',
-  'cmms.materials.manage',
-  'cmms.readings.create',
-  'maintenance.checklists.read',
-  'maintenance.checklists.manage',
-  'maintenance.checklists.review',
-  'maintenance.checklists.publish',
-  'maintenance.plans.read',
-  'maintenance.plans.manage',
-  'maintenance.plans.publish',
-  'maintenance.work-orders.read',
-  'maintenance.work-orders.manage',
-  'maintenance.work-orders.review',
-  'maintenance.work-orders.release',
-  'maintenance.executions.read',
-  'maintenance.occurrences.read',
-  'maintenance.occurrences.report',
-  'maintenance.occurrences.triage',
-  'maintenance.stops.read',
-  'maintenance.stops.manage',
-  'maintenance.alerts.read',
-  'maintenance.alerts.manage',
-  'workflow.notifications.read',
-  'analytics.technical.read',
-] as const;
-
 function requiredPassword(name: string): string {
   const password = process.env[name];
   if (!password || password.length < 12) {
@@ -187,18 +154,16 @@ async function seedIdentities(
     );
   }
 
-  for (const capabilityCode of capabilityCodes) {
-    await client.query(
-      `
-        INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
-        SELECT $1, $2, capability.id, 'ALLOW'
-        FROM iam.capabilities capability
-        WHERE capability.code = $3
-        ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
-      `,
-      [tenantId, ids.adminRole, capabilityCode],
-    );
-  }
+  await client.query(
+    `
+      INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
+      SELECT $1, $2, capability.id, 'ALLOW'
+      FROM iam.capabilities capability
+      WHERE capability.status = 'ACTIVE'
+      ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
+    `,
+    [tenantId, ids.adminRole],
+  );
 
   for (const capabilityCode of [
     'cmms.structure.read',
