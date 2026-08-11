@@ -52,17 +52,38 @@ const CRITICALITY_OPTIONS = [
 ]
 
 const EQUIPMENT_TYPE_OPTIONS = [
-  { value: 'MAQUINA', label: 'Máquina de produção' },
-  { value: 'MOTOR', label: 'Motor elétrico' },
-  { value: 'BOMBA', label: 'Bomba' },
+  { value: 'PRODUCTION_MACHINE', label: 'Máquina de produção' },
+  { value: 'ELECTRIC_MOTOR', label: 'Motor elétrico' },
+  { value: 'PUMP', label: 'Bomba' },
   { value: 'COMPRESSOR', label: 'Compressor' },
-  { value: 'REDUTOR', label: 'Redutor' },
-  { value: 'TRANSPORTADOR', label: 'Transportador / esteira' },
-  { value: 'CALDEIRA', label: 'Caldeira / utilidade' },
-  { value: 'PAINEL_ELETRICO', label: 'Painel elétrico' },
-  { value: 'INSTRUMENTO', label: 'Sensor / instrumento' },
-  { value: 'OUTRO', label: 'Outro equipamento' },
+  { value: 'GEARBOX', label: 'Redutor' },
+  { value: 'CONVEYOR', label: 'Transportador / esteira' },
+  { value: 'BOILER', label: 'Caldeira / utilidade' },
+  { value: 'ELECTRICAL_PANEL', label: 'Painel elétrico' },
+  { value: 'INSTRUMENT', label: 'Sensor / instrumento' },
+  { value: 'OTHER', label: 'Outro equipamento' },
 ]
+
+const LEGACY_EQUIPMENT_TYPES: Readonly<Record<string, string>> = {
+  MAQUINA: 'PRODUCTION_MACHINE',
+  MACHINE: 'PRODUCTION_MACHINE',
+  MOTOR: 'ELECTRIC_MOTOR',
+  MOTOR_ELETRICO: 'ELECTRIC_MOTOR',
+  BOMBA: 'PUMP',
+  REDUTOR: 'GEARBOX',
+  TRANSPORTADOR: 'CONVEYOR',
+  ESTEIRA: 'CONVEYOR',
+  CALDEIRA: 'BOILER',
+  PAINEL_ELETRICO: 'ELECTRICAL_PANEL',
+  INSTRUMENTO: 'INSTRUMENT',
+  SENSOR: 'INSTRUMENT',
+  OUTRO: 'OTHER',
+}
+
+function normalizeEquipmentType(value: unknown): string {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  return LEGACY_EQUIPMENT_TYPES[normalized] ?? normalized
+}
 
 const COMPONENT_TYPE_OPTIONS = [
   { value: 'MECANICO', label: 'Mecânico' },
@@ -177,7 +198,7 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
       { key: 'numero_serie', label: 'Número de série' },
       { key: 'localizacao_tecnica', label: 'Localização técnica' },
     ],
-    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_id: '', tag: '', nome: '', tipo: 'MAQUINA', criticidade: 'MEDIA', status: 'OPERANDO', saude_pct: 100, horimetro_atual: 0 },
+    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_id: '', tag: '', nome: '', tipo: 'PRODUCTION_MACHINE', criticidade: 'MEDIA', status: 'OPERANDO', saude_pct: 100, horimetro_atual: 0 },
   },
   componentes: {
     entity: 'componentes', singular: 'componente', label: 'Componentes', description: 'Partes e subconjuntos vinculados aos equipamentos.',
@@ -420,7 +441,10 @@ export function AdminCatalogWorkspace({
 
   function openEditor(record?: AdminEntityRecord) {
     const base = record ? { ...record } : { ...definition.defaults }
-    const next = addLocationContext(base)
+    const normalizedBase = selectedEntity === 'ativos'
+      ? { ...base, tipo: normalizeEquipmentType(base.tipo) }
+      : base
+    const next = addLocationContext(normalizedBase)
     setEditing(record ?? null)
     setDraft(next)
     setError('')
