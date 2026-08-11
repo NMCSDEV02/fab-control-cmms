@@ -474,6 +474,18 @@ test(
     assert.equal(createPlanResponse.statusCode, 200, createPlanResponse.body);
     const planId: string = createPlanResponse.json().data.id;
 
+    const planListResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/maintenance/plans?busca=integral',
+      headers: adminHeaders,
+    });
+    assert.equal(planListResponse.statusCode, 200, planListResponse.body);
+    assert.equal(planListResponse.json().data.itens.length, 1);
+    assert.equal(planListResponse.json().data.itens[0].id, planId);
+    assert.equal(planListResponse.json().data.itens[0].plano_itens_count, 9);
+    assert.equal(planListResponse.json().data.itens[0].exige_loto, true);
+    assert.equal(planListResponse.json().data.itens[0].modo_parada, 'MANDATORY_STOP');
+
     const publishPlanResponse = await app.inject({
       method: 'POST',
       url: `/v1/maintenance/plans/${planId}/publish`,

@@ -199,6 +199,262 @@ const stopStatusFromNode: Readonly<Record<string, string>> = {
   CANCELLED: "CANCELADA",
 };
 
+const recordStatusToNode: Readonly<Record<string, string>> = {
+  ATIVO: "ACTIVE",
+  INATIVO: "INACTIVE",
+  ARQUIVADO: "ARCHIVED",
+};
+
+const recordStatusFromNode: Readonly<Record<string, string>> = {
+  ACTIVE: "ATIVO",
+  INACTIVE: "INATIVO",
+  ARCHIVED: "ARQUIVADO",
+};
+
+const operationalStatusToNode: Readonly<Record<string, string>> = {
+  OPERANDO: "OPERATING",
+  PARADO: "STOPPED",
+  INSPECAO: "INSPECTION",
+  MANUTENCAO_PROGRAMADA: "MAINTENANCE_PLANNED",
+  MANUTENCAO_NAO_PROGRAMADA: "MAINTENANCE_UNPLANNED",
+  INATIVO: "UNAVAILABLE",
+};
+
+const operationalStatusFromNode: Readonly<Record<string, string>> = {
+  OPERATING: "OPERANDO",
+  STOPPED: "PARADO",
+  INSPECTION: "INSPECAO",
+  MAINTENANCE_PLANNED: "MANUTENCAO_PROGRAMADA",
+  MAINTENANCE_UNPLANNED: "MANUTENCAO_NAO_PROGRAMADA",
+  UNAVAILABLE: "INATIVO",
+};
+
+const planTypeFromNode: Readonly<Record<string, string>> = {
+  PREVENTIVE: "PREVENTIVA",
+  PREDICTIVE: "PREDITIVA",
+  INSPECTION: "INSPECAO",
+  LUBRICATION: "LUBRIFICACAO",
+  CORRECTIVE: "CORRETIVA",
+  CONDITION_BASED: "BASEADA_CONDICAO",
+};
+
+const planVersionStatusFromNode: Readonly<Record<string, string>> = {
+  DRAFT: "RASCUNHO",
+  IN_REVIEW: "EM_VALIDACAO_GESTAO",
+  CHANGES_REQUESTED: "DEVOLVIDO_CORRECAO",
+  APPROVED: "VALIDADO",
+  PUBLISHED: "VALIDADO",
+  SUPERSEDED: "OBSOLETO",
+  REJECTED: "DEVOLVIDO_CORRECAO",
+};
+
+const triggerTypeFromNode: Readonly<Record<string, string>> = {
+  PERIODICITY: "DIAS",
+  HOUR_METER: "HORAS",
+  CONDITION: "PARAMETRO",
+  MANUAL: "MANUAL",
+  OCCURRENCE: "OCORRENCIA",
+};
+
+const stopModeFromNode: Readonly<Record<string, string>> = {
+  NO_STOP: "SEM_PARADA",
+  MANDATORY_STOP: "OBRIGATORIA",
+  EXECUTOR_DECISION: "DECISAO_EXECUTOR",
+};
+
+function upperText(value: unknown): string {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function nullableNumberValue(value: unknown): number | null {
+  if (value === "" || value === null || value === undefined) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function nullableTextValue(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized || null;
+}
+
+function catalogStatus(value: JsonRecord): string {
+  const lifecycle = upperText(value.status_ciclo_vida);
+  if (["INACTIVE", "DECOMMISSIONED", "ARCHIVED"].includes(lifecycle)) {
+    return "INATIVO";
+  }
+  const operational = upperText(value.status_operacional);
+  return operationalStatusFromNode[operational]
+    ?? recordStatusFromNode[upperText(value.status)]
+    ?? operational
+    ?? "ATIVO";
+}
+
+function mapCatalogRow(entity: string, value: unknown): JsonRecord {
+  const item = record(value);
+  const mapped: JsonRecord = {
+    ...item,
+    criado_em: item.criado_em ?? item.created_at,
+    atualizado_em: item.atualizado_em ?? item.updated_at,
+  };
+  if (["plantas", "setores", "linhas", "materiais"].includes(entity)) {
+    mapped.status = recordStatusFromNode[upperText(item.status)] ?? item.status;
+  }
+  if (["ativos", "componentes"].includes(entity)) {
+    mapped.status = catalogStatus(item);
+    mapped.criticidade = criticalityFromNode[upperText(item.criticidade)] ?? item.criticidade;
+    mapped.saude_pct = item.saude_pct ?? item.saude_percentual;
+  }
+  if (entity === "planos") {
+    mapped.workflow_status = planVersionStatusFromNode[upperText(item.status)] ?? item.status;
+    mapped.status = recordStatusFromNode[upperText(item.status_ciclo_vida)] ?? item.status_ciclo_vida;
+    mapped.criticidade = criticalityFromNode[upperText(item.criticidade)] ?? item.criticidade;
+    mapped.tipo = planTypeFromNode[upperText(item.tipo)] ?? item.tipo;
+    mapped.gatilho_tipo = triggerTypeFromNode[upperText(item.tipo_disparo)] ?? item.tipo_disparo;
+    mapped.gatilho_valor = item.valor_disparo ?? item.recorrencia_dias;
+    mapped.requer_bloqueio = item.exige_loto === true ? "SIM" : "NAO";
+    mapped.requer_evidencia = item.exige_evidencia === true ? "SIM" : "NAO";
+    mapped.max_sessoes = item.maximo_sessoes;
+    mapped.tempo_estimado_min = item.duracao_estimada_minutos;
+    mapped.modo_parada_manutencao = stopModeFromNode[upperText(item.modo_parada)] ?? item.modo_parada;
+    mapped.validado_gestao = ["APPROVED", "PUBLISHED"].includes(upperText(item.status)) ? "SIM" : "NAO";
+  }
+  return mapped;
+}
+
+function assetWriteBody(data: JsonRecord, statusOverride?: string): JsonRecord {
+  const requestedStatus = upperText(statusOverride ?? data.status ?? "OPERANDO");
+  const archived = requestedStatus === "ARQUIVADO";
+  const inactive = requestedStatus === "INATIVO";
+  return {
+    linha_id: data.linha_id,
+    tag: data.tag,
+    nome: data.nome,
+    tipo: data.tipo,
+    criticidade: criticalityToNode[upperText(data.criticidade)] ?? upperText(data.criticidade),
+    status_operacional: archived || inactive
+      ? "UNAVAILABLE"
+      : operationalStatusToNode[requestedStatus] ?? requestedStatus,
+    status_ciclo_vida: archived ? "ARCHIVED" : inactive ? "INACTIVE" : "ACTIVE",
+    saude_percentual: nullableNumberValue(data.saude_pct ?? data.saude_percentual),
+    horimetro_atual: nullableNumberValue(data.horimetro_atual),
+    modo_horimetro: nullableTextValue(data.modo_horimetro),
+    fabricante: nullableTextValue(data.fabricante),
+    modelo: nullableTextValue(data.modelo),
+    numero_serie: nullableTextValue(data.numero_serie),
+    localizacao_tecnica: nullableTextValue(data.localizacao_tecnica),
+    metadados: record(data.metadados),
+  };
+}
+
+function componentWriteBody(data: JsonRecord, statusOverride?: string): JsonRecord {
+  const requestedStatus = upperText(statusOverride ?? data.status ?? "ATIVO");
+  const archived = requestedStatus === "ARQUIVADO";
+  const inactive = requestedStatus === "INATIVO";
+  const installed = nullableTextValue(data.instalado_em);
+  return {
+    ativo_id: data.ativo_id,
+    tag: data.tag,
+    nome: data.nome,
+    tipo: data.tipo,
+    criticidade: criticalityToNode[upperText(data.criticidade)] ?? upperText(data.criticidade),
+    status_operacional: archived || inactive
+      ? "UNAVAILABLE"
+      : operationalStatusToNode[requestedStatus] ?? "OPERATING",
+    status_ciclo_vida: archived ? "ARCHIVED" : inactive ? "INACTIVE" : "ACTIVE",
+    vida_util_horas: nullableNumberValue(data.vida_util_horas),
+    vida_util_dias: nullableNumberValue(data.vida_util_dias),
+    horas_acumuladas: nullableNumberValue(data.horas_acumuladas),
+    instalado_em: installed
+      ? new Date(installed.length === 10 ? `${installed}T00:00:00.000Z` : installed).toISOString()
+      : null,
+    fabricante: nullableTextValue(data.fabricante),
+    modelo: nullableTextValue(data.modelo),
+    numero_serie: nullableTextValue(data.numero_serie),
+    localizacao_tecnica: nullableTextValue(data.localizacao_tecnica),
+    metadados: record(data.metadados),
+  };
+}
+
+function catalogResource(entity: string): string | null {
+  const resources: Readonly<Record<string, string>> = {
+    plantas: "plants",
+    setores: "sectors",
+    linhas: "lines",
+    ativos: "assets",
+    componentes: "components",
+    materiais: "materials",
+  };
+  return resources[entity] ?? null;
+}
+
+function catalogWriteBody(
+  entity: string,
+  data: JsonRecord,
+  statusOverride?: string,
+): JsonRecord {
+  const requestedStatus = upperText(statusOverride ?? data.status ?? "ATIVO");
+  if (entity === "plantas") {
+    return {
+      tag: data.tag,
+      nome: data.nome,
+      status: recordStatusToNode[requestedStatus] ?? requestedStatus,
+    };
+  }
+  if (entity === "setores") {
+    return {
+      planta_id: data.planta_id,
+      tag: data.tag,
+      nome: data.nome,
+      status: recordStatusToNode[requestedStatus] ?? requestedStatus,
+    };
+  }
+  if (entity === "linhas") {
+    return {
+      setor_id: data.setor_id,
+      tag: data.tag,
+      nome: data.nome,
+      status: recordStatusToNode[requestedStatus] ?? requestedStatus,
+    };
+  }
+  if (entity === "ativos") return assetWriteBody(data, statusOverride);
+  if (entity === "componentes") return componentWriteBody(data, statusOverride);
+  if (entity === "materiais") {
+    return {
+      sku: data.sku,
+      nome: data.nome,
+      unidade: data.unidade,
+      estoque_atual: nullableNumberValue(data.estoque_atual) ?? 0,
+      estoque_minimo: nullableNumberValue(data.estoque_minimo) ?? 0,
+      status: recordStatusToNode[requestedStatus] ?? requestedStatus,
+    };
+  }
+  return {};
+}
+
+function createCatalogBody(entity: string, data: JsonRecord): JsonRecord {
+  const body = catalogWriteBody(entity, data);
+  if (["plantas", "setores", "linhas"].includes(entity)) delete body.status;
+  return body;
+}
+
+function catalogStatusBody(entity: string, status: string): JsonRecord {
+  const requested = upperText(status);
+  if (["plantas", "setores", "linhas", "materiais"].includes(entity)) {
+    return { status: recordStatusToNode[requested] ?? requested };
+  }
+  const archived = requested === "ARQUIVADO";
+  const inactive = requested === "INATIVO";
+  if (["ativos", "componentes"].includes(entity)) {
+    return {
+      status_operacional: archived || inactive
+        ? "UNAVAILABLE"
+        : operationalStatusToNode[requested] ?? requested,
+      status_ciclo_vida: archived ? "ARCHIVED" : inactive ? "INACTIVE" : "ACTIVE",
+    };
+  }
+  return {};
+}
+
 function mappedCsv(
   value: unknown,
   mapping: Readonly<Record<string, string>>,
@@ -1004,7 +1260,28 @@ function nodeActionRequest(
           }),
         };
       }
-      return null;
+      {
+        const entity = String(payload.entidade ?? "");
+        const resource = catalogResource(entity);
+        const identifier = String(payload.id ?? "");
+        if (!resource || !identifier) return null;
+        const archived = payload.acao === "EXCLUIR";
+        const requestedStatus = archived ? "ARQUIVADO" : String(payload.status ?? "");
+        return {
+          method: "PATCH",
+          path: `/v1/cmms/${resource}/${encodeURIComponent(identifier)}`,
+          body: catalogStatusBody(entity, requestedStatus),
+          token,
+          transform: (data) => ({
+            acted: true,
+            acao: payload.acao,
+            entidade: entity,
+            id: identifier,
+            deleted: archived,
+            row: archived ? undefined : mapCatalogRow(entity, data),
+          }),
+        };
+      }
     case "admin.usuarios.listar":
       return {
         method: "GET",
@@ -1268,6 +1545,28 @@ function nodeActionRequest(
         }),
       };
     case "admin.listar": {
+      if (["plantas", "setores", "linhas"].includes(String(payload.entidade))) {
+        const entity = String(payload.entidade);
+        return {
+          method: "GET",
+          path: "/v1/cmms/structure",
+          token,
+          transform: (data) => {
+            const plants = records(data.plantas);
+            const sectors = plants.flatMap((plant) => records(plant.setores));
+            const lines = sectors.flatMap((sector) => records(sector.linhas));
+            const rowsByEntity: Readonly<Record<string, JsonRecord[]>> = {
+              plantas: plants,
+              setores: sectors,
+              linhas: lines,
+            };
+            const rows = (rowsByEntity[entity] ?? [])
+              .map((item) => mapCatalogRow(entity, item))
+              .filter((item) => upperText(item.status) !== "ARQUIVADO");
+            return { entidade: entity, total: rows.length, rows };
+          },
+        };
+      }
       if (payload.entidade === "componentes") {
         return {
           method: "GET",
@@ -1279,23 +1578,79 @@ function nodeActionRequest(
           token,
           transform: (data) => ({
             entidade: "componentes",
-            total: records(data.itens).length,
-            rows: records(data.itens),
+            total: records(data.itens).filter((item) => upperText(item.status_ciclo_vida) !== "ARCHIVED").length,
+            rows: records(data.itens)
+              .filter((item) => upperText(item.status_ciclo_vida) !== "ARCHIVED")
+              .map((item) => mapCatalogRow("componentes", item)),
           }),
         };
       }
-      if (payload.entidade !== "ativos") return null;
+      if (payload.entidade === "ativos") {
+        return {
+          method: "GET",
+          path: queryPath("/v1/cmms/assets", {
+            busca: payload.busca,
+            limite: Math.min(Number(payload.limite ?? 100), 100),
+          }),
+          token,
+          transform: (data) => {
+            const rows = records(data.itens)
+              .filter((item) => upperText(item.status_ciclo_vida) !== "ARCHIVED")
+              .map((item) => mapCatalogRow("ativos", item));
+            return { entidade: "ativos", total: rows.length, rows };
+          },
+        };
+      }
+      if (payload.entidade === "materiais") {
+        return {
+          method: "GET",
+          path: queryPath("/v1/cmms/materials", {
+            busca: payload.busca,
+            limite: Math.min(Number(payload.limite ?? 100), 100),
+          }),
+          token,
+          transform: (data) => {
+            const rows = records(data.itens)
+              .filter((item) => upperText(item.status) !== "ARCHIVED")
+              .map((item) => mapCatalogRow("materiais", item));
+            return { entidade: "materiais", total: rows.length, rows };
+          },
+        };
+      }
+      if (payload.entidade === "planos") {
+        return {
+          method: "GET",
+          path: queryPath("/v1/maintenance/plans", {
+            busca: payload.busca,
+            limite: Math.min(Number(payload.limite ?? 100), 100),
+          }),
+          token,
+          transform: (data) => {
+            const rows = records(data.itens).map((item) => mapCatalogRow("planos", item));
+            return { entidade: "planos", total: rows.length, rows };
+          },
+        };
+      }
+      return null;
+    }
+    case "admin.salvar": {
+      const entity = String(payload.entidade ?? "");
+      const resource = catalogResource(entity);
+      if (!resource) return null;
+      const data = record(payload.dados);
+      const identifier = String(data.id ?? "");
       return {
-        method: "GET",
-        path: queryPath("/v1/cmms/assets", {
-          busca: payload.busca,
-          limite: Math.min(Number(payload.limite ?? 100), 100),
-        }),
+        method: identifier ? "PATCH" : "POST",
+        path: identifier
+          ? `/v1/cmms/${resource}/${encodeURIComponent(identifier)}`
+          : `/v1/cmms/${resource}`,
+        body: identifier ? catalogWriteBody(entity, data) : createCatalogBody(entity, data),
         token,
-        transform: (data) => ({
-          entidade: "ativos",
-          total: records(data.itens).length,
-          rows: records(data.itens),
+        transform: (saved) => ({
+          saved: true,
+          mode: identifier ? "update" : "insert",
+          entidade: entity,
+          row: mapCatalogRow(entity, saved),
         }),
       };
     }

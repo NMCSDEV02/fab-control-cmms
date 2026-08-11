@@ -1237,9 +1237,19 @@ export class PlanningRepository {
           version.status,
           version.criticality AS criticidade,
           version.trigger_type AS tipo_disparo,
+          version.trigger_value AS valor_disparo,
+          version.trigger_unit AS unidade_disparo,
           version.recurrence_days AS recorrencia_dias,
+          version.estimated_duration_minutes AS duracao_estimada_minutos,
+          version.lockout_required AS exige_loto,
+          version.evidence_required AS exige_evidencia,
+          version.maximum_sessions AS maximo_sessoes,
+          version.maintenance_stop_mode AS modo_parada,
+          version.technical_analysis AS analise_tecnica,
+          version.technical_area_id AS area_tecnica_id,
           version.checklist_template_version_id AS checklist_versao_id,
           checklist.name AS checklist_nome,
+          checklist_items.total_itens AS plano_itens_count,
           plan.updated_at
         FROM maintenance.maintenance_plans plan
         JOIN cmms.assets asset ON asset.id = plan.asset_id
@@ -1255,6 +1265,11 @@ export class PlanningRepository {
           ON checklist_version.id = version.checklist_template_version_id
         JOIN maintenance.checklist_templates checklist
           ON checklist.id = checklist_version.checklist_template_id
+        JOIN LATERAL (
+          SELECT count(*) FILTER (WHERE item.status = 'ACTIVE')::integer AS total_itens
+          FROM maintenance.checklist_items item
+          WHERE item.checklist_template_version_id = checklist_version.id
+        ) checklist_items ON true
         WHERE plan.deleted_at IS NULL
           AND (
             $1 = ''

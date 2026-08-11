@@ -256,7 +256,7 @@ const SCOPE_REFERENCES: Record<AdminCatalogScope, AdminEntity[]> = {
   structure: ['plantas', 'setores', 'linhas'],
   assets: ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos'],
   inventory: ['materiais'],
-  maintenance: ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos', 'plano_itens'],
+  maintenance: ['plantas', 'setores', 'linhas', 'ativos', 'componentes', 'planos'],
 }
 
 const EMPTY_STATE_CONTENT: Record<AdminEntity, { title: string; description: string }> = {
@@ -500,7 +500,7 @@ export function AdminCatalogWorkspace({
     }
     if (selectedEntity === 'planos') {
       return [
-        { label: 'Etapas', value: (records.plano_itens ?? []).filter((item) => String(item.plano_id) === String(record.id)).length },
+        { label: 'Etapas', value: Number(record.plano_itens_count ?? 0) },
         { label: 'Revisão', value: Number(record.revisao || 1) },
       ]
     }

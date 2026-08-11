@@ -91,7 +91,6 @@ export function AdminInterventionsWorkspace({
   const [assets, setAssets] = useState<AdminEntityRecord[]>([])
   const [components, setComponents] = useState<AdminEntityRecord[]>([])
   const [plans, setPlans] = useState<AdminEntityRecord[]>([])
-  const [planItems, setPlanItems] = useState<AdminEntityRecord[]>([])
   const [users, setUsers] = useState<AdminUser[]>([])
   const [roles, setRoles] = useState<TechnicalRole[]>([])
   const [search, setSearch] = useState('')
@@ -132,7 +131,6 @@ export function AdminInterventionsWorkspace({
       assetList,
       componentList,
       planList,
-      planItemList,
       nextUsers,
       nextRoles,
     ] = await Promise.all([
@@ -141,7 +139,6 @@ export function AdminInterventionsWorkspace({
       listAdminEntity('ativos', signal),
       listAdminEntity('componentes', signal),
       listAdminEntity('planos', signal),
-      listAdminEntity('plano_itens', signal),
       listAdminUsers({ perfil: 'GESTOR', status: 'ATIVO' }, signal),
       listTechnicalRoles('', signal),
     ])
@@ -150,7 +147,6 @@ export function AdminInterventionsWorkspace({
     setAssets(assetList.rows)
     setComponents(componentList.rows)
     setPlans(planList.rows)
-    setPlanItems(planItemList.rows)
     setUsers(nextUsers)
     setRoles(nextRoles)
     setLastSyncedAt(new Date())
@@ -213,13 +209,11 @@ export function AdminInterventionsWorkspace({
   )
   const activePlanItemCounts = useMemo(() => {
     const counts = new Map<string, number>()
-    planItems.forEach((item) => {
-      if (String(item.status ?? 'ATIVO').trim().toUpperCase() === 'INATIVO') return
-      const planId = String(item.plano_id ?? '')
-      counts.set(planId, (counts.get(planId) ?? 0) + 1)
+    plans.forEach((plan) => {
+      counts.set(String(plan.id), Number(plan.plano_itens_count ?? 0))
     })
     return counts
-  }, [planItems])
+  }, [plans])
   const editorPlans = useMemo(
     () => plans.filter((plan) => {
       if (!operationalPlan(plan)) return false
