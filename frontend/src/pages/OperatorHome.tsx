@@ -136,8 +136,8 @@ export function OperatorHome({
           <span className="state-panel__kicker">Integração necessária</span>
           <h1>Configure a API e o token do operador</h1>
           <p>
-            A interface está pronta. Falta informar o endpoint publicado do Apps Script
-            e uma sessão válida do perfil operador.
+            Informe o endpoint da API Node.js e autentique uma sessão válida do
+            perfil Operador.
           </p>
           <button type="button" onClick={onOpenSettings}>Abrir configurações</button>
         </article>

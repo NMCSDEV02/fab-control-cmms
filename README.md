@@ -27,3 +27,9 @@ Referências visuais oficiais:
 - `mockups/FAB-Control-Mockup admin.html`
 
 Não versionar tokens, credenciais, URLs privadas ou dados reais de produção.
+
+## Backend Node.js e PostgreSQL
+
+O estado validado da migração, os comandos de teste, os acessos locais dos três
+portais e o procedimento de corte/rollback estão em
+[`docs/migration/node-postgresql-completion.md`](docs/migration/node-postgresql-completion.md).

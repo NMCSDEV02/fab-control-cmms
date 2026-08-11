@@ -17,7 +17,7 @@ function normalizeApiUrl(value: string): string {
 }
 
 function validateApiUrl(value: string): string {
-  if (!value) return 'Informe a URL publicada do Web App.'
+  if (!value) return 'Informe a URL base da API.'
 
   let parsed: URL
   try {
@@ -101,18 +101,18 @@ export function ApiConnectionPanel({ compact = false, onSaved }: ApiConnectionPa
       </div>
 
       <p>
-        Informe a URL publicada do Google Apps Script. O endereço do editor não
-        recebe chamadas do aplicativo.
+        Informe a URL base da API Node.js. O ambiente publicado pode controlar
+        este endereço automaticamente.
       </p>
 
       <form className="connection-form" onSubmit={submit}>
         <label>
-          URL do Web App
+          URL base da API
           <input
             type="url"
             value={value}
             disabled={managedByEnvironment || testing}
-            placeholder="https://script.google.com/macros/s/.../exec"
+            placeholder="https://api.suaempresa.com"
             autoComplete="url"
             onChange={(event) => setValue(event.target.value)}
           />
