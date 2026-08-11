@@ -4,6 +4,7 @@ import { listAdminEntity } from '../services/api/catalog'
 import {
   getAdminDocument,
   listAdminDocuments,
+  openAdminDocumentFile,
   updateAdminDocument,
   uploadAdminDocument,
 } from '../services/api/governance'
@@ -247,8 +248,7 @@ export function AdminDocumentsWorkspace({ onSessionExpired }: AdminDocumentsWork
     setError('')
     try {
       const detail = await getAdminDocument(document.id)
-      if (!detail.arquivo_url) throw new Error('O arquivo desta revisão não está disponível no Drive.')
-      window.open(detail.arquivo_url, '_blank', 'noopener,noreferrer')
+      await openAdminDocumentFile(detail)
     } catch (cause) {
       handleFailure(cause)
     }

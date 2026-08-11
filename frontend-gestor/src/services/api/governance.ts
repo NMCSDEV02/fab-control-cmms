@@ -13,7 +13,7 @@ import type {
   AdminMonitoringState,
 } from '../../types/governance'
 import { API_TIMEOUT_MS, ApiRequestError, callApi } from './client'
-import { getGestorToken } from './config'
+import { getApiUrl, getGestorToken, usesNodeApi } from './config'
 
 function adminToken(): string {
   const token = getGestorToken()
@@ -56,6 +56,42 @@ export function listAdminDocuments(
 
 export function getAdminDocument(documentId: string): Promise<AdminDocumentDetailData> {
   return readGovernance('admin.documentos.detalhe', { documento_id: documentId })
+}
+
+export async function openAdminDocumentFile(detail: AdminDocumentDetailData): Promise<void> {
+  if (!detail.arquivo_url) {
+    throw new ApiRequestError('O arquivo desta revisão não está disponível.', 'DOCUMENT_FILE_MISSING')
+  }
+  if (!usesNodeApi()) {
+    window.open(detail.arquivo_url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  const baseUrl = getApiUrl().replace(/\/+$/u, '').replace(/\/v1$/u, '')
+  const path = detail.arquivo_url.startsWith('/') ? detail.arquivo_url : `/${detail.arquivo_url}`
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: { Authorization: `Bearer ${adminToken()}` },
+  })
+  if (!response.ok) {
+    let message = `Não foi possível abrir o arquivo (HTTP ${response.status}).`
+    try {
+      const envelope = await response.json() as { error?: { message?: string } }
+      message = envelope.error?.message ?? message
+    } catch {
+      // A mensagem HTTP preserva um retorno seguro quando a resposta não é JSON.
+    }
+    throw new ApiRequestError(message, 'DOCUMENT_FILE_DOWNLOAD_FAILED', { status: response.status })
+  }
+  const objectUrl = URL.createObjectURL(await response.blob())
+  const opened = window.open(objectUrl, '_blank', 'noopener,noreferrer')
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+  if (!opened) {
+    URL.revokeObjectURL(objectUrl)
+    throw new ApiRequestError(
+      'O navegador bloqueou a abertura do arquivo. Permita pop-ups para este endereço.',
+      'DOCUMENT_FILE_POPUP_BLOCKED',
+    )
+  }
 }
 
 export function uploadAdminDocument(

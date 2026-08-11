@@ -1703,6 +1703,43 @@ function nodeActionRequest(
         },
         token,
       };
+    case "admin.documentos.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/documents", {
+          busca: payload.busca,
+          status: payload.status,
+          tipo: payload.tipo,
+          limite: payload.limite,
+        }),
+        token,
+      };
+    case "admin.documentos.detalhe":
+      return {
+        method: "GET",
+        path: `/v1/admin/documents/${encodeURIComponent(String(payload.documento_id))}`,
+        token,
+      };
+    case "admin.documentos.upload":
+      return {
+        method: "POST",
+        path: "/v1/admin/documents",
+        body: {
+          dados: payload.dados,
+          arquivo: payload.arquivo,
+        },
+        token,
+      };
+    case "admin.documentos.atualizar": {
+      const data = record(payload.dados);
+      const documentId = data.documento_id ?? data.id;
+      return {
+        method: "PATCH",
+        path: `/v1/admin/documents/${encodeURIComponent(String(documentId))}`,
+        body: { dados: data },
+        token,
+      };
+    }
     case "platform.motor.catalogo":
       return { method: "GET", path: "/v1/platform/motor/catalog", token };
     case "platform.motor.catalogo.validar":
