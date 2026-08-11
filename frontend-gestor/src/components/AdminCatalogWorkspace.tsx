@@ -51,6 +51,29 @@ const CRITICALITY_OPTIONS = [
   { value: 'CRITICA', label: 'Crítica' },
 ]
 
+const OPERATIONAL_STATUS_OPTIONS = [
+  { value: 'OPERANDO', label: 'Operando' },
+  { value: 'PARADO', label: 'Parado' },
+  { value: 'INSPECAO', label: 'Em inspeção' },
+  { value: 'MANUTENCAO_PROGRAMADA', label: 'Manutenção programada' },
+  { value: 'MANUTENCAO_NAO_PROGRAMADA', label: 'Manutenção não programada' },
+  { value: 'INATIVO', label: 'Indisponível / inativo' },
+]
+
+const LEGACY_OPERATIONAL_STATUSES: Readonly<Record<string, string>> = {
+  OPERATING: 'OPERANDO',
+  STOPPED: 'PARADO',
+  INSPECTION: 'INSPECAO',
+  MAINTENANCE_PLANNED: 'MANUTENCAO_PROGRAMADA',
+  MAINTENANCE_UNPLANNED: 'MANUTENCAO_NAO_PROGRAMADA',
+  UNAVAILABLE: 'INATIVO',
+}
+
+function normalizeOperationalStatus(value: unknown): string {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  return LEGACY_OPERATIONAL_STATUSES[normalized] ?? normalized
+}
+
 const EQUIPMENT_TYPE_OPTIONS = [
   { value: 'PRODUCTION_MACHINE', label: 'Máquina de produção' },
   { value: 'ELECTRIC_MOTOR', label: 'Motor elétrico' },
@@ -86,15 +109,43 @@ function normalizeEquipmentType(value: unknown): string {
 }
 
 const COMPONENT_TYPE_OPTIONS = [
-  { value: 'MECANICO', label: 'Mecânico' },
-  { value: 'ELETRICO', label: 'Elétrico' },
-  { value: 'PNEUMATICO', label: 'Pneumático' },
-  { value: 'HIDRAULICO', label: 'Hidráulico' },
-  { value: 'INSTRUMENTACAO', label: 'Instrumentação' },
-  { value: 'SEGURANCA', label: 'Dispositivo de segurança' },
-  { value: 'ESTRUTURAL', label: 'Estrutural' },
-  { value: 'OUTRO', label: 'Outro componente' },
+  { value: 'BEARING', label: 'Rolamento' },
+  { value: 'FILTER', label: 'Filtro' },
+  { value: 'MECHANICAL', label: 'Mecânico' },
+  { value: 'ELECTRICAL', label: 'Elétrico' },
+  { value: 'PNEUMATIC', label: 'Pneumático' },
+  { value: 'HYDRAULIC', label: 'Hidráulico' },
+  { value: 'INSTRUMENTATION', label: 'Instrumentação' },
+  { value: 'SAFETY_DEVICE', label: 'Dispositivo de segurança' },
+  { value: 'STRUCTURAL', label: 'Estrutural' },
+  { value: 'COMPONENT', label: 'Componente genérico' },
+  { value: 'OTHER', label: 'Outro componente' },
 ]
+
+const LEGACY_COMPONENT_TYPES: Readonly<Record<string, string>> = {
+  ROLAMENTO: 'BEARING',
+  FILTRO: 'FILTER',
+  MECANICO: 'MECHANICAL',
+  MECÂNICO: 'MECHANICAL',
+  ELETRICO: 'ELECTRICAL',
+  ELÉTRICO: 'ELECTRICAL',
+  PNEUMATICO: 'PNEUMATIC',
+  PNEUMÁTICO: 'PNEUMATIC',
+  HIDRAULICO: 'HYDRAULIC',
+  HIDRÁULICO: 'HYDRAULIC',
+  INSTRUMENTACAO: 'INSTRUMENTATION',
+  INSTRUMENTAÇÃO: 'INSTRUMENTATION',
+  SEGURANCA: 'SAFETY_DEVICE',
+  SEGURANÇA: 'SAFETY_DEVICE',
+  ESTRUTURAL: 'STRUCTURAL',
+  COMPONENTE: 'COMPONENT',
+  OUTRO: 'OTHER',
+}
+
+function normalizeComponentType(value: unknown): string {
+  const normalized = String(value ?? '').trim().toUpperCase()
+  return LEGACY_COMPONENT_TYPES[normalized] ?? normalized
+}
 
 const MATERIAL_UNIT_OPTIONS = [
   { value: 'un', label: 'Unidade (un)' },
@@ -190,7 +241,7 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
       { key: 'nome', label: 'Nome do equipamento', required: true },
       { key: 'tipo', label: 'Tipo de equipamento', type: 'select', options: EQUIPMENT_TYPE_OPTIONS, required: true },
       { key: 'criticidade', label: 'Criticidade', type: 'select', options: CRITICALITY_OPTIONS, required: true },
-      { key: 'status', label: 'Status operacional', type: 'select', options: [{ value: 'OPERANDO', label: 'Operando' }, { value: 'PARADO', label: 'Parado' }, { value: 'INATIVO', label: 'Inativo' }], required: true },
+      { key: 'status', label: 'Status operacional', type: 'select', options: OPERATIONAL_STATUS_OPTIONS, required: true },
       { key: 'saude_pct', label: 'Saúde (%)', type: 'number' },
       { key: 'horimetro_atual', label: 'Horímetro atual', type: 'number' },
       { key: 'fabricante', label: 'Fabricante' },
@@ -212,7 +263,7 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
       { key: 'nome', label: 'Nome do componente', required: true },
       { key: 'tipo', label: 'Tipo de componente', type: 'select', options: COMPONENT_TYPE_OPTIONS, required: true },
       { key: 'criticidade', label: 'Criticidade', type: 'select', options: CRITICALITY_OPTIONS, required: true },
-      { key: 'status', label: 'Status', type: 'select', options: STATUS_OPTIONS, required: true },
+      { key: 'status', label: 'Status operacional', type: 'select', options: OPERATIONAL_STATUS_OPTIONS, required: true },
       { key: 'vida_util_horas', label: 'Vida útil (horas)', type: 'number' },
       { key: 'vida_util_dias', label: 'Vida útil (dias)', type: 'number' },
       { key: 'horas_acumuladas', label: 'Horas acumuladas', type: 'number' },
@@ -222,7 +273,7 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
       { key: 'numero_serie', label: 'Número de série' },
       { key: 'localizacao_tecnica', label: 'Localização técnica' },
     ],
-    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_contexto: '', ativo_id: '', tag: '', nome: '', tipo: 'MECANICO', criticidade: 'MEDIA', status: 'ATIVO', vida_util_horas: 0, vida_util_dias: 0, horas_acumuladas: 0 },
+    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_contexto: '', ativo_id: '', tag: '', nome: '', tipo: 'MECHANICAL', criticidade: 'MEDIA', status: 'OPERANDO', vida_util_horas: 0, vida_util_dias: 0, horas_acumuladas: 0 },
   },
   materiais: {
     entity: 'materiais', singular: 'material', label: 'Materiais e peças', description: 'Itens utilizados nas execuções de manutenção.',
@@ -301,6 +352,7 @@ function valueText(value: unknown): string {
 
 function formatCell(key: string, value: unknown): string {
   if (key === 'saude_pct' && value !== '' && value !== undefined) return `${value}%`
+  if (key === 'status' || key === 'workflow_status') return statusLabel(value)
   if (key.endsWith('_em') && value) {
     const date = new Date(String(value))
     if (!Number.isNaN(date.getTime())) return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date)
@@ -322,6 +374,9 @@ function statusLabel(value: unknown): string {
     INATIVO: 'Inativo',
     OPERANDO: 'Operando',
     PARADO: 'Parado',
+    INSPECAO: 'Em inspeção',
+    MANUTENCAO_PROGRAMADA: 'Manutenção programada',
+    MANUTENCAO_NAO_PROGRAMADA: 'Manutenção não programada',
     RASCUNHO: 'Rascunho',
     EM_VALIDACAO_GESTAO: 'Em validação',
     DEVOLVIDO_CORRECAO: 'Devolvido para correção',
@@ -442,8 +497,18 @@ export function AdminCatalogWorkspace({
   function openEditor(record?: AdminEntityRecord) {
     const base = record ? { ...record } : { ...definition.defaults }
     const normalizedBase = selectedEntity === 'ativos'
-      ? { ...base, tipo: normalizeEquipmentType(base.tipo) }
-      : base
+      ? {
+          ...base,
+          tipo: normalizeEquipmentType(base.tipo),
+          status: normalizeOperationalStatus(base.status),
+        }
+      : selectedEntity === 'componentes'
+        ? {
+            ...base,
+            tipo: normalizeComponentType(base.tipo),
+            status: normalizeOperationalStatus(base.status),
+          }
+        : base
     const next = addLocationContext(normalizedBase)
     setEditing(record ?? null)
     setDraft(next)
