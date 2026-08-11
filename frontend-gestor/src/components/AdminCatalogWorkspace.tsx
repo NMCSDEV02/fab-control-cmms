@@ -57,7 +57,8 @@ const OPERATIONAL_STATUS_OPTIONS = [
   { value: 'INSPECAO', label: 'Em inspeção' },
   { value: 'MANUTENCAO_PROGRAMADA', label: 'Manutenção programada' },
   { value: 'MANUTENCAO_NAO_PROGRAMADA', label: 'Manutenção não programada' },
-  { value: 'INATIVO', label: 'Indisponível / inativo' },
+  { value: 'INDISPONIVEL', label: 'Indisponível' },
+  { value: 'INATIVO', label: 'Cadastro inativo' },
 ]
 
 const LEGACY_OPERATIONAL_STATUSES: Readonly<Record<string, string>> = {
@@ -66,7 +67,7 @@ const LEGACY_OPERATIONAL_STATUSES: Readonly<Record<string, string>> = {
   INSPECTION: 'INSPECAO',
   MAINTENANCE_PLANNED: 'MANUTENCAO_PROGRAMADA',
   MAINTENANCE_UNPLANNED: 'MANUTENCAO_NAO_PROGRAMADA',
-  UNAVAILABLE: 'INATIVO',
+  UNAVAILABLE: 'INDISPONIVEL',
 }
 
 function normalizeOperationalStatus(value: unknown): string {
@@ -377,6 +378,7 @@ function statusLabel(value: unknown): string {
     INSPECAO: 'Em inspeção',
     MANUTENCAO_PROGRAMADA: 'Manutenção programada',
     MANUTENCAO_NAO_PROGRAMADA: 'Manutenção não programada',
+    INDISPONIVEL: 'Indisponível',
     RASCUNHO: 'Rascunho',
     EM_VALIDACAO_GESTAO: 'Em validação',
     DEVOLVIDO_CORRECAO: 'Devolvido para correção',
@@ -784,7 +786,7 @@ export function AdminCatalogWorkspace({
 
                 {['plantas', 'setores', 'linhas', 'componentes', 'materiais'].includes(selectedEntity) ? (
                   selectedStatus === 'INATIVO'
-                    ? <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('ATIVO')}><CheckIcon /><span><strong>Reativar cadastro</strong><small>Volta a disponibilizá-lo nos novos cadastros.</small></span></button>
+                    ? <button type="button" disabled={actionBusy} onClick={() => void performStatusAction(selectedEntity === 'componentes' ? 'OPERANDO' : 'ATIVO')}><CheckIcon /><span><strong>Reativar cadastro</strong><small>Volta a disponibilizá-lo nos novos cadastros.</small></span></button>
                     : <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('INATIVO')}><StopIcon /><span><strong>Desativar cadastro</strong><small>Preserva histórico e vínculos existentes.</small></span></button>
                 ) : null}
 

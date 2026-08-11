@@ -217,6 +217,7 @@ const operationalStatusToNode: Readonly<Record<string, string>> = {
   INSPECAO: "INSPECTION",
   MANUTENCAO_PROGRAMADA: "MAINTENANCE_PLANNED",
   MANUTENCAO_NAO_PROGRAMADA: "MAINTENANCE_UNPLANNED",
+  INDISPONIVEL: "UNAVAILABLE",
   INATIVO: "UNAVAILABLE",
 };
 
@@ -226,7 +227,7 @@ const operationalStatusFromNode: Readonly<Record<string, string>> = {
   INSPECTION: "INSPECAO",
   MAINTENANCE_PLANNED: "MANUTENCAO_PROGRAMADA",
   MAINTENANCE_UNPLANNED: "MANUTENCAO_NAO_PROGRAMADA",
-  UNAVAILABLE: "INATIVO",
+  UNAVAILABLE: "INDISPONIVEL",
 };
 
 const planTypeFromNode: Readonly<Record<string, string>> = {
@@ -501,7 +502,7 @@ function assetWriteBody(data: JsonRecord, statusOverride?: string): JsonRecord {
 }
 
 function componentWriteBody(data: JsonRecord, statusOverride?: string): JsonRecord {
-  const requestedStatus = upperText(statusOverride ?? data.status ?? "ATIVO");
+  const requestedStatus = upperText(statusOverride ?? data.status ?? "OPERANDO");
   const archived = requestedStatus === "ARQUIVADO";
   const inactive = requestedStatus === "INATIVO";
   const installed = nullableTextValue(data.instalado_em);
@@ -598,11 +599,14 @@ function catalogStatusBody(entity: string, status: string): JsonRecord {
   }
   const archived = requested === "ARQUIVADO";
   const inactive = requested === "INATIVO";
+  const reactivated = requested === "ATIVO";
   if (["ativos", "componentes"].includes(entity)) {
     return {
       status_operacional: archived || inactive
         ? "UNAVAILABLE"
-        : operationalStatusToNode[requested] ?? requested,
+        : reactivated
+          ? "OPERATING"
+          : operationalStatusToNode[requested] ?? requested,
       status_ciclo_vida: archived ? "ARCHIVED" : inactive ? "INACTIVE" : "ACTIVE",
     };
   }
