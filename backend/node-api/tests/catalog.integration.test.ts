@@ -189,6 +189,21 @@ test(
     const assetId: string = assetResponse.json().data.id;
     assert.match(assetResponse.json().data.qr_payload, /^fabcontrol:\/\/asset\//u);
 
+    const updatedAssetResponse = await app.inject({
+      method: 'PATCH',
+      url: `/v1/cmms/assets/${assetId}`,
+      headers: authorization,
+      payload: {
+        fabricante: 'WEG',
+        modelo: 'W22',
+        numero_serie: 'HML-EQ-MOT-001',
+      },
+    });
+    assert.equal(updatedAssetResponse.statusCode, 200, updatedAssetResponse.body);
+    assert.equal(updatedAssetResponse.json().data.fabricante, 'WEG');
+    assert.equal(updatedAssetResponse.json().data.modelo, 'W22');
+    assert.equal(updatedAssetResponse.json().data.numero_serie, 'HML-EQ-MOT-001');
+
     const componentResponse = await app.inject({
       method: 'POST',
       url: '/v1/cmms/components',
@@ -337,6 +352,11 @@ test(
     assert.equal(searchResponse.statusCode, 200, searchResponse.body);
     assert.equal(searchResponse.json().data.itens.length, 1);
     assert.equal(searchResponse.json().data.itens[0].id, assetId);
+    assert.equal(searchResponse.json().data.itens[0].fabricante, 'WEG');
+    assert.equal(searchResponse.json().data.itens[0].modelo, 'W22');
+    assert.equal(searchResponse.json().data.itens[0].numero_serie, 'HML-EQ-MOT-001');
+    assert.equal(searchResponse.json().data.itens[0].modo_horimetro, 'RUNNING_HOURS');
+    assert.deepEqual(searchResponse.json().data.itens[0].metadados, { test: true });
 
     const resolveResponse = await app.inject({
       method: 'GET',
