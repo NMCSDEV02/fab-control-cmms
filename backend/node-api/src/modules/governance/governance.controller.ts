@@ -84,7 +84,10 @@ function audit(request: FastifyRequest): GovernanceAuditMetadata {
   };
 }
 
-function metadata(body: MetadataBody, routeDocumentId: string | null = null): DocumentMetadataInput {
+function metadata(
+  body: MetadataBody,
+  routeDocumentId: string | null = null,
+): DocumentMetadataInput {
   const code = body.codigo?.trim() ?? '';
   const validUntil = body.validade_em?.trim() ?? '';
   const description = body.descricao?.trim() ?? '';
@@ -160,10 +163,7 @@ export class GovernanceController {
     );
   };
 
-  openDocumentFile = async (
-    request: FastifyRequest<{ Params: Params }>,
-    reply: FastifyReply,
-  ) => {
+  openDocumentFile = async (request: FastifyRequest<{ Params: Params }>, reply: FastifyReply) => {
     const file = await this.service.openDocumentFile(user(request), id(request.params, 'objectId'));
     reply
       .header('Cache-Control', 'private, no-store, max-age=0')

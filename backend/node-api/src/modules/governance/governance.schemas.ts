@@ -85,3 +85,50 @@ export const documentUpdateBodySchema = Type.Object(
   { dados: metadata },
   { additionalProperties: false },
 );
+
+export const importBatchParamsSchema = Type.Object(
+  { batchId: uuid },
+  { additionalProperties: false },
+);
+
+export const importBatchListQuerySchema = Type.Object(
+  { limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) },
+  { additionalProperties: false },
+);
+
+const importCell = Type.Union([
+  Type.String({ maxLength: 5_000 }),
+  Type.Number(),
+  Type.Boolean(),
+  Type.Null(),
+]);
+
+export const importValidateBodySchema = Type.Object(
+  {
+    tipo: Type.String({ minLength: 1, maxLength: 80 }),
+    arquivo_nome: Type.String({ minLength: 1, maxLength: 180 }),
+    aba_nome: Type.String({ minLength: 1, maxLength: 120 }),
+    cabecalhos: Type.Array(Type.String({ minLength: 1, maxLength: 180 }), {
+      minItems: 1,
+      maxItems: 100,
+    }),
+    linhas: Type.Array(
+      Type.Object(
+        { __linha: Type.Integer({ minimum: 2, maximum: 1_000_000 }) },
+        { additionalProperties: importCell },
+      ),
+      { minItems: 1, maxItems: 250 },
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export const importConfirmBodySchema = Type.Object(
+  { validacao_hash: Type.String({ pattern: '^[a-f0-9]{64}$' }) },
+  { additionalProperties: false },
+);
+
+export const importRollbackBodySchema = Type.Object(
+  { motivo: Type.String({ minLength: 8, maxLength: 1_000 }) },
+  { additionalProperties: false },
+);

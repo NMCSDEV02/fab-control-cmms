@@ -1,10 +1,7 @@
 import type { PoolClient, QueryResultRow } from 'pg';
 
 import type { StoredDocumentObject } from '../../infrastructure/storage/object-storage.js';
-import type {
-  DocumentMetadataInput,
-  GovernanceAuditMetadata,
-} from './governance.types.js';
+import type { DocumentMetadataInput, GovernanceAuditMetadata } from './governance.types.js';
 
 export interface GovernanceRow extends QueryResultRow {
   [column: string]: unknown;
@@ -53,10 +50,7 @@ export class GovernanceRepository {
     return result.rows[0] ?? null;
   }
 
-  async listRevisions(
-    client: PoolClient,
-    documentId: string,
-  ): Promise<readonly GovernanceRow[]> {
+  async listRevisions(client: PoolClient, documentId: string): Promise<readonly GovernanceRow[]> {
     const result = await client.query<GovernanceRow>(
       `
         SELECT
@@ -178,15 +172,7 @@ export class GovernanceRepository {
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
       `,
-      [
-        tenantId,
-        documentId,
-        revision,
-        object.id,
-        observation,
-        object.checksumSha256,
-        userId,
-      ],
+      [tenantId, documentId, revision, object.id, observation, object.checksumSha256, userId],
     );
     return requireRow(result.rows, 'O PostgreSQL não retornou a revisão criada.');
   }

@@ -1740,6 +1740,47 @@ function nodeActionRequest(
         token,
       };
     }
+    case "admin.importacao.modelos":
+      return { method: "GET", path: "/v1/admin/imports/models", token };
+    case "admin.importacao.lotes":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/imports", { limite: payload.limite }),
+        token,
+      };
+    case "admin.importacao.detalhe":
+      return {
+        method: "GET",
+        path: `/v1/admin/imports/${encodeURIComponent(String(payload.lote_id))}`,
+        token,
+      };
+    case "admin.importacao.validar":
+      return {
+        method: "POST",
+        path: "/v1/admin/imports/validate",
+        body: {
+          tipo: payload.tipo,
+          arquivo_nome: payload.arquivo_nome,
+          aba_nome: payload.aba_nome,
+          cabecalhos: payload.cabecalhos,
+          linhas: payload.linhas,
+        },
+        token,
+      };
+    case "admin.importacao.confirmar":
+      return {
+        method: "POST",
+        path: `/v1/admin/imports/${encodeURIComponent(String(payload.lote_id))}/confirm`,
+        body: { validacao_hash: payload.validacao_hash },
+        token,
+      };
+    case "admin.importacao.rollback":
+      return {
+        method: "POST",
+        path: `/v1/admin/imports/${encodeURIComponent(String(payload.lote_id))}/rollback`,
+        body: { motivo: payload.motivo },
+        token,
+      };
     case "platform.motor.catalogo":
       return { method: "GET", path: "/v1/platform/motor/catalog", token };
     case "platform.motor.catalogo.validar":

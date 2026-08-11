@@ -125,7 +125,9 @@ function validDocumentMagicBytes(mediaType: string, header: Buffer): boolean {
       .equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
   }
   if (mediaType.includes('openxmlformats-officedocument')) {
-    return header.length >= 4 && header.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    return (
+      header.length >= 4 && header.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+    );
   }
   return mediaType === 'text/csv' && !header.includes(0);
 }

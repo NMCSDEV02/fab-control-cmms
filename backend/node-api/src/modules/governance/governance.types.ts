@@ -7,13 +7,7 @@ export type DocumentType =
   | 'FICHA_TECNICA'
   | 'OUTRO';
 
-export type DocumentEntityType =
-  | 'EMPRESA'
-  | 'PLANTA'
-  | 'SETOR'
-  | 'LINHA'
-  | 'ATIVO'
-  | 'COMPONENTE';
+export type DocumentEntityType = 'EMPRESA' | 'PLANTA' | 'SETOR' | 'LINHA' | 'ATIVO' | 'COMPONENTE';
 
 export type DocumentStatus = 'RASCUNHO' | 'EM_REVISAO' | 'VIGENTE' | 'OBSOLETO';
 
