@@ -5,6 +5,7 @@ import {
   emptyBodySchema,
   firstAccessBodySchema,
   loginBodySchema,
+  maintenanceExchangeBodySchema,
   recoveryBodySchema,
   successEnvelopeSchema,
 } from './auth.schemas.js';
@@ -57,6 +58,22 @@ export function createAuthRoutes(controller: AuthController): FastifyPluginAsync
         summary: 'Registra uma solicitação segura de recuperação.',
       },
       handler: controller.requestRecovery,
+    });
+
+    app.post('/v1/auth/maintenance/exchange', {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '15 minutes',
+        },
+      },
+      schema: {
+        body: maintenanceExchangeBodySchema,
+        response: { 200: successEnvelopeSchema },
+        tags: ['Authentication'],
+        summary: 'Troca um código de manutenção de uso único por uma sessão interna limitada.',
+      },
+      handler: controller.exchangeMaintenanceAccess,
     });
 
     app.post('/v1/auth/logout', {

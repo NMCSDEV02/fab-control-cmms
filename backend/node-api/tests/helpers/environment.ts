@@ -25,15 +25,17 @@ export function createTestEnvironment(
     APP_ENVIRONMENT: 'DEVELOPMENT',
     APP_RELEASE_VERSION: '1.4.0',
     API_VERSION: '2.0.0',
-    SCHEMA_VERSION: 'postgres-0015',
+    SCHEMA_VERSION: 'postgres-0016',
     CONTRACT_VERSION: '2.0.0',
     FRONTEND_VERSION: '1.4.0',
     AUTH_SESSION_HOURS: '8',
     AUTH_FIRST_ACCESS_MINUTES: '15',
+    AUTH_MAINTENANCE_SESSION_MINUTES: '30',
     AUTH_MAX_FAILED_ATTEMPTS: '5',
     AUTH_LOCK_MINUTES: '15',
     AUTH_RECOVERY_COOLDOWN_MINUTES: '10',
     AUTH_PASSWORD_PEPPER: 'test-password-pepper-with-32-characters-minimum',
     AUTH_RECOVERY_HMAC_SECRET: 'test-recovery-secret-with-32-characters-minimum',
+    AUTH_MAINTENANCE_HMAC_SECRET: 'test-maintenance-secret-with-32-characters-minimum',
   });
 }

@@ -9,7 +9,7 @@ test('carrega configuração segura de teste', () => {
 
   assert.equal(environment.nodeEnv, 'test');
   assert.equal(environment.defaultTenantId, '00000000-0000-4000-8000-000000000001');
-  assert.equal(environment.release.schema, 'postgres-0015');
+  assert.equal(environment.release.schema, 'postgres-0016');
   assert.deepEqual(environment.corsAllowedOrigins, ['http://127.0.0.1:5173']);
 });
 
@@ -33,6 +33,7 @@ test('recusa produção sem TLS verify-full', () => {
         FRONTEND_VERSION: valid.release.frontend,
         AUTH_PASSWORD_PEPPER: valid.auth.passwordPepper,
         AUTH_RECOVERY_HMAC_SECRET: valid.auth.recoveryHmacSecret,
+        AUTH_MAINTENANCE_HMAC_SECRET: valid.auth.maintenanceHmacSecret,
         CORS_ALLOWED_ORIGINS: 'https://app.example.test',
       }),
     /Produção exige DATABASE_SSL_MODE=verify-full/u,

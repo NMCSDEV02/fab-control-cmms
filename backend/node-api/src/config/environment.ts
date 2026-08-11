@@ -53,11 +53,13 @@ const environmentSchema = z
 
     AUTH_SESSION_HOURS: z.coerce.number().int().min(1).max(24).default(8),
     AUTH_FIRST_ACCESS_MINUTES: z.coerce.number().int().min(5).max(60).default(15),
+    AUTH_MAINTENANCE_SESSION_MINUTES: z.coerce.number().int().min(5).max(60).default(30),
     AUTH_MAX_FAILED_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
     AUTH_LOCK_MINUTES: z.coerce.number().int().min(1).max(1_440).default(15),
     AUTH_RECOVERY_COOLDOWN_MINUTES: z.coerce.number().int().min(1).max(1_440).default(10),
     AUTH_PASSWORD_PEPPER: z.string().min(32).max(1_024),
     AUTH_RECOVERY_HMAC_SECRET: z.string().min(32).max(1_024),
+    AUTH_MAINTENANCE_HMAC_SECRET: z.string().min(32).max(1_024),
     MIGRATIONS_DIRECTORY: z.string().min(1).optional(),
   })
   .superRefine((value, context) => {
@@ -113,11 +115,13 @@ export interface Environment {
   readonly auth: {
     readonly sessionHours: number;
     readonly firstAccessMinutes: number;
+    readonly maintenanceSessionMinutes: number;
     readonly maxFailedAttempts: number;
     readonly lockMinutes: number;
     readonly recoveryCooldownMinutes: number;
     readonly passwordPepper: string;
     readonly recoveryHmacSecret: string;
+    readonly maintenanceHmacSecret: string;
   };
   readonly migrationsDirectory: string | undefined;
 }
@@ -182,11 +186,13 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Enviro
     auth: Object.freeze({
       sessionHours: value.AUTH_SESSION_HOURS,
       firstAccessMinutes: value.AUTH_FIRST_ACCESS_MINUTES,
+      maintenanceSessionMinutes: value.AUTH_MAINTENANCE_SESSION_MINUTES,
       maxFailedAttempts: value.AUTH_MAX_FAILED_ATTEMPTS,
       lockMinutes: value.AUTH_LOCK_MINUTES,
       recoveryCooldownMinutes: value.AUTH_RECOVERY_COOLDOWN_MINUTES,
       passwordPepper: value.AUTH_PASSWORD_PEPPER,
       recoveryHmacSecret: value.AUTH_RECOVERY_HMAC_SECRET,
+      maintenanceHmacSecret: value.AUTH_MAINTENANCE_HMAC_SECRET,
     }),
     migrationsDirectory: value.MIGRATIONS_DIRECTORY,
   });

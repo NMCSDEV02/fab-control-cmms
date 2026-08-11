@@ -29,6 +29,26 @@ export interface SessionRecord {
   readonly email: string | null;
   readonly userStatus: string;
   readonly firstAccessRequired: boolean;
+  readonly maintenanceWindowId: string | null;
+  readonly maintenanceWindowStatus: string | null;
+  readonly maintenanceWindowEndsAt: Date | null;
+  readonly maintenanceReason: string | null;
+}
+
+export interface MaintenanceWindowRecord {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly reason: string;
+  readonly endsAt: Date;
+  readonly challengeHash: string;
+  readonly failedExchangeAttempts: number;
+  readonly exchangeLockedUntil: Date | null;
+  readonly openedByUserId: string;
+  readonly employeeNumber: string;
+  readonly name: string;
+  readonly email: string | null;
+  readonly userStatus: string;
+  readonly firstAccessRequired: boolean;
 }
 
 interface CredentialRow extends QueryResultRow {
@@ -53,6 +73,26 @@ interface SessionRow extends QueryResultRow {
   token_hash_sha256: string;
   expires_at: Date;
   purpose: SessionPurpose;
+  employee_number: string;
+  name: string;
+  email: string | null;
+  user_status: string;
+  first_access_required: boolean;
+  maintenance_window_id: string | null;
+  maintenance_window_status: string | null;
+  maintenance_window_ends_at: Date | null;
+  maintenance_reason: string | null;
+}
+
+interface MaintenanceWindowRow extends QueryResultRow {
+  id: string;
+  tenant_id: string;
+  reason: string;
+  ends_at: Date;
+  challenge_hash: string;
+  failed_exchange_attempts: number;
+  exchange_locked_until: Date | null;
+  opened_by_user_id: string;
   employee_number: string;
   name: string;
   email: string | null;
@@ -99,6 +139,28 @@ function mapSession(row: SessionRow): SessionRecord {
     tokenHash: row.token_hash_sha256,
     expiresAt: row.expires_at,
     purpose: row.purpose,
+    employeeNumber: row.employee_number,
+    name: row.name,
+    email: row.email,
+    userStatus: row.user_status,
+    firstAccessRequired: row.first_access_required,
+    maintenanceWindowId: row.maintenance_window_id,
+    maintenanceWindowStatus: row.maintenance_window_status,
+    maintenanceWindowEndsAt: row.maintenance_window_ends_at,
+    maintenanceReason: row.maintenance_reason,
+  };
+}
+
+function mapMaintenanceWindow(row: MaintenanceWindowRow): MaintenanceWindowRecord {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    reason: row.reason,
+    endsAt: row.ends_at,
+    challengeHash: row.challenge_hash,
+    failedExchangeAttempts: row.failed_exchange_attempts,
+    exchangeLockedUntil: row.exchange_locked_until,
+    openedByUserId: row.opened_by_user_id,
     employeeNumber: row.employee_number,
     name: row.name,
     email: row.email,
@@ -170,11 +232,18 @@ export class AuthRepository {
           user_account.name,
           user_account.email,
           user_account.status AS user_status,
-          user_account.first_access_required
+          user_account.first_access_required,
+          session.maintenance_window_id,
+          maintenance.status AS maintenance_window_status,
+          maintenance.ends_at AS maintenance_window_ends_at,
+          maintenance.reason AS maintenance_reason
         FROM iam.sessions session
         JOIN iam.users user_account
           ON user_account.tenant_id = session.tenant_id
          AND user_account.id = session.user_id
+        LEFT JOIN platform.maintenance_windows maintenance
+          ON maintenance.tenant_id = session.tenant_id
+         AND maintenance.id = session.maintenance_window_id
         WHERE session.tenant_id = $1
           AND session.token_hash_sha256 = $2
           AND session.status = 'ACTIVE'
@@ -292,6 +361,8 @@ export class AuthRepository {
       readonly expiresAt: Date;
       readonly ipAddress: string;
       readonly userAgent: string | null;
+      readonly maintenanceWindowId?: string | null;
+      readonly accessIntegral?: boolean;
     },
   ): Promise<{ readonly id: string }> {
     const result = await client.query<{ id: string }>(
@@ -304,9 +375,14 @@ export class AuthRepository {
           scope,
           user_agent,
           ip_address,
-          expires_at
+          expires_at,
+          maintenance_window_id
         )
-        VALUES ($1, $2, $3, $4, jsonb_build_object('purpose', $5::text), $6, $7, $8)
+        VALUES (
+          $1, $2, $3, $4,
+          jsonb_build_object('purpose', $5::text, 'access_integral', $9::boolean),
+          $6, $7, $8, $10
+        )
         RETURNING id
       `,
       [
@@ -318,6 +394,8 @@ export class AuthRepository {
         input.userAgent,
         input.ipAddress,
         input.expiresAt,
+        input.accessIntegral ?? false,
+        input.maintenanceWindowId ?? null,
       ],
     );
     const createdSession = result.rows[0];
@@ -325,6 +403,81 @@ export class AuthRepository {
       throw new Error('O PostgreSQL não retornou a sessão criada.');
     }
     return createdSession;
+  }
+
+  async findOpenMaintenanceWindow(
+    client: PoolClient,
+    tenantId: string,
+  ): Promise<MaintenanceWindowRecord | null> {
+    await client.query(
+      `UPDATE platform.maintenance_windows
+       SET status='EXPIRED'
+       WHERE tenant_id=$1 AND status='OPEN' AND ends_at <= clock_timestamp()`,
+      [tenantId],
+    );
+    const result = await client.query<MaintenanceWindowRow>(
+      `SELECT maintenance_window.id,maintenance_window.tenant_id,maintenance_window.reason,
+              maintenance_window.ends_at,maintenance_window.challenge_hash,
+              maintenance_window.failed_exchange_attempts,
+              maintenance_window.exchange_locked_until,
+              maintenance_window.opened_by AS opened_by_user_id,
+              user_account.employee_number,user_account.name,user_account.email,
+              user_account.status AS user_status,user_account.first_access_required
+       FROM platform.maintenance_windows maintenance_window
+       JOIN iam.users user_account
+         ON user_account.tenant_id=maintenance_window.tenant_id
+        AND user_account.id=maintenance_window.opened_by
+       WHERE maintenance_window.tenant_id=$1
+         AND maintenance_window.status='OPEN'
+         AND maintenance_window.starts_at <= clock_timestamp()
+         AND maintenance_window.ends_at > clock_timestamp()
+         AND maintenance_window.single_use_consumed_at IS NULL
+         AND maintenance_window.challenge_hash IS NOT NULL
+         AND user_account.deleted_at IS NULL
+       LIMIT 1
+       FOR UPDATE OF maintenance_window`,
+      [tenantId],
+    );
+    return result.rows[0] ? mapMaintenanceWindow(result.rows[0]) : null;
+  }
+
+  async registerFailedMaintenanceExchange(
+    client: PoolClient,
+    tenantId: string,
+    windowId: string,
+    maxAttempts: number,
+    lockMinutes: number,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE platform.maintenance_windows
+       SET failed_exchange_attempts=failed_exchange_attempts + 1,
+           exchange_locked_until=CASE
+             WHEN failed_exchange_attempts + 1 >= $3
+               THEN clock_timestamp() + make_interval(mins => $4)
+             ELSE exchange_locked_until
+           END
+       WHERE tenant_id=$1 AND id=$2 AND status='OPEN'`,
+      [tenantId, windowId, maxAttempts, lockMinutes],
+    );
+  }
+
+  async consumeMaintenanceWindow(
+    client: PoolClient,
+    tenantId: string,
+    windowId: string,
+  ): Promise<boolean> {
+    const result = await client.query(
+      `UPDATE platform.maintenance_windows
+       SET single_use_consumed_at=clock_timestamp(),
+           failed_exchange_attempts=0,
+           exchange_locked_until=NULL
+       WHERE tenant_id=$1 AND id=$2 AND status='OPEN'
+         AND single_use_consumed_at IS NULL
+         AND ends_at > clock_timestamp()
+       RETURNING id`,
+      [tenantId, windowId],
+    );
+    return result.rowCount === 1;
   }
 
   async recordLoginAttempt(

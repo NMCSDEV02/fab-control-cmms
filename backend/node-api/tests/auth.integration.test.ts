@@ -6,6 +6,7 @@ import { Pool, type PoolClient } from 'pg';
 
 import { buildApp } from '../src/app.js';
 import { PasswordService } from '../src/modules/auth/password.service.js';
+import { hashMaintenanceCode } from '../src/modules/auth/maintenance-code.js';
 import { createTestEnvironment } from './helpers/environment.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -181,6 +182,74 @@ test(
     assert.equal(session.json().data.user.id, identity.userId);
     assert.deepEqual(session.json().data.user.papeis, ['ADMIN']);
     assert.equal(session.json().data.user.capacidades.length, 1);
+
+    const maintenanceCode = 'MAINTENANCE-CODE-2026';
+    const maintenanceWindowId = randomUUID();
+    await inTenantTransaction(pool, async (client) => {
+      await client.query(
+        `INSERT INTO platform.maintenance_windows (
+           id,tenant_id,status,reason,starts_at,ends_at,opened_by,challenge_hash
+         ) VALUES ($1,$2,'OPEN','Validação interna controlada',
+                   clock_timestamp() - interval '1 minute',
+                   clock_timestamp() + interval '30 minutes',$3,$4)`,
+        [
+          maintenanceWindowId,
+          tenantId,
+          identity.userId,
+          hashMaintenanceCode(environment.auth.maintenanceHmacSecret, maintenanceCode),
+        ],
+      );
+    });
+
+    const invalidMaintenance = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/maintenance/exchange',
+      payload: { codigo: 'INVALID-CODE-0000' },
+    });
+    assert.equal(invalidMaintenance.statusCode, 401);
+    assert.equal(invalidMaintenance.json().error.code, 'AUTH_MAINTENANCE_INVALID');
+
+    const maintenance = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/maintenance/exchange',
+      payload: { codigo: maintenanceCode },
+    });
+    assert.equal(maintenance.statusCode, 200);
+    assert.equal(maintenance.json().data.acesso_integral, true);
+    assert.equal(maintenance.json().data.usuario.perfil, 'SISTEMA');
+    assert.match(maintenance.json().data.access_token, /^fcm_/u);
+    const maintenanceToken: string = maintenance.json().data.access_token;
+
+    const reusedMaintenance = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/maintenance/exchange',
+      payload: { codigo: maintenanceCode },
+    });
+    assert.equal(reusedMaintenance.statusCode, 401);
+
+    const maintenanceSession = await app.inject({
+      method: 'GET',
+      url: '/v1/auth/session',
+      headers: { authorization: `Bearer ${maintenanceToken}` },
+    });
+    assert.equal(maintenanceSession.statusCode, 200);
+    assert.equal(maintenanceSession.json().data.user.perfil, 'SISTEMA');
+    assert.equal(maintenanceSession.json().data.manutencao.janela_id, maintenanceWindowId);
+
+    await inTenantTransaction(pool, async (client) => {
+      await client.query(
+        `UPDATE platform.maintenance_windows
+         SET status='CLOSED',closed_by=$3
+         WHERE tenant_id=$1 AND id=$2`,
+        [tenantId, maintenanceWindowId, identity.userId],
+      );
+    });
+    const closedMaintenanceSession = await app.inject({
+      method: 'GET',
+      url: '/v1/auth/session',
+      headers: { authorization: `Bearer ${maintenanceToken}` },
+    });
+    assert.equal(closedMaintenanceSession.statusCode, 401);
 
     const recoveryOne = await app.inject({
       method: 'POST',

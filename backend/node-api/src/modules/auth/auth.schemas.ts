@@ -24,6 +24,13 @@ export const recoveryBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const maintenanceExchangeBodySchema = Type.Object(
+  {
+    codigo: Type.String({ minLength: 16, maxLength: 160 }),
+  },
+  { additionalProperties: false },
+);
+
 export const successEnvelopeSchema = Type.Object(
   {
     ok: Type.Literal(true),

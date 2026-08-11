@@ -20,6 +20,10 @@ interface RecoveryBody {
   readonly matricula: string;
 }
 
+interface MaintenanceExchangeBody {
+  readonly codigo: string;
+}
+
 function requestMetadata(request: FastifyRequest): RequestMetadata {
   const userAgent = request.headers['user-agent'];
   return {
@@ -74,6 +78,16 @@ export class AuthController {
       request,
       'auth.recovery',
       await this.service.requestRecovery(request.body.matricula, requestMetadata(request)),
+    );
+
+  exchangeMaintenanceAccess = async (request: FastifyRequest<{ Body: MaintenanceExchangeBody }>) =>
+    successEnvelope(
+      request,
+      'auth.maintenance.exchange',
+      await this.service.exchangeMaintenanceAccess(
+        { code: request.body.codigo },
+        requestMetadata(request),
+      ),
     );
 
   logout = async (request: FastifyRequest) => {

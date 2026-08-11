@@ -80,16 +80,18 @@ try {
   $env:APP_ENVIRONMENT = 'DEVELOPMENT'
   $env:APP_RELEASE_VERSION = '1.4.0'
   $env:API_VERSION = '2.0.0'
-  $env:SCHEMA_VERSION = 'postgres-0015'
+  $env:SCHEMA_VERSION = 'postgres-0016'
   $env:CONTRACT_VERSION = '2.0.0'
   $env:FRONTEND_VERSION = '1.4.0'
   $env:AUTH_SESSION_HOURS = '8'
   $env:AUTH_FIRST_ACCESS_MINUTES = '15'
+  $env:AUTH_MAINTENANCE_SESSION_MINUTES = '30'
   $env:AUTH_MAX_FAILED_ATTEMPTS = '5'
   $env:AUTH_LOCK_MINUTES = '15'
   $env:AUTH_RECOVERY_COOLDOWN_MINUTES = '10'
   $env:AUTH_PASSWORD_PEPPER = 'local-test-password-pepper-never-used-in-production'
   $env:AUTH_RECOVERY_HMAC_SECRET = 'local-test-recovery-secret-never-used-in-production'
+  $env:AUTH_MAINTENANCE_HMAC_SECRET = 'local-test-maintenance-secret-never-used-in-production'
 
   Write-Host '[2/6] Aplicando migracoes...'
   & $npm run db:migrate
@@ -211,6 +213,7 @@ finally {
     'TEST_MIGRATION_DATABASE_URL',
     'AUTH_PASSWORD_PEPPER',
     'AUTH_RECOVERY_HMAC_SECRET',
+    'AUTH_MAINTENANCE_HMAC_SECRET',
     'DEMO_ADMIN_PASSWORD',
     'DEMO_QUALITY_PASSWORD',
     'DEMO_SAFETY_PASSWORD',

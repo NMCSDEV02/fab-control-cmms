@@ -11,7 +11,7 @@ export class TokenService {
   constructor(private readonly digestSecret: string) {}
 
   createSessionToken(purpose: SessionPurpose): SessionToken {
-    const prefix = purpose === 'APPLICATION' ? 'fcs' : 'fcf';
+    const prefix = purpose === 'APPLICATION' ? 'fcs' : purpose === 'FIRST_ACCESS' ? 'fcf' : 'fcm';
     const raw = `${prefix}_${randomBytes(32).toString('base64url')}`;
     return { raw, hash: this.hashSessionToken(raw) };
   }

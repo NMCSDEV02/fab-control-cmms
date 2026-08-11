@@ -18,6 +18,7 @@
     "migration:preflight": "tsx src/infrastructure/migration/migration.cli.ts --mode DRY_RUN",
     "migration:run": "tsx src/infrastructure/migration/migration.cli.ts --mode FULL",
     "migration:delta": "tsx src/infrastructure/migration/migration.cli.ts --mode DELTA",
+    "maintenance:open": "tsx src/modules/auth/maintenance-window.cli.ts",
     "seed:homologation": "tsx src/infrastructure/demo/seed.cli.ts",
     "start": "node --enable-source-maps dist/server.js",
     "test": "tsx --test --test-concurrency=1 tests/**/*.test.ts",

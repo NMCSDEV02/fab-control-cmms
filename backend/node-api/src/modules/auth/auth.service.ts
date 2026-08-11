@@ -7,9 +7,11 @@ import type {
   AuthenticatedUser,
   FirstAccessInput,
   LoginInput,
+  MaintenanceExchangeInput,
   RequestMetadata,
   SessionPurpose,
 } from './auth.types.js';
+import { verifyMaintenanceCode } from './maintenance-code.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
 
@@ -42,6 +44,17 @@ type LoginResult =
       readonly kind: 'REJECTED';
       readonly reason: 'INVALID' | 'LOCKED';
     };
+
+type MaintenanceExchangeResult =
+  | {
+      readonly kind: 'AUTHENTICATED';
+      readonly accessToken: string;
+      readonly expiresAt: Date;
+      readonly user: AuthenticatedUser;
+      readonly windowId: string;
+      readonly reason: string;
+    }
+  | { readonly kind: 'REJECTED'; readonly reason: 'INVALID' | 'LOCKED' };
 
 function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
@@ -163,6 +176,10 @@ export class AuthService {
           email: credential.email,
           userStatus: credential.status,
           firstAccessRequired: credential.firstAccessRequired,
+          maintenanceWindowId: null,
+          maintenanceWindowStatus: null,
+          maintenanceWindowEndsAt: null,
+          maintenanceReason: null,
         });
         if (identity.roles.length === 0) {
           await this.repository.recordLoginAttempt(client, {
@@ -391,6 +408,214 @@ export class AuthService {
     };
   }
 
+  async exchangeMaintenanceAccess(input: MaintenanceExchangeInput, metadata: RequestMetadata) {
+    const codeDigest = this.tokens.digestEmployeeNumber(`MAINTENANCE:${input.code}`);
+    const result = await this.database.withTransaction(
+      { tenantId: this.environment.defaultTenantId },
+      async (client): Promise<MaintenanceExchangeResult> => {
+        const window = await this.repository.findOpenMaintenanceWindow(
+          client,
+          this.environment.defaultTenantId,
+        );
+        if (!window) {
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: this.environment.defaultTenantId,
+            userId: null,
+            employeeNumberDigest: codeDigest,
+            successful: false,
+            failureCode: 'MAINTENANCE_WINDOW_UNAVAILABLE',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          return { kind: 'REJECTED', reason: 'INVALID' };
+        }
+
+        if (window.exchangeLockedUntil && window.exchangeLockedUntil.getTime() > Date.now()) {
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: window.tenantId,
+            userId: window.openedByUserId,
+            employeeNumberDigest: codeDigest,
+            successful: false,
+            failureCode: 'MAINTENANCE_EXCHANGE_LOCKED',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          return { kind: 'REJECTED', reason: 'LOCKED' };
+        }
+
+        const validCode = verifyMaintenanceCode(
+          this.environment.auth.maintenanceHmacSecret,
+          input.code,
+          window.challengeHash,
+        );
+        if (!validCode) {
+          await this.repository.registerFailedMaintenanceExchange(
+            client,
+            window.tenantId,
+            window.id,
+            this.environment.auth.maxFailedAttempts,
+            this.environment.auth.lockMinutes,
+          );
+          await this.repository.recordLoginAttempt(client, {
+            tenantId: window.tenantId,
+            userId: window.openedByUserId,
+            employeeNumberDigest: codeDigest,
+            successful: false,
+            failureCode: 'MAINTENANCE_CODE_MISMATCH',
+            ipAddress: metadata.ipAddress,
+            userAgent: metadata.userAgent,
+          });
+          await this.repository.writeAuditEvent(client, {
+            tenantId: window.tenantId,
+            userId: window.openedByUserId,
+            roleSnapshot: null,
+            action: 'AUTH_MAINTENANCE_EXCHANGE_REJECTED',
+            entityType: 'platform.maintenance_windows',
+            entityId: window.id,
+            afterData: { failure: 'CODE_MISMATCH' },
+            traceId: metadata.traceId,
+            userAgent: metadata.userAgent,
+            ipAddress: metadata.ipAddress,
+          });
+          return { kind: 'REJECTED', reason: 'INVALID' };
+        }
+
+        const sessionRecord = {
+          sessionId: '',
+          tenantId: window.tenantId,
+          userId: window.openedByUserId,
+          tokenHash: '',
+          expiresAt: window.endsAt,
+          purpose: 'PLATFORM_MAINTENANCE' as const,
+          employeeNumber: window.employeeNumber,
+          name: window.name,
+          email: window.email,
+          userStatus: window.userStatus,
+          firstAccessRequired: window.firstAccessRequired,
+          maintenanceWindowId: window.id,
+          maintenanceWindowStatus: 'OPEN',
+          maintenanceWindowEndsAt: window.endsAt,
+          maintenanceReason: window.reason,
+        };
+        const baseUser = await this.repository.resolveUser(client, sessionRecord);
+        if (
+          window.userStatus !== 'ACTIVE' ||
+          window.firstAccessRequired ||
+          baseUser.profile !== 'ADMIN'
+        ) {
+          await this.repository.writeAuditEvent(client, {
+            tenantId: window.tenantId,
+            userId: window.openedByUserId,
+            roleSnapshot: roleSnapshot(baseUser),
+            action: 'AUTH_MAINTENANCE_EXCHANGE_REJECTED',
+            entityType: 'platform.maintenance_windows',
+            entityId: window.id,
+            afterData: { failure: 'OPERATOR_NOT_AUTHORIZED' },
+            traceId: metadata.traceId,
+            userAgent: metadata.userAgent,
+            ipAddress: metadata.ipAddress,
+          });
+          return { kind: 'REJECTED', reason: 'INVALID' };
+        }
+
+        const consumed = await this.repository.consumeMaintenanceWindow(
+          client,
+          window.tenantId,
+          window.id,
+        );
+        if (!consumed) return { kind: 'REJECTED', reason: 'INVALID' };
+
+        const expiresAt = new Date(
+          Math.min(
+            window.endsAt.getTime(),
+            addMinutes(new Date(), this.environment.auth.maintenanceSessionMinutes).getTime(),
+          ),
+        );
+        const token = this.tokens.createSessionToken('PLATFORM_MAINTENANCE');
+        const session = await this.repository.createSession(client, {
+          tenantId: window.tenantId,
+          userId: window.openedByUserId,
+          tokenHash: token.hash,
+          purpose: 'PLATFORM_MAINTENANCE',
+          environment: this.environment.release.environment,
+          expiresAt,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+          maintenanceWindowId: window.id,
+          accessIntegral: true,
+        });
+        const user: AuthenticatedUser = {
+          ...baseUser,
+          profile: 'SISTEMA',
+          roles: Object.freeze(['SYSTEM', ...baseUser.roles]),
+        };
+        await this.repository.recordLoginAttempt(client, {
+          tenantId: window.tenantId,
+          userId: window.openedByUserId,
+          employeeNumberDigest: codeDigest,
+          successful: true,
+          failureCode: null,
+          ipAddress: metadata.ipAddress,
+          userAgent: metadata.userAgent,
+        });
+        await this.repository.writeAuditEvent(client, {
+          tenantId: window.tenantId,
+          userId: window.openedByUserId,
+          roleSnapshot: 'SYSTEM',
+          action: 'AUTH_MAINTENANCE_EXCHANGE_SUCCEEDED',
+          entityType: 'platform.maintenance_windows',
+          entityId: window.id,
+          afterData: { session_id: session.id, expires_at: expiresAt.toISOString() },
+          traceId: metadata.traceId,
+          userAgent: metadata.userAgent,
+          ipAddress: metadata.ipAddress,
+        });
+        return {
+          kind: 'AUTHENTICATED',
+          accessToken: token.raw,
+          expiresAt,
+          user,
+          windowId: window.id,
+          reason: window.reason,
+        };
+      },
+    );
+
+    if (result.kind === 'REJECTED') {
+      throw new AppError({
+        code: result.reason === 'LOCKED' ? 'AUTH_MAINTENANCE_LOCKED' : 'AUTH_MAINTENANCE_INVALID',
+        message:
+          result.reason === 'LOCKED'
+            ? 'Acesso interno temporariamente bloqueado por tentativas inválidas.'
+            : 'Código interno inválido, expirado ou já utilizado.',
+        statusCode: result.reason === 'LOCKED' ? 423 : 401,
+      });
+    }
+
+    return {
+      authenticated: true,
+      acesso_integral: true,
+      access_token: result.accessToken,
+      token: result.accessToken,
+      token_type: 'Bearer',
+      expires_at: result.expiresAt.toISOString(),
+      expira_em: result.expiresAt.toISOString(),
+      expira_ms: result.expiresAt.getTime(),
+      user: this.publicUser(result.user),
+      usuario: this.publicUser(result.user),
+      manutencao: {
+        aberta: true,
+        estado: 'OPEN',
+        motivo: result.reason,
+        expira_em: result.expiresAt.toISOString(),
+        janela_id: result.windowId,
+        operador_nome: result.user.name,
+        ambiente: this.environment.release.environment,
+      },
+      ...this.releaseContract(),
+    };
+  }
+
   async authenticate(rawToken: string): Promise<AuthContext> {
     const tokenHash = this.tokens.hashSessionToken(rawToken);
     const context = await this.database.withTransaction(
@@ -402,20 +627,38 @@ export class AuthService {
           tokenHash,
           false,
         );
+        if (!session || session.firstAccessRequired || session.userStatus !== 'ACTIVE') {
+          return null;
+        }
+
+        const maintenanceSession = session.purpose === 'PLATFORM_MAINTENANCE';
+        if (session.purpose !== 'APPLICATION' && !maintenanceSession) return null;
         if (
-          session?.purpose !== 'APPLICATION' ||
-          session.firstAccessRequired ||
-          session.userStatus !== 'ACTIVE'
+          maintenanceSession &&
+          (!session.maintenanceWindowId ||
+            session.maintenanceWindowStatus !== 'OPEN' ||
+            !session.maintenanceWindowEndsAt ||
+            session.maintenanceWindowEndsAt.getTime() <= Date.now())
         ) {
           return null;
         }
 
-        const user = await this.repository.resolveUser(client, session);
+        const resolvedUser = await this.repository.resolveUser(client, session);
+        const user: AuthenticatedUser = maintenanceSession
+          ? {
+              ...resolvedUser,
+              profile: 'SISTEMA',
+              roles: Object.freeze(['SYSTEM', ...resolvedUser.roles]),
+            }
+          : resolvedUser;
         await this.repository.updateLastUsed(client, session.tenantId, session.sessionId);
         return {
           sessionId: session.sessionId,
           tokenHash,
           expiresAt: session.expiresAt,
+          purpose: session.purpose,
+          maintenanceWindowId: session.maintenanceWindowId,
+          maintenanceReason: session.maintenanceReason,
           user,
         } satisfies AuthContext;
       },
@@ -536,6 +779,18 @@ export class AuthService {
       authenticated: true,
       expires_at: context.expiresAt.toISOString(),
       user: this.publicUser(context.user),
+      acesso_integral: context.purpose === 'PLATFORM_MAINTENANCE',
+      manutencao:
+        context.purpose === 'PLATFORM_MAINTENANCE'
+          ? {
+              aberta: true,
+              estado: 'OPEN',
+              motivo: context.maintenanceReason,
+              expira_em: context.expiresAt.toISOString(),
+              janela_id: context.maintenanceWindowId,
+              ambiente: this.environment.release.environment,
+            }
+          : null,
       ...this.releaseContract(),
     };
   }
