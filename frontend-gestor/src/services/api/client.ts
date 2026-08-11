@@ -1254,6 +1254,40 @@ function nodeActionRequest(
           },
         }),
       };
+    case "cmms.kpis_base": {
+      const period = defaultAnalyticsPeriod(payload);
+      return {
+        method: "GET",
+        path: queryPath("/v1/analytics/technical-summary", {
+          ativo_id: payload.ativo_id,
+          inicio: period.inicio,
+          fim: period.fim,
+          limite_ranking: 1,
+        }),
+        token,
+        transform: (data) => {
+          const summary = record(data.resumo);
+          const completedExecutions = Number(
+            summary.execucoes_concluidas ?? 0,
+          );
+          return {
+            ativo_id: String(payload.ativo_id ?? ""),
+            total_execucoes: completedExecutions,
+            execucoes_finalizadas: completedExecutions,
+            falhas_registradas: Number(
+              summary.falhas_nao_planejadas ?? 0,
+            ),
+            acoes_abertas: Number(summary.ocorrencias_abertas ?? 0),
+            mttr_segundos: Number(summary.mttr_segundos ?? 0),
+            disponibilidade_base_pct: Number(
+              summary.disponibilidade_percentual ?? 0,
+            ),
+            observacao:
+              "Indicadores calculados pela API Node a partir dos eventos tecnicos do periodo.",
+          };
+        },
+      };
+    }
     case "cmms.kpis_tecnicos": {
       const period = defaultAnalyticsPeriod(payload);
       return {
