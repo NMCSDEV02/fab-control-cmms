@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 const LOCAL_PROVIDER = 'LOCAL_PRIVATE';
 const EVIDENCE_BUCKET = 'maintenance-evidence';
 const DOCUMENT_BUCKET = 'governed-documents';
+const BACKUP_BUCKET = 'tenant-backups';
 const HEADER_BYTES = 16;
 
 const mediaTypes = {
@@ -41,6 +42,17 @@ export interface StoredDocumentObject {
   readonly checksumSha256: string;
 }
 
+export interface StoredBackupObject {
+  readonly id: string;
+  readonly provider: typeof LOCAL_PROVIDER;
+  readonly bucket: typeof BACKUP_BUCKET;
+  readonly objectKey: string;
+  readonly originalName: string;
+  readonly mediaType: 'application/gzip';
+  readonly byteSize: number;
+  readonly checksumSha256: string;
+}
+
 export interface StoredObjectReference {
   readonly provider: string;
   readonly bucket: string;
@@ -59,6 +71,7 @@ export class ObjectStorageError extends Error {
 
 export interface ObjectStorage {
   readonly maxEvidenceBytes: number;
+  readonly maxBackupBytes: number;
   storeEvidence(input: {
     readonly tenantId: string;
     readonly originalName: string;
@@ -71,6 +84,11 @@ export interface ObjectStorage {
     readonly mediaType: string;
     readonly stream: Readable;
   }): Promise<StoredDocumentObject>;
+  storeBackup(input: {
+    readonly tenantId: string;
+    readonly originalName: string;
+    readonly stream: Readable;
+  }): Promise<StoredBackupObject>;
   open(reference: StoredObjectReference): ReadStream;
   remove(reference: StoredObjectReference): Promise<void>;
 }
@@ -138,6 +156,7 @@ export class LocalObjectStorage implements ObjectStorage {
   constructor(
     root: string,
     readonly maxEvidenceBytes: number,
+    readonly maxBackupBytes = 52_428_800,
   ) {
     this.root = resolve(root);
   }
@@ -145,7 +164,7 @@ export class LocalObjectStorage implements ObjectStorage {
   private pathFor(reference: StoredObjectReference): string {
     if (
       reference.provider !== LOCAL_PROVIDER ||
-      ![EVIDENCE_BUCKET, DOCUMENT_BUCKET].includes(reference.bucket)
+      ![EVIDENCE_BUCKET, DOCUMENT_BUCKET, BACKUP_BUCKET].includes(reference.bucket)
     ) {
       throw new Error('O objeto não pertence ao armazenamento privado local.');
     }
@@ -305,6 +324,69 @@ export class LocalObjectStorage implements ObjectStorage {
       ...reference,
       originalName: sanitizedOriginalName(input.originalName),
       mediaType: input.mediaType,
+      byteSize,
+      checksumSha256: hash.digest('hex'),
+    };
+  }
+
+  async storeBackup(input: {
+    readonly tenantId: string;
+    readonly originalName: string;
+    readonly stream: Readable;
+  }): Promise<StoredBackupObject> {
+    const now = new Date();
+    const id = randomUUID();
+    const objectKey = [
+      input.tenantId,
+      String(now.getUTCFullYear()),
+      String(now.getUTCMonth() + 1).padStart(2, '0'),
+      `${id}.json.gz`,
+    ].join('/');
+    const reference = { provider: LOCAL_PROVIDER, bucket: BACKUP_BUCKET, objectKey } as const;
+    const target = this.pathFor(reference);
+    const temporary = `${target}.${randomUUID()}.uploading`;
+    const hash = createHash('sha256');
+    let byteSize = 0;
+    let header = Buffer.alloc(0);
+    const inspector = new Transform({
+      transform: (chunk: Buffer, _encoding, callback) => {
+        byteSize += chunk.length;
+        if (byteSize > this.maxBackupBytes) {
+          callback(
+            new ObjectStorageError(
+              'FILE_TOO_LARGE',
+              `O backup excede o limite de ${this.maxBackupBytes} bytes compactados.`,
+            ),
+          );
+          return;
+        }
+        hash.update(chunk);
+        if (header.length < 2) header = Buffer.concat([header, chunk.subarray(0, 2 - header.length)]);
+        callback(null, chunk);
+      },
+    });
+
+    await mkdir(dirname(target), { recursive: true });
+    try {
+      await pipeline(
+        input.stream,
+        inspector,
+        createWriteStream(temporary, { flags: 'wx', mode: 0o600 }),
+      );
+      if (byteSize === 0 || header[0] !== 0x1f || header[1] !== 0x8b) {
+        throw new ObjectStorageError('FILE_CONTENT_INVALID', 'O conteúdo não é um backup GZIP válido.');
+      }
+      await rename(temporary, target);
+    } catch (cause) {
+      await rm(temporary, { force: true }).catch(() => undefined);
+      throw cause;
+    }
+
+    return {
+      id,
+      ...reference,
+      originalName: sanitizedOriginalName(input.originalName),
+      mediaType: 'application/gzip',
       byteSize,
       checksumSha256: hash.digest('hex'),
     };

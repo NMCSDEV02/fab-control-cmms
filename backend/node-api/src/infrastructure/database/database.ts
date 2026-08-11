@@ -7,6 +7,7 @@ export interface TransactionContext {
   readonly tenantId: string;
   readonly userId?: string;
   readonly readOnly?: boolean;
+  readonly isolationLevel?: 'read committed' | 'repeatable read' | 'serializable';
 }
 
 export interface Database {
@@ -69,7 +70,13 @@ export function createDatabase(environment: Environment, logger: FastifyBaseLogg
 
       try {
         await client.query('BEGIN');
-        await client.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+        const isolation = context.isolationLevel ?? 'read committed';
+        const isolationStatements = {
+          'read committed': 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED',
+          'repeatable read': 'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ',
+          serializable: 'SET TRANSACTION ISOLATION LEVEL SERIALIZABLE',
+        } as const;
+        await client.query(isolationStatements[isolation]);
 
         if (context.readOnly === true) {
           await client.query('SET TRANSACTION READ ONLY');

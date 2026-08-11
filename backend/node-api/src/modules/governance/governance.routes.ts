@@ -2,6 +2,7 @@ import { type FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 
 import { successEnvelopeSchema } from '../auth/auth.schemas.js';
 import type { GovernanceController } from './governance.controller.js';
+import type { BackupController } from './backup.controller.js';
 import type { ImportController } from './import.controller.js';
 import {
   documentListQuerySchema,
@@ -13,6 +14,10 @@ import {
   importConfirmBodySchema,
   importRollbackBodySchema,
   importValidateBodySchema,
+  backupCreateBodySchema,
+  backupListQuerySchema,
+  backupParamsSchema,
+  backupRestoreBodySchema,
 } from './governance.schemas.js';
 
 const secured = {
@@ -24,6 +29,7 @@ const secured = {
 export function createGovernanceRoutes(
   controller: GovernanceController,
   imports: ImportController,
+  backups: BackupController,
 ): FastifyPluginAsyncTypebox {
   return (app) => {
     app.get('/v1/admin/documents', {
@@ -86,6 +92,31 @@ export function createGovernanceRoutes(
       preHandler: (request) => app.authorize(request, 'admin.governance.manage'),
       schema: { ...secured, params: importBatchParamsSchema, body: importRollbackBodySchema },
       handler: imports.rollback,
+    });
+    app.get('/v1/admin/backups', {
+      preHandler: (request) => app.authorize(request, 'admin.governance.read'),
+      schema: { ...secured, querystring: backupListQuerySchema },
+      handler: backups.list,
+    });
+    app.post('/v1/admin/backups', {
+      preHandler: (request) => app.authorize(request, 'admin.governance.manage'),
+      schema: { ...secured, body: backupCreateBodySchema },
+      handler: backups.create,
+    });
+    app.post('/v1/admin/backups/:backupId/prepare', {
+      preHandler: (request) => app.authorize(request, 'admin.governance.manage'),
+      schema: { ...secured, params: backupParamsSchema },
+      handler: backups.prepare,
+    });
+    app.post('/v1/admin/backups/:backupId/restore', {
+      preHandler: (request) => app.authorize(request, 'admin.governance.manage'),
+      schema: { ...secured, params: backupParamsSchema, body: backupRestoreBodySchema },
+      handler: backups.restore,
+    });
+    app.get('/v1/admin/backups/:backupId/file', {
+      preHandler: (request) => app.authorize(request, 'admin.governance.read'),
+      schema: { security: [{ bearerAuth: [] }], tags: ['Governance'], params: backupParamsSchema },
+      handler: backups.download,
     });
     return Promise.resolve();
   };

@@ -1781,6 +1781,39 @@ function nodeActionRequest(
         body: { motivo: payload.motivo },
         token,
       };
+    case "admin.backups.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/admin/backups", { limite: payload.limite }),
+        token,
+      };
+    case "admin.backups.criar":
+      return {
+        method: "POST",
+        path: "/v1/admin/backups",
+        body: { motivo: payload.motivo, confirmacao: payload.confirmacao },
+        token,
+      };
+    case "admin.backups.preparar_restauracao":
+      return {
+        method: "POST",
+        path: `/v1/admin/backups/${encodeURIComponent(String(payload.backup_id))}/prepare`,
+        body: {},
+        token,
+      };
+    case "admin.backups.confirmar_restauracao":
+      return {
+        method: "POST",
+        path: `/v1/admin/backups/${encodeURIComponent(String(payload.backup_id))}/restore`,
+        body: {
+          token: payload.token,
+          confirmacao: payload.confirmacao,
+          confirmacao_final: payload.confirmacao_final,
+          motivo: payload.motivo,
+          criar_backup_seguranca: payload.criar_backup_seguranca,
+        },
+        token,
+      };
     case "platform.motor.catalogo":
       return { method: "GET", path: "/v1/platform/motor/catalog", token };
     case "platform.motor.catalogo.validar":

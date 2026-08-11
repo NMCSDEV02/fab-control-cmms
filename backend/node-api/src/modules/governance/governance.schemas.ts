@@ -132,3 +132,32 @@ export const importRollbackBodySchema = Type.Object(
   { motivo: Type.String({ minLength: 8, maxLength: 1_000 }) },
   { additionalProperties: false },
 );
+
+export const backupParamsSchema = Type.Object(
+  { backupId: uuid },
+  { additionalProperties: false },
+);
+
+export const backupListQuerySchema = Type.Object(
+  { limite: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })) },
+  { additionalProperties: false },
+);
+
+export const backupCreateBodySchema = Type.Object(
+  {
+    motivo: Type.String({ minLength: 8, maxLength: 1_000 }),
+    confirmacao: Type.Literal('CRIAR BACKUP'),
+  },
+  { additionalProperties: false },
+);
+
+export const backupRestoreBodySchema = Type.Object(
+  {
+    token: Type.String({ minLength: 40, maxLength: 4_000 }),
+    confirmacao: Type.String({ minLength: 1, maxLength: 80 }),
+    confirmacao_final: Type.Literal('RESTAURAR BACKUP'),
+    motivo: Type.String({ minLength: 8, maxLength: 1_000 }),
+    criar_backup_seguranca: Type.Literal(true),
+  },
+  { additionalProperties: false },
+);

@@ -150,8 +150,10 @@ test(
       const result = await client.query<{ id: string; name: string }>(
         `SELECT id,name FROM cmms.plants WHERE tag='PLT-IMPORT'`,
       );
-      assert.equal(result.rows[0]?.name, 'Planta Importada');
-      return String(result.rows[0]?.id);
+      const row = result.rows[0];
+      assert.ok(row);
+      assert.equal(row.name, 'Planta Importada');
+      return row.id;
     });
 
     const rollback = await app.inject({

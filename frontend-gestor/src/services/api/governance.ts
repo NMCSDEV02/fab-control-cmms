@@ -122,6 +122,28 @@ export function listAdminBackups(signal?: AbortSignal): Promise<AdminBackupListD
   return readGovernance('admin.backups.listar', { limite: 200 }, signal)
 }
 
+export async function downloadAdminBackup(backupId: string, fileName: string): Promise<void> {
+  const baseUrl = getApiUrl().replace(/\/+$/u, '').replace(/\/v1$/u, '')
+  const response = await fetch(
+    `${baseUrl}/v1/admin/backups/${encodeURIComponent(backupId)}/file`,
+    { headers: { Authorization: `Bearer ${adminToken()}` } },
+  )
+  if (!response.ok) {
+    throw new ApiRequestError(
+      `Não foi possível baixar o backup (HTTP ${response.status}).`,
+      'BACKUP_DOWNLOAD_FAILED',
+    )
+  }
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName || `backup-${backupId}.json.gz`
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function createAdminBackup(reason: string, confirmation: string): Promise<AdminBackupCreateData> {
   return writeGovernance('admin.backups.criar', { motivo: reason, confirmacao: confirmation })
 }

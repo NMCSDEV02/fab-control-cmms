@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   confirmAdminBackupRestore,
   createAdminBackup,
+  downloadAdminBackup,
   listAdminBackups,
   prepareAdminBackupRestore,
 } from '../services/api/governance'
@@ -185,7 +186,7 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
 
       <section className="admin-continuity-summary">
         <article><ShieldIcon /><span><small>Política atual</small><strong>Cópia integral privada</strong><i>planilha e estrutura operacional</i></span></article>
-        <article><ShieldIcon /><span><small>Backups disponíveis</small><strong>{backups.length}</strong><i>armazenados no Drive do ambiente</i></span></article>
+        <article><ShieldIcon /><span><small>Backups disponíveis</small><strong>{backups.length}</strong><i>armazenados em repositório privado</i></span></article>
         <article><ShieldIcon /><span><small>Última cópia</small><strong>{backups[0] ? formatDate(backups[0].criado_em) : 'Ainda não criada'}</strong><i>{backups[0]?.nome || 'Crie o primeiro ponto de restauração'}</i></span></article>
       </section>
 
@@ -194,7 +195,7 @@ export function AdminBackupWorkspace({ onSessionExpired }: AdminBackupWorkspaceP
       <section className="admin-governance-table-card">
         <header><div><span className="eyebrow">CONTINUIDADE OPERACIONAL</span><h2>Pontos de backup</h2></div><div className="admin-backup-header-actions"><span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Sincronização automática</span><button className="primary-button" type="button" onClick={openBackupDialog}>Criar backup</button></div></header>
         <div className="admin-governance-table-wrap"><table className="admin-governance-table"><thead><tr><th>Arquivo</th><th>Data de criação</th><th>Tamanho</th><th>Armazenamento</th><th>Ação segura</th></tr></thead><tbody>
-          {backups.map((backup) => <tr key={backup.id}><td><strong>{backup.nome}</strong><small>{backup.id}</small></td><td><strong>{formatDate(backup.criado_em)}</strong><small>cópia imutável</small></td><td><strong>{formatBytes(backup.tamanho_bytes)}</strong><small>base integral</small></td><td><strong>Drive privado</strong><small>acesso controlado pela conta proprietária</small></td><td><div className="admin-governance-actions"><button type="button" onClick={() => window.open(backup.url, '_blank', 'noopener,noreferrer')}>Abrir</button><button type="button" onClick={() => openRestoreDialog(backup.id)}>Restaurar</button></div></td></tr>)}
+          {backups.map((backup) => <tr key={backup.id}><td><strong>{backup.nome}</strong><small>{backup.id}</small></td><td><strong>{formatDate(backup.criado_em)}</strong><small>cópia imutável</small></td><td><strong>{formatBytes(backup.tamanho_bytes)}</strong><small>base integral</small></td><td><strong>Armazenamento privado</strong><small>download autenticado e checksum verificado</small></td><td><div className="admin-governance-actions"><button type="button" onClick={() => void downloadAdminBackup(backup.id, backup.nome).catch((cause) => setError(cause instanceof Error ? cause.message : 'Não foi possível baixar o backup.'))}>Baixar</button><button type="button" onClick={() => openRestoreDialog(backup.id)}>Restaurar</button></div></td></tr>)}
           {!backups.length ? <tr><td colSpan={5}><div className="admin-empty-state">Nenhum backup administrativo foi criado.</div></td></tr> : null}
         </tbody></table></div>
       </section>
