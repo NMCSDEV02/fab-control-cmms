@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { actionAdminEntity, listAdminEntity, saveAdminEntity } from '../services/api/catalog'
+import { listAdminChecklistModels } from '../services/api/checklists'
 import { isGestorAuthenticationError } from '../services/api/gestor'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { AdminEntity, AdminEntityRecord } from '../types/catalog'
+import type { AdminChecklistPlan } from '../types/checklists'
 import { AssetIcon, CheckIcon, MoreIcon, SearchIcon, SettingsIcon, StopIcon } from './Icons'
 
 export type AdminCatalogScope = 'structure' | 'assets' | 'inventory' | 'maintenance'
@@ -13,7 +15,7 @@ interface AdminCatalogWorkspaceProps {
   onOpenImports: () => void
 }
 
-type FieldType = 'text' | 'number' | 'date' | 'select' | 'reference'
+type FieldType = 'text' | 'number' | 'date' | 'select' | 'reference' | 'checklist'
 
 interface FieldDefinition {
   key: string
@@ -223,6 +225,7 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
       { key: 'linha_contexto', label: 'Linha', type: 'reference', reference: 'linhas', referenceLabel: 'nome', dependsOn: { field: 'setor_contexto', targetField: 'setor_id' }, required: true },
       { key: 'ativo_id', label: 'Ativo', type: 'reference', reference: 'ativos', referenceLabel: 'nome', dependsOn: { field: 'linha_contexto', targetField: 'linha_id' }, required: true },
       { key: 'componente_id', label: 'Componente (opcional)', type: 'reference', reference: 'componentes', referenceLabel: 'nome', dependsOn: { field: 'ativo_id', targetField: 'ativo_id' } },
+      { key: 'checklist_versao_id', label: 'Checklist validado', type: 'checklist', required: true, help: 'Somente modelos publicados, com etapas e compatíveis com o ativo selecionado.' },
       { key: 'nome', label: 'Nome do plano', required: true },
       { key: 'tipo', label: 'Tipo', type: 'select', options: [{ value: 'PREVENTIVA', label: 'Preventiva' }, { value: 'PREDITIVA', label: 'Preditiva' }, { value: 'INSPECAO', label: 'Inspeção' }], required: true },
       { key: 'criticidade', label: 'Criticidade', type: 'select', options: CRITICALITY_OPTIONS, required: true },
@@ -236,7 +239,7 @@ const ENTITY_DEFINITIONS: Record<AdminEntity, EntityDefinition> = {
       { key: 'max_sessoes', label: 'Máximo de sessões', type: 'select', options: [{ value: '1', label: '1 sessão' }, { value: '2', label: '2 sessões' }, { value: '3', label: '3 sessões' }, { value: '4', label: '4 sessões' }, { value: '5', label: '5 sessões' }] },
       { key: 'modo_parada_manutencao', label: 'Modo de parada', type: 'select', options: [{ value: 'DECISAO_EXECUTOR', label: 'Decisão do executor' }, { value: 'OBRIGATORIA', label: 'Parada obrigatória' }, { value: 'SEM_PARADA', label: 'Executar sem parada' }] },
     ],
-    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_contexto: '', ativo_id: '', componente_id: '', nome: '', tipo: 'PREVENTIVA', criticidade: 'MEDIA', gatilho_tipo: 'DIAS', gatilho_valor: 30, unidade: 'dias', recorrencia_dias: 30, tempo_estimado_min: 60, requer_bloqueio: 'SIM', requer_evidencia: 'NAO', max_sessoes: 1, modo_parada_manutencao: 'DECISAO_EXECUTOR', status: 'INATIVO', workflow_status: 'RASCUNHO' },
+    defaults: { id: '', planta_contexto: '', setor_contexto: '', linha_contexto: '', ativo_id: '', componente_id: '', checklist_versao_id: '', nome: '', tipo: 'PREVENTIVA', criticidade: 'MEDIA', gatilho_tipo: 'DIAS', gatilho_valor: 30, unidade: 'dias', recorrencia_dias: 30, tempo_estimado_min: 60, requer_bloqueio: 'SIM', requer_evidencia: 'NAO', max_sessoes: 1, modo_parada_manutencao: 'DECISAO_EXECUTOR', status: 'ATIVO', workflow_status: 'RASCUNHO' },
   },
   plano_itens: {
     entity: 'plano_itens', singular: 'item', label: 'Itens de checklist', description: 'Itens técnicos dos planos.',
@@ -315,6 +318,7 @@ export function AdminCatalogWorkspace({
   const scopeEntities = SCOPE_ENTITIES[scope]
   const [selectedEntity, setSelectedEntity] = useState<AdminEntity>(scopeEntities[0])
   const [records, setRecords] = useState<Partial<Record<AdminEntity, AdminEntityRecord[]>>>({})
+  const [checklistModels, setChecklistModels] = useState<AdminChecklistPlan[]>([])
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<AdminEntityRecord | null | undefined>(undefined)
   const [draft, setDraft] = useState<AdminEntityRecord>({ id: '' })
@@ -336,8 +340,12 @@ export function AdminCatalogWorkspace({
 
   const loadData = useCallback(async (signal?: AbortSignal) => {
     const entities = SCOPE_REFERENCES[scope]
-    const lists = await Promise.all(entities.map((entity) => listAdminEntity(entity, signal)))
+    const [lists, models] = await Promise.all([
+      Promise.all(entities.map((entity) => listAdminEntity(entity, signal))),
+      scope === 'maintenance' ? listAdminChecklistModels(signal) : Promise.resolve([]),
+    ])
     setRecords(Object.fromEntries(lists.map((list) => [list.entidade, list.rows])))
+    setChecklistModels(models)
   }, [scope])
 
   useEffect(() => {
@@ -452,6 +460,7 @@ export function AdminCatalogWorkspace({
         next.componente_id = ''
       }
       if (field.key === 'ativo_id') next.componente_id = ''
+      if (field.key === 'ativo_id' || field.key === 'componente_id') next.checklist_versao_id = ''
       if (field.key === 'gatilho_tipo') {
         if (rawValue === 'HORAS') {
           next.unidade = 'h'
@@ -486,6 +495,22 @@ export function AdminCatalogWorkspace({
     ))
   }
 
+  function checklistOptions(): AdminChecklistPlan[] {
+    const assetId = String(draft.ativo_id ?? '')
+    const componentId = String(draft.componente_id ?? '')
+    const selectedVersionId = String(draft.checklist_versao_id ?? '')
+    return checklistModels
+      .filter((model) => {
+        const versionId = String(model.versao_id ?? '')
+        if (versionId === selectedVersionId) return true
+        if (!model.operacional || Number(model.itens_count ?? 0) < 1) return false
+        if (String(model.ativo_id ?? '') !== assetId) return false
+        const modelComponent = String(model.componente_id ?? '')
+        return modelComponent === componentId
+      })
+      .sort((left, right) => left.nome.localeCompare(right.nome, 'pt-BR'))
+  }
+
   function relationSummary(record: AdminEntityRecord): Array<{ label: string; value: number }> {
     if (selectedEntity === 'ativos') {
       return [
@@ -507,7 +532,7 @@ export function AdminCatalogWorkspace({
     return []
   }
 
-  async function performStatusAction(status: string) {
+  async function performStatusAction(status: string, action: 'ALTERAR_STATUS' | 'PUBLICAR' = 'ALTERAR_STATUS') {
     if (!actionRecord) return
     setActionBusy(true)
     setActionError('')
@@ -515,7 +540,7 @@ export function AdminCatalogWorkspace({
       const result = await actionAdminEntity({
         entidade: selectedEntity,
         id: actionRecord.id,
-        acao: 'ALTERAR_STATUS',
+        acao: action,
         status,
       })
       if (!result.row) throw new Error('O servidor não retornou o cadastro atualizado.')
@@ -603,7 +628,6 @@ export function AdminCatalogWorkspace({
     selectedEntity !== 'planos'
     || (
       selectedWorkflow === 'RASCUNHO'
-      && selectedStatus === 'INATIVO'
       && !actionRecord?.revisao_origem_id
       && !actionRecord?.substitui_plano_id
     )
@@ -629,7 +653,7 @@ export function AdminCatalogWorkspace({
           <div><span className="eyebrow">CADASTRO MESTRE</span><h2>{definition.label}</h2><p>{definition.description}</p></div>
           <div><span className="manager-live-sync manager-live-sync--compact"><i aria-hidden="true" />Sincronização automática</span><button className="primary-button" type="button" onClick={() => openEditor()}>Novo {definition.singular}</button></div>
         </header>
-        {selectedEntity === 'planos' ? <div className="admin-plan-rule"><CheckIcon /><span><strong>Programação protegida</strong><small>Salvar cria um rascunho inativo. A liberação ao Operador só ocorre depois do checklist e da validação do Gestor.</small></span></div> : null}
+        {selectedEntity === 'planos' ? <div className="admin-plan-rule"><CheckIcon /><span><strong>Plano vinculado ao checklist</strong><small>O plano nasce em rascunho e só pode ser publicado com um checklist técnico já validado. A OS criada a partir dele seguirá para as assinaturas configuradas.</small></span></div> : null}
         <label className="admin-catalog-search"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Buscar em ${definition.label.toLowerCase()}`} /></label>
         <div className="admin-catalog-table">
           <table>
@@ -677,10 +701,22 @@ export function AdminCatalogWorkspace({
 
                 {selectedEntity === 'planos' && isProtectedPlan(actionRecord) ? <div className="admin-entity-actions__guidance"><CheckIcon /><span><strong>Versão protegida</strong><small>Use o construtor de checklists para abrir uma nova revisão. A versão atual não pode ser alterada ou apagada.</small></span></div> : null}
 
+                {selectedEntity === 'planos' && selectedWorkflow === 'RASCUNHO' ? (
+                  <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('ATIVO', 'PUBLICAR')}>
+                    <CheckIcon /><span><strong>Publicar plano</strong><small>Valida o vínculo com o checklist e disponibiliza o plano para criar intervenções.</small></span>
+                  </button>
+                ) : null}
+
+                {selectedEntity === 'planos' && selectedWorkflow === 'VALIDADO' ? (
+                  selectedStatus === 'INATIVO'
+                    ? <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('ATIVO')}><CheckIcon /><span><strong>Reativar plano</strong><small>Volta a disponibilizar o plano para novas intervenções.</small></span></button>
+                    : <button type="button" disabled={actionBusy} onClick={() => void performStatusAction('INATIVO')}><StopIcon /><span><strong>Desativar plano</strong><small>Preserva as OS e execuções já vinculadas.</small></span></button>
+                ) : null}
+
                 {canDeleteSelected ? (
                   confirmDelete
-                    ? <div className="admin-entity-actions__delete-confirm"><strong>Excluir definitivamente?</strong><span>Esta ação só será aceita se o servidor confirmar que não existe qualquer vínculo operacional.</span><div><button type="button" disabled={actionBusy} onClick={() => setConfirmDelete(false)}>Voltar</button><button className="is-danger" type="button" disabled={actionBusy} onClick={() => void deleteRecord()}>{actionBusy ? 'Excluindo…' : 'Confirmar exclusão'}</button></div></div>
-                    : <button className="is-danger" type="button" disabled={actionBusy} onClick={() => setConfirmDelete(true)}><StopIcon /><span><strong>Excluir cadastro</strong><small>Disponível somente para registro nunca utilizado.</small></span></button>
+                    ? <div className="admin-entity-actions__delete-confirm"><strong>{selectedEntity === 'planos' ? 'Arquivar este rascunho?' : 'Excluir definitivamente?'}</strong><span>{selectedEntity === 'planos' ? 'Ele deixará a biblioteca, mas continuará rastreável na auditoria.' : 'Esta ação só será aceita se o servidor confirmar que não existe qualquer vínculo operacional.'}</span><div><button type="button" disabled={actionBusy} onClick={() => setConfirmDelete(false)}>Voltar</button><button className="is-danger" type="button" disabled={actionBusy} onClick={() => void deleteRecord()}>{actionBusy ? 'Processando…' : selectedEntity === 'planos' ? 'Confirmar arquivamento' : 'Confirmar exclusão'}</button></div></div>
+                    : <button className="is-danger" type="button" disabled={actionBusy} onClick={() => setConfirmDelete(true)}><StopIcon /><span><strong>{selectedEntity === 'planos' ? 'Arquivar rascunho' : 'Excluir cadastro'}</strong><small>{selectedEntity === 'planos' ? 'Remove da operação sem apagar a trilha de auditoria.' : 'Disponível somente para registro nunca utilizado.'}</small></span></button>
                 ) : null}
               </section>
             </div>
@@ -721,6 +757,27 @@ export function AdminCatalogWorkspace({
                       >
                         <option value="">{dependencyMissing ? 'Selecione o campo anterior…' : field.required ? 'Selecione…' : 'Sem vínculo'}</option>
                         {referenceOptions(field).map((option) => <option value={option.id} key={option.id}>{valueText(option.tag || option.sku || option.id)} · {valueText(option[field.referenceLabel ?? 'nome'])}</option>)}
+                      </select>
+                      {field.help ? <small>{field.help}</small> : null}
+                    </label>
+                  )
+                }
+                if (field.type === 'checklist') {
+                  const options = checklistOptions()
+                  return (
+                    <label key={field.key}>
+                      <span>{field.label}{field.required ? ' *' : ''}</span>
+                      <select
+                        value={String(fieldValue)}
+                        disabled={!draft.ativo_id}
+                        onChange={(event) => updateDraftField(field, event.target.value)}
+                      >
+                        <option value="">{draft.ativo_id ? 'Selecione um checklist publicado…' : 'Selecione primeiro o ativo…'}</option>
+                        {options.map((option) => (
+                          <option value={String(option.versao_id ?? '')} key={String(option.versao_id ?? option.id)}>
+                            {option.nome} · R{option.revisao ?? 1} · {option.itens_count ?? 0} etapas
+                          </option>
+                        ))}
                       </select>
                       {field.help ? <small>{field.help}</small> : null}
                     </label>

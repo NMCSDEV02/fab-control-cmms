@@ -4,10 +4,11 @@ import {
   listAdminUsers,
   listTechnicalRoles,
 } from '../services/api/admin'
-import { actionAdminEntity, listAdminEntity } from '../services/api/catalog'
+import { listAdminEntity } from '../services/api/catalog'
 import {
   createAdminChecklistRevision,
   convertAdminTechnicalAnalysisToChecklist,
+  deleteAdminChecklistDraft,
   getAdminChecklistDetail,
   listAdminChecklistModels,
   saveAdminChecklistModel,
@@ -686,11 +687,7 @@ export function AdminChecklistBuilder({
     setLibraryBusy(true)
     setError('')
     try {
-      await actionAdminEntity({
-        entidade: 'planos',
-        id: modelToDelete.id,
-        acao: 'EXCLUIR',
-      })
+      await deleteAdminChecklistDraft(modelToDelete.id)
       const deletedId = modelToDelete.id
       const nextModels = await listAdminChecklistModels()
       setModels(nextModels)

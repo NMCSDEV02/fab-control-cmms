@@ -10,6 +10,7 @@ interface ValidationPolicySelectorProps {
   users: AdminUser[]
   roles: TechnicalRole[]
   onChange: (value: ValidationRouteDraft) => void
+  allowCustom?: boolean
 }
 
 const OPTIONS: Array<{
@@ -49,6 +50,7 @@ export function ValidationPolicySelector({
   users,
   roles,
   onChange,
+  allowCustom = true,
 }: ValidationPolicySelectorProps) {
   const authorizedRoleIds = new Set(
     roles
@@ -85,7 +87,7 @@ export function ValidationPolicySelector({
         </span>
       </header>
       <div className="validation-policy-selector__options">
-        {OPTIONS.map((option) => {
+        {OPTIONS.filter((option) => allowCustom || option.value !== 'PERSONALIZADA').map((option) => {
           const selected = value.politica_assinatura === option.value
           return (
             <button

@@ -138,16 +138,57 @@ export class OperationsRepository {
     const result = await client.query<OperationsRow>(
       `
         SELECT work_order.id, work_order.code AS codigo, work_order.title AS titulo,
+               work_order.description AS descricao,
                work_order.priority AS prioridade, work_order.status,
+               work_order.origin_type AS origem,
+               work_order.origin_entity_id AS entidade_origem_id,
+               work_order.work_type AS tipo,
                work_order.asset_id AS ativo_id, asset.tag AS ativo_tag, asset.name AS ativo_nome,
-               work_order.component_id AS componente_id, work_order.scheduled_for AS programada_para,
-               work_order.created_at AS criada_em, work_order.released_at AS liberada_em,
+               work_order.component_id AS componente_id,
+               component.tag AS componente_tag, component.name AS componente_nome,
+               work_order.maintenance_plan_version_id AS plano_versao_id,
+               plan.id AS plano_id, plan.code AS plano_codigo, plan.name AS plano_nome,
+               plan_version.revision AS plano_revisao,
+               plan_version.maintenance_stop_mode AS modo_parada_manutencao,
+               plan_version.technical_analysis AS plano_analise_tecnica,
+               work_order.technical_analysis AS analise_tecnica,
+               checklist_items.total_itens AS plano_itens_count,
+               work_order.scheduled_for AS programada_para,
+               work_order.created_at AS criada_em, work_order.updated_at AS atualizado_em,
+               work_order.released_at AS liberada_em,
+               demand.id AS demanda_id,
                demand.status AS validacao_status,
+               demand.signature_policy AS politica_assinatura,
                demand.completed_signature_count AS assinaturas_realizadas,
-               demand.required_signature_count AS assinaturas_exigidas
+               demand.required_signature_count AS assinaturas_exigidas,
+               demand.current_area_id AS area_atual_id,
+               area.name AS area_atual_nome,
+               demand.current_technical_role_id AS cargo_atual_id,
+               technical_role.name AS cargo_atual_nome,
+               action.id AS acao_id,
+               action.status AS acao_status
         FROM maintenance.work_orders work_order
         JOIN cmms.assets asset ON asset.id = work_order.asset_id
+        LEFT JOIN cmms.components component ON component.id = work_order.component_id
+        JOIN maintenance.maintenance_plan_versions plan_version
+          ON plan_version.id = work_order.maintenance_plan_version_id
+        JOIN maintenance.maintenance_plans plan
+          ON plan.id = plan_version.maintenance_plan_id
+        JOIN LATERAL (
+          SELECT count(*) FILTER (WHERE item.status = 'ACTIVE')::integer AS total_itens
+          FROM maintenance.checklist_items item
+          WHERE item.checklist_template_version_id = plan_version.checklist_template_version_id
+        ) checklist_items ON true
         LEFT JOIN workflow.technical_demands demand ON demand.id = work_order.technical_demand_id
+        LEFT JOIN iam.technical_areas area ON area.id = demand.current_area_id
+        LEFT JOIN iam.technical_roles technical_role ON technical_role.id = demand.current_technical_role_id
+        LEFT JOIN LATERAL (
+          SELECT latest_action.id, latest_action.status
+          FROM maintenance.work_order_actions latest_action
+          WHERE latest_action.work_order_id = work_order.id
+          ORDER BY latest_action.generated_at DESC, latest_action.id DESC
+          LIMIT 1
+        ) action ON true
         WHERE ($1 = '' OR work_order.code ILIKE '%' || $1 || '%' OR work_order.title ILIKE '%' || $1 || '%' OR asset.tag ILIKE '%' || $1 || '%')
           AND ($2::text IS NULL OR work_order.status = $2)
           AND ($3::uuid IS NULL OR work_order.asset_id = $3)
@@ -180,7 +221,8 @@ export class OperationsRepository {
                work_order.component_id AS componente_id, component.tag AS componente_tag,
                component.name AS componente_nome,
                work_order.maintenance_plan_version_id AS plano_versao_id,
-               plan.code AS plano_codigo, plan.name AS plano_nome,
+               plan.id AS plano_id, plan.code AS plano_codigo, plan.name AS plano_nome,
+               plan_version.revision AS plano_revisao,
                plan_version.checklist_template_version_id AS checklist_versao_id,
                checklist_template.name AS checklist_nome,
                COALESCE((SELECT jsonb_agg(jsonb_build_object(
@@ -616,6 +658,14 @@ export class OperationsRepository {
       `UPDATE maintenance.work_orders SET status = 'RELEASED', opened_at = COALESCE(opened_at, clock_timestamp()) WHERE id = $1`,
       [workOrder.id],
     );
+    if (workOrder.technical_demand_id) {
+      await client.query(
+        `UPDATE workflow.technical_demands
+         SET status = 'RELEASED_TO_OPERATION', completed_at = COALESCE(completed_at, clock_timestamp())
+         WHERE id = $1`,
+        [workOrder.technical_demand_id],
+      );
+    }
     const result = await client.query<OperationsRow>(
       `
         INSERT INTO maintenance.work_order_actions (

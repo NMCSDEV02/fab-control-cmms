@@ -238,6 +238,10 @@ const planTypeFromNode: Readonly<Record<string, string>> = {
   CONDITION_BASED: "BASEADA_CONDICAO",
 };
 
+const planTypeToNode: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(planTypeFromNode).map(([node, legacy]) => [legacy, node]),
+) as Readonly<Record<string, string>>;
+
 const planVersionStatusFromNode: Readonly<Record<string, string>> = {
   DRAFT: "RASCUNHO",
   IN_REVIEW: "EM_VALIDACAO_GESTAO",
@@ -256,11 +260,102 @@ const triggerTypeFromNode: Readonly<Record<string, string>> = {
   OCCURRENCE: "OCORRENCIA",
 };
 
+const triggerTypeToNode: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(triggerTypeFromNode).map(([node, legacy]) => [legacy, node]),
+) as Readonly<Record<string, string>>;
+
 const stopModeFromNode: Readonly<Record<string, string>> = {
   NO_STOP: "SEM_PARADA",
   MANDATORY_STOP: "OBRIGATORIA",
   EXECUTOR_DECISION: "DECISAO_EXECUTOR",
 };
+
+const stopModeToNode: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(stopModeFromNode).map(([node, legacy]) => [legacy, node]),
+) as Readonly<Record<string, string>>;
+
+const priorityFromNode: Readonly<Record<string, string>> = {
+  LOW: "BAIXA",
+  MEDIUM: "MEDIA",
+  HIGH: "ALTA",
+  CRITICAL: "CRITICA",
+};
+
+const priorityToNode: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(priorityFromNode).map(([node, legacy]) => [legacy, node]),
+) as Readonly<Record<string, string>>;
+
+const workOrderStatusFromNode: Readonly<Record<string, string>> = {
+  DRAFT: "RASCUNHO",
+  IN_TECHNICAL_REVIEW: "AGUARDANDO_VALIDACAO",
+  CHANGES_REQUESTED: "DEVOLVIDA_ADMIN",
+  APPROVED: "AGUARDANDO_LIBERACAO",
+  RELEASED: "ABERTA",
+  IN_PROGRESS: "EM_EXECUCAO",
+  BLOCKED: "BLOQUEADA",
+  COMPLETED: "CONCLUIDA",
+  CANCELLED: "CANCELADA",
+  QUARANTINED: "QUARENTENA",
+};
+
+function workOrderRow(value: unknown): JsonRecord {
+  const item = record(value);
+  const validation = record(item.validacao);
+  const actions = records(item.acoes);
+  const latestAction = actions.at(-1) ?? {};
+  const validationStatus = item.validacao_status ?? validation.status;
+  return {
+    ...item,
+    status: workOrderStatusFromNode[upperText(item.status)] ?? item.status,
+    prioridade: priorityFromNode[upperText(item.prioridade)] ?? item.prioridade,
+    tipo: planTypeFromNode[upperText(item.tipo)] ?? item.tipo,
+    plano_id: item.plano_id,
+    plano_versao_id: item.plano_versao_id,
+    plano_itens_count: Number(item.plano_itens_count ?? records(item.checklist_itens).length),
+    demanda: validationStatus
+      ? {
+          ...validation,
+          id: item.demanda_id ?? validation.id,
+          status: demandStatusFromNode[upperText(validationStatus)] ?? validationStatus,
+          area_atual_id: item.area_atual_id,
+          area_atual_nome: item.area_atual_nome,
+          cargo_atual_id: item.cargo_atual_id,
+          cargo_atual_nome: item.cargo_atual_nome,
+          exige_assinatura: Number(item.assinaturas_exigidas ?? validation.assinaturas_exigidas ?? 0) > 0 ? "SIM" : "NAO",
+          assinaturas_necessarias: item.assinaturas_exigidas ?? validation.assinaturas_exigidas,
+          assinaturas_realizadas: item.assinaturas_realizadas ?? validation.assinaturas_realizadas,
+        }
+      : null,
+    acao_id: item.acao_id ?? latestAction.id,
+    acao_status: item.acao_status ?? latestAction.status,
+    criado_em: item.criada_em,
+    atualizado_em: item.atualizado_em,
+  };
+}
+
+function workOrderBody(data: JsonRecord, creating: boolean): JsonRecord {
+  const scheduled = nullableTextValue(data.planejada_para);
+  const body: JsonRecord = {
+    titulo: data.titulo,
+    descricao: data.descricao,
+    prioridade: priorityToNode[upperText(data.prioridade)] ?? upperText(data.prioridade),
+    responsavel_id: data.responsavel_id || null,
+    programada_para: scheduled ? new Date(scheduled).toISOString() : null,
+    analise_tecnica: {
+      ...record(data.analise_tecnica),
+      briefing_operador: data.descricao,
+      modo_parada: data.modo_parada_manutencao,
+    },
+  };
+  if (!creating) return body;
+  return {
+    plano_versao_id: data.plano_versao_id || data.plano_id,
+    tipo_origem: data.origem || "ADMIN",
+    entidade_origem_id: data.entidade_origem_id || null,
+    tipo_trabalho: planTypeToNode[upperText(data.tipo)] ?? upperText(data.tipo),
+    ...body,
+  };
+}
 
 function upperText(value: unknown): string {
   return String(value ?? "").trim().toUpperCase();
@@ -319,6 +414,65 @@ function mapCatalogRow(entity: string, value: unknown): JsonRecord {
     mapped.validado_gestao = ["APPROVED", "PUBLISHED"].includes(upperText(item.status)) ? "SIM" : "NAO";
   }
   return mapped;
+}
+
+function maintenancePlanRow(value: unknown): JsonRecord {
+  const item = record(value);
+  const current = record(item.versao_atual);
+  return mapCatalogRow("planos", {
+    ...item,
+    ...current,
+    versao_id: current.id ?? item.versao_id,
+    plano_itens_count: item.plano_itens_count ?? current.plano_itens_count,
+    atualizado_em: item.updated_at ?? item.atualizado_em,
+  });
+}
+
+function maintenancePlanBody(data: JsonRecord, creating: boolean): JsonRecord {
+  const trigger = triggerTypeToNode[upperText(data.gatilho_tipo)] ?? upperText(data.gatilho_tipo);
+  const recurrence = trigger === "PERIODICITY"
+    ? Math.max(1, Number(data.recorrencia_dias ?? data.gatilho_valor ?? 1))
+    : null;
+  const code = String(
+    data.codigo ??
+      `PLN-${String(data.nome ?? "PLANO")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/gu, "")
+        .replace(/[^a-zA-Z0-9]+/gu, "-")
+        .replace(/^-+|-+$/gu, "")
+        .slice(0, 45)
+        .toUpperCase()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+  );
+  const shared: JsonRecord = {
+    codigo: code,
+    nome: data.nome,
+    checklist_versao_id: data.checklist_versao_id,
+    criticidade: criticalityToNode[upperText(data.criticidade)] ?? upperText(data.criticidade),
+    tipo_disparo: trigger,
+    valor_disparo: nullableNumberValue(data.gatilho_valor),
+    unidade_disparo: nullableTextValue(data.unidade),
+    recorrencia_dias: recurrence,
+    duracao_estimada_minutos: nullableNumberValue(data.tempo_estimado_min),
+    exige_loto: yes(data.requer_bloqueio),
+    exige_evidencia: yes(data.requer_evidencia),
+    maximo_sessoes: nullableNumberValue(data.max_sessoes),
+    modo_parada:
+      stopModeToNode[upperText(data.modo_parada_manutencao)] ??
+      upperText(data.modo_parada_manutencao),
+    analise_tecnica: record(data.analise_tecnica),
+    area_tecnica_id: data.area_tecnica_id || null,
+  };
+  if (!creating) {
+    shared.status_ciclo_vida =
+      recordStatusToNode[upperText(data.status)] ?? upperText(data.status ?? "ATIVO");
+    return shared;
+  }
+  return {
+    ...shared,
+    ativo_id: data.ativo_id,
+    componente_id: data.componente_id || null,
+    tipo: planTypeToNode[upperText(data.tipo)] ?? upperText(data.tipo),
+  };
 }
 
 function assetWriteBody(data: JsonRecord, statusOverride?: string): JsonRecord {
@@ -1158,6 +1312,55 @@ function nodeActionRequest(
           status: record(data.versao_atual).status ?? data.status,
         }),
       };
+    case "admin.intervencoes.listar":
+      return {
+        method: "GET",
+        path: queryPath("/v1/maintenance/work-orders", {
+          busca: payload.busca,
+          status: payload.status,
+          ativo_id: payload.ativo_id,
+          limite: Math.min(Number(payload.limite ?? 100), 100),
+        }),
+        token,
+        transform: (data) => {
+          const interventions = records(data.itens).map(workOrderRow);
+          return { total: interventions.length, intervencoes: interventions };
+        },
+      };
+    case "admin.intervencoes.salvar": {
+      const data = record(payload.dados);
+      const identifier = String(data.id ?? "");
+      return {
+        method: identifier ? "PATCH" : "POST",
+        path: identifier
+          ? `/v1/maintenance/work-orders/${encodeURIComponent(identifier)}`
+          : "/v1/maintenance/work-orders",
+        body: workOrderBody(data, !identifier),
+        token,
+        transform: (saved) => ({
+          saved: true,
+          intervencao: workOrderRow(saved),
+        }),
+      };
+    }
+    case "admin.intervencoes.enviar_validacao": {
+      const required = payload.politica_assinatura === "QUALIDADE_E_SEGURANCA" ? 2 : 1;
+      return {
+        method: "POST",
+        path: `/v1/maintenance/work-orders/${encodeURIComponent(String(payload.intervencao_id))}/submit-review`,
+        body: {
+          politica_assinatura: payload.politica_assinatura,
+          assinaturas_exigidas: required,
+          primeira_resposta_ate: null,
+          resolucao_ate: null,
+        },
+        token,
+        transform: (saved) => ({
+          sent: true,
+          intervencao: workOrderRow(saved),
+        }),
+      };
+    }
     case "admin.listar_modelos_checklist":
       return {
         method: "GET",
@@ -1244,19 +1447,50 @@ function nodeActionRequest(
           };
         },
       };
+    case "admin.excluir_modelo_checklist":
+      return {
+        method: "DELETE",
+        path: `/v1/maintenance/checklists/${encodeURIComponent(String(payload.plano_id))}`,
+        token,
+        transform: (data) => ({
+          deleted: data.deleted === true,
+          plano_id: payload.plano_id,
+        }),
+      };
     case "admin.entidade.acao":
-      if (payload.entidade === "planos" && payload.acao === "EXCLUIR") {
+      if (payload.entidade === "planos") {
+        const identifier = String(payload.id ?? "");
+        if (!identifier) return null;
+        if (payload.acao === "PUBLICAR") {
+          return {
+            method: "POST",
+            path: `/v1/maintenance/plans/${encodeURIComponent(identifier)}/publish`,
+            body: {},
+            token,
+            transform: (data) => ({
+              acted: true,
+              acao: payload.acao,
+              entidade: "planos",
+              id: identifier,
+              deleted: false,
+              row: maintenancePlanRow(data),
+            }),
+          };
+        }
+        const archived = payload.acao === "EXCLUIR";
+        const requestedStatus = archived ? "ARCHIVED" : upperText(payload.status) === "INATIVO" ? "INACTIVE" : "ACTIVE";
         return {
-          method: "DELETE",
-          path: `/v1/maintenance/checklists/${encodeURIComponent(String(payload.id))}`,
+          method: "PATCH",
+          path: `/v1/maintenance/plans/${encodeURIComponent(identifier)}`,
+          body: { status_ciclo_vida: requestedStatus },
           token,
           transform: (data) => ({
-            acted: data.deleted === true,
-            acao: "EXCLUIR",
+            acted: true,
+            acao: payload.acao,
             entidade: "planos",
-            id: payload.id,
-            deleted: data.deleted === true,
-            itens_rascunho_excluidos: 0,
+            id: identifier,
+            deleted: archived,
+            row: archived ? undefined : maintenancePlanRow(data),
           }),
         };
       }
@@ -1626,7 +1860,9 @@ function nodeActionRequest(
           }),
           token,
           transform: (data) => {
-            const rows = records(data.itens).map((item) => mapCatalogRow("planos", item));
+            const rows = records(data.itens)
+              .filter((item) => upperText(item.status_ciclo_vida) !== "ARCHIVED")
+              .map(maintenancePlanRow);
             return { entidade: "planos", total: rows.length, rows };
           },
         };
@@ -1635,10 +1871,26 @@ function nodeActionRequest(
     }
     case "admin.salvar": {
       const entity = String(payload.entidade ?? "");
-      const resource = catalogResource(entity);
-      if (!resource) return null;
       const data = record(payload.dados);
       const identifier = String(data.id ?? "");
+      if (entity === "planos") {
+        return {
+          method: identifier ? "PATCH" : "POST",
+          path: identifier
+            ? `/v1/maintenance/plans/${encodeURIComponent(identifier)}`
+            : "/v1/maintenance/plans",
+          body: maintenancePlanBody(data, !identifier),
+          token,
+          transform: (saved) => ({
+            saved: true,
+            mode: identifier ? "update" : "insert",
+            entidade: entity,
+            row: maintenancePlanRow(saved),
+          }),
+        };
+      }
+      const resource = catalogResource(entity);
+      if (!resource) return null;
       return {
         method: identifier ? "PATCH" : "POST",
         path: identifier

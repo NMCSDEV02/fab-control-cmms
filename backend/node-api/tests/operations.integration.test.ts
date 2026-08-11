@@ -512,16 +512,28 @@ test(
       },
     });
     assert.equal(safetySigned.statusCode, 200, safetySigned.body);
-    assert.equal(safetySigned.json().data.status, 'APPROVED');
+    assert.equal(safetySigned.json().data.status, 'RELEASED');
     assert.equal(safetySigned.json().data.validacao.assinaturas.length, 2);
+    assert.equal(safetySigned.json().data.acoes.length, 1);
 
-    const released = await app.inject({
-      method: 'POST',
-      url: `/v1/maintenance/work-orders/${workOrderId}/release`,
+    const workOrderList = await app.inject({
+      method: 'GET',
+      url: '/v1/maintenance/work-orders',
       headers: bearer(identities.admin),
     });
-    assert.equal(released.statusCode, 200, released.body);
-    assert.equal(released.json().data.status, 'RELEASED');
+    assert.equal(workOrderList.statusCode, 200, workOrderList.body);
+    const workOrderListBody: {
+      data: { itens: (Record<string, unknown> & { id: string })[] };
+    } = workOrderList.json();
+    const listedWorkOrder = workOrderListBody.data.itens.find(
+      (item) => item.id === workOrderId,
+    );
+    assert.ok(listedWorkOrder);
+    assert.equal(listedWorkOrder.plano_id, ids.plan);
+    assert.equal(listedWorkOrder.plano_versao_id, ids.planVersion);
+    assert.equal(listedWorkOrder.plano_itens_count, 3);
+    assert.equal(listedWorkOrder.acao_status, 'READY');
+    assert.equal(listedWorkOrder.assinaturas_realizadas, 2);
 
     const managerActions = await app.inject({
       method: 'GET',

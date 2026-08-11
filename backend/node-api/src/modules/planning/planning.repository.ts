@@ -1570,6 +1570,19 @@ export class PlanningRepository {
     );
   }
 
+  async updatePlanLifecycleStatus(
+    client: PoolClient,
+    planId: string,
+    lifecycleStatus: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE maintenance.maintenance_plans
+       SET lifecycle_status = $2, updated_at = clock_timestamp()
+       WHERE id = $1`,
+      [planId, lifecycleStatus],
+    );
+  }
+
   async publishPlanVersion(
     client: PoolClient,
     planId: string,

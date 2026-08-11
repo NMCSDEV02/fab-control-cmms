@@ -608,8 +608,19 @@ export class OperationsService {
           integer(state, 'completed_signature_count') >=
             integer(state, 'required_signature_count') &&
           integer(state, 'pending_requirements') === 0;
-        if (approved)
+        let releasedActionId: string | null = null;
+        if (approved) {
           await this.repository.approveDemand(client, demandId, text(demand, 'entity_id'));
+          const approvedWorkOrder = await this.repository.findWorkOrder(
+            client,
+            text(demand, 'entity_id'),
+            true,
+          );
+          if (!approvedWorkOrder) {
+            throw error('WORK_ORDER_NOT_FOUND', 'Ordem de serviço não encontrada.', 404);
+          }
+          releasedActionId = await this.repository.releaseWorkOrder(client, approvedWorkOrder);
+        }
         await this.repository.appendDemandEvent(
           client,
           user.tenantId,
@@ -629,7 +640,12 @@ export class OperationsService {
           'TECHNICAL_SIGNATURE_RECORDED',
           'TECHNICAL_DEMAND',
           demandId,
-          { signature_hash: signatureHash, aprovada: approved },
+          {
+            signature_hash: signatureHash,
+            aprovada: approved,
+            liberada_automaticamente: approved,
+            acao_id: releasedActionId,
+          },
         );
         return detail;
       },

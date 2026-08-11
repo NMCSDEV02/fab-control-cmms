@@ -18,6 +18,7 @@ export interface AdminIntervention {
   ativo_id: string
   componente_id?: string
   plano_id: string
+  plano_versao_id?: string
   origem: string
   tipo: string
   titulo: string
@@ -45,6 +46,7 @@ export interface AdminInterventionInput {
   ativo_id: string
   componente_id?: string
   plano_id: string
+  plano_versao_id?: string
   tipo: string
   titulo: string
   descricao: string

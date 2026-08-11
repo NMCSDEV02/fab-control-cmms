@@ -42,8 +42,9 @@ function editable(intervention: AdminIntervention): boolean {
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
     RASCUNHO: 'Rascunho', AGUARDANDO_VALIDACAO: 'Aguardando validação', DEVOLVIDA_ADMIN: 'Devolvida ao Admin',
-    ABERTA: 'Liberada ao Operador', EM_EXECUCAO: 'Em execução', FINALIZADA: 'Finalizada',
-    CONCLUIDA: 'Concluída', CANCELADA: 'Cancelada',
+    AGUARDANDO_LIBERACAO: 'Aprovada tecnicamente', ABERTA: 'Liberada ao Operador',
+    EM_EXECUCAO: 'Em execução', BLOQUEADA: 'Bloqueada', FINALIZADA: 'Finalizada',
+    CONCLUIDA: 'Concluída', CANCELADA: 'Cancelada', QUARENTENA: 'Em quarentena',
   }
   return labels[status] ?? status
 }
@@ -294,7 +295,7 @@ export function AdminInterventionsWorkspace({
   function openEditor(intervention?: AdminIntervention) {
     setEditor(intervention ? {
       id: intervention.id, ativo_id: intervention.ativo_id, componente_id: intervention.componente_id,
-      plano_id: intervention.plano_id || '',
+      plano_id: intervention.plano_id || '', plano_versao_id: intervention.plano_versao_id || '',
       tipo: intervention.tipo, titulo: intervention.titulo, descricao: intervention.descricao,
       prioridade: intervention.prioridade, planejada_para: intervention.planejada_para,
       modo_parada_manutencao: intervention.modo_parada_manutencao || 'DECISAO_EXECUTOR',
@@ -521,9 +522,9 @@ export function AdminInterventionsWorkspace({
       </section>
 
       {editor ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditor(null) }}><section role="dialog" aria-modal="true" aria-labelledby="intervention-editor-title"><header><div><span className="eyebrow">PLANEJAMENTO ASSISTIDO</span><h2 id="intervention-editor-title">{editor.id ? 'Editar intervenção' : 'Nova intervenção'}</h2></div><button type="button" onClick={() => setEditor(null)}>×</button></header><div className="admin-catalog-form">
-        <label><span>Ativo *</span><select value={editor.ativo_id} onChange={(event) => setEditor((current) => current ? { ...current, ativo_id: event.target.value, componente_id: '', plano_id: '' } : current)}><option value="">Selecione…</option>{assets.filter((asset) => available(asset, editor.ativo_id)).map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
-        <label><span>Componente</span><select value={editor.componente_id || ''} onChange={(event) => setEditor((current) => current ? { ...current, componente_id: event.target.value, plano_id: '' } : current)}><option value="">Ativo completo</option>{editorComponents.map((component) => <option value={component.id} key={component.id}>{String(component.tag || component.id)} · {String(component.nome)}</option>)}</select></label>
-        <label className="is-wide"><span>Checklist de execução *</span><select value={editor.plano_id} onChange={(event) => setEditor((current) => current ? { ...current, plano_id: event.target.value } : current)}><option value="">{editor.ativo_id ? 'Selecione um checklist validado…' : 'Selecione primeiro o ativo…'}</option>{editorPlans.map((plan) => <option value={plan.id} key={plan.id}>{String(plan.nome)} · R{String(plan.revisao || 1)} · {activePlanItemCounts.get(String(plan.id))} etapas</option>)}</select><small>{editor.ativo_id && !editorPlans.length ? 'Nenhum checklist validado e executável está disponível para este escopo.' : 'Somente modelos aprovados pelo Gestor e com etapas podem ser vinculados.'}</small></label>
+        <label><span>Ativo *</span><select value={editor.ativo_id} onChange={(event) => setEditor((current) => current ? { ...current, ativo_id: event.target.value, componente_id: '', plano_id: '', plano_versao_id: '' } : current)}><option value="">Selecione…</option>{assets.filter((asset) => available(asset, editor.ativo_id)).map((asset) => <option value={asset.id} key={asset.id}>{String(asset.tag || asset.id)} · {String(asset.nome)}</option>)}</select></label>
+        <label><span>Componente</span><select value={editor.componente_id || ''} onChange={(event) => setEditor((current) => current ? { ...current, componente_id: event.target.value, plano_id: '', plano_versao_id: '' } : current)}><option value="">Ativo completo</option>{editorComponents.map((component) => <option value={component.id} key={component.id}>{String(component.tag || component.id)} · {String(component.nome)}</option>)}</select></label>
+        <label className="is-wide"><span>Plano e checklist de execução *</span><select value={editor.plano_versao_id || editor.plano_id} onChange={(event) => { const selected = plans.find((plan) => String(plan.versao_id) === event.target.value); setEditor((current) => current ? { ...current, plano_id: String(selected?.id ?? ''), plano_versao_id: event.target.value } : current) }}><option value="">{editor.ativo_id ? 'Selecione um plano publicado…' : 'Selecione primeiro o ativo…'}</option>{editorPlans.map((plan) => <option value={String(plan.versao_id)} key={String(plan.versao_id)}>{String(plan.nome)} · R{String(plan.revisao || 1)} · {activePlanItemCounts.get(String(plan.id))} etapas</option>)}</select><small>{editor.ativo_id && !editorPlans.length ? 'Nenhum plano publicado com checklist executável está disponível para este escopo.' : 'A OS herda as etapas do checklist publicado vinculado ao plano.'}</small></label>
         <label><span>Tipo</span><select value={editor.tipo} onChange={(event) => setEditor((current) => current ? { ...current, tipo: event.target.value } : current)}><option value="CORRETIVA">Corretiva</option><option value="PREVENTIVA">Preventiva</option><option value="PREDITIVA">Preditiva</option><option value="INSPECAO">Inspeção</option><option value="QUALIDADE">Qualidade</option><option value="SEGURANCA">Segurança</option></select></label>
         <label><span>Prioridade</span><select value={editor.prioridade} onChange={(event) => setEditor((current) => current ? { ...current, prioridade: event.target.value } : current)}><option value="BAIXA">Baixa</option><option value="MEDIA">Média</option><option value="ALTA">Alta</option><option value="CRITICA">Crítica</option></select></label>
         <label><span>Planejada para</span><input type="datetime-local" value={editor.planejada_para || ''} onChange={(event) => setEditor((current) => current ? { ...current, planejada_para: event.target.value } : current)} /></label>
@@ -533,7 +534,13 @@ export function AdminInterventionsWorkspace({
       </div><footer><span>Salvar não cria ação operacional.</span><div><button type="button" disabled={saving} onClick={() => setEditor(null)}>Cancelar</button><button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button></div></footer></section></div> : null}
 
       {routing ? <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !sending) setRouting(null) }}><section role="dialog" aria-modal="true" aria-labelledby="intervention-route-title"><header><div><span className="eyebrow">FILTRO TÉCNICO</span><h2 id="intervention-route-title">Enviar {routing.codigo}</h2></div><button type="button" onClick={() => setRouting(null)}>×</button></header><div className="admin-catalog-form">
-        <ValidationPolicySelector value={routeDraft} users={users} roles={roles} onChange={setRouteDraft} />
+        <ValidationPolicySelector
+          value={routeDraft}
+          users={users}
+          roles={roles}
+          onChange={setRouteDraft}
+          allowCustom={false}
+        />
         <label><span>Segregar criador e aprovador</span><select value={routeDraft.exige_segregacao} onChange={(event) => setRouteDraft((current) => ({ ...current, exige_segregacao: event.target.value }))}><option value="SIM">Sim</option><option value="NAO">Não</option></select></label>
         <label style={{ gridColumn: '1 / -1' }}><span>Orientação ao Gestor *</span><textarea rows={4} value={routeDraft.comentario} onChange={(event) => setRouteDraft((current) => ({ ...current, comentario: event.target.value }))} /></label>
       </div><footer><span>A ação operacional só será criada depois das assinaturas técnicas.</span><div><button type="button" disabled={sending} onClick={() => setRouting(null)}>Cancelar</button><button className="primary-button" type="button" disabled={sending} onClick={() => void send()}>{sending ? 'Enviando…' : 'Enviar para assinatura'}</button></div></footer></section></div> : null}

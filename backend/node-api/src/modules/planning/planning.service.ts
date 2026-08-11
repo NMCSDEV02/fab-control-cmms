@@ -1186,6 +1186,26 @@ export class PlanningService {
         if (!plan) throw notFound('Plano de manutenção');
         const version = await this.repository.findEditablePlanVersion(client, planId, true);
         if (!version) {
+          if (
+            patch.lifecycleStatus !== undefined &&
+            Object.keys(patch).every((key) => key === 'lifecycleStatus')
+          ) {
+            const before = await this.requiredPlanDetail(client, planId);
+            await this.repository.updatePlanLifecycleStatus(client, planId, patch.lifecycleStatus);
+            const after = await this.requiredPlanDetail(client, planId);
+            await this.repository.writeAudit(
+              client,
+              user.tenantId,
+              user.id,
+              audit,
+              'MAINTENANCE_PLAN_LIFECYCLE_UPDATED',
+              'MAINTENANCE_PLAN',
+              planId,
+              before,
+              after,
+            );
+            return after;
+          }
           throw conflict(
             'PLAN_REVISION_NOT_EDITABLE',
             'Crie uma nova revisão antes de alterar um plano publicado.',

@@ -27,7 +27,7 @@ export interface AdminEntitySaveResult {
   row: AdminEntityRecord
 }
 
-export type AdminEntityAction = 'ALTERAR_STATUS' | 'EXCLUIR'
+export type AdminEntityAction = 'ALTERAR_STATUS' | 'EXCLUIR' | 'PUBLICAR'
 
 export interface AdminEntityActionInput {
   entidade: AdminEntity

@@ -111,3 +111,22 @@ export async function createAdminChecklistRevision(
   if (!response.data) throw new ApiRequestError('A API não confirmou a nova revisão.', 'ADMIN_CHECKLIST_EMPTY')
   return response.data
 }
+
+export async function deleteAdminChecklistDraft(planId: string): Promise<void> {
+  const response = await callApi<{ deleted: boolean; plano_id: string }>(
+    'admin.excluir_modelo_checklist',
+    {
+      token: adminToken(),
+      plano_id: planId,
+      user_agent: navigator.userAgent,
+    },
+    undefined,
+    { timeoutMs: API_TIMEOUT_MS.CRITICAL_WRITE },
+  )
+  if (!response.data?.deleted) {
+    throw new ApiRequestError(
+      'O servidor protegeu o modelo porque ele já possui validação, publicação ou vínculo operacional.',
+      'ADMIN_CHECKLIST_DELETE_REJECTED',
+    )
+  }
+}
