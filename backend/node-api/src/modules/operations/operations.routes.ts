@@ -3,6 +3,7 @@ import { Type, type FastifyPluginAsyncTypebox } from '@fastify/type-provider-typ
 import { successEnvelopeSchema } from '../auth/auth.schemas.js';
 import type { OperationsController } from './operations.controller.js';
 import {
+  actionReviewBodySchema,
   completeExecutionBodySchema,
   correctWorkOrderBodySchema,
   createWorkOrderBodySchema,
@@ -72,6 +73,16 @@ export function createOperationsRoutes(
         summary: 'Consulta a aÃ§Ã£o, o checklist materializado e suas evidÃªncias.',
       },
       handler: controller.getMaintenanceAction,
+    });
+    app.post('/v1/maintenance/actions/:actionId/review', {
+      preHandler: (request) => app.authorize(request, 'maintenance.work-orders.review'),
+      schema: {
+        ...secured,
+        params: operationsIdentifierParamsSchema,
+        body: actionReviewBodySchema,
+        summary: 'Aprova ou devolve uma execucao concluida pelo Operador.',
+      },
+      handler: controller.reviewMaintenanceAction,
     });
     app.get('/v1/maintenance/work-orders', {
       preHandler: (request) => app.authorize(request, 'maintenance.work-orders.read'),

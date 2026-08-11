@@ -11,6 +11,7 @@ import {
   monitoringIdentifierParamsSchema,
   notificationListQuerySchema,
   occurrenceListQuerySchema,
+  parameterActionRequestBodySchema,
   stopListQuerySchema,
   technicalAnalysisBodySchema,
   transitionStopBodySchema,
@@ -62,6 +63,15 @@ export function createMonitoringRoutes(
         summary: 'Emite análise técnica permanente ao Administrador.',
       },
       handler: controller.createTechnicalAnalysis,
+    });
+    app.post('/v1/monitoring/parameter-action-requests', {
+      preHandler: (request) => app.authorize(request, 'maintenance.occurrences.triage'),
+      schema: {
+        ...secured,
+        body: parameterActionRequestBodySchema,
+        summary: 'Converte uma leitura técnica em ocorrência e análise para o Administrador.',
+      },
+      handler: controller.requestParameterAction,
     });
 
     app.get('/v1/maintenance/stops', {

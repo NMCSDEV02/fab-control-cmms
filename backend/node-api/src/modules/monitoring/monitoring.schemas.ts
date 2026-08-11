@@ -73,6 +73,24 @@ export const technicalAnalysisBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const parameterActionRequestBodySchema = Type.Object(
+  {
+    leitura_id: uuid,
+    tipo_solicitacao: Type.Union([
+      Type.Literal('INSPECTION'),
+      Type.Literal('CHECKLIST'),
+      Type.Literal('LIMIT_ADJUSTMENT'),
+    ]),
+    prioridade: Type.Union([Type.Null(), severity]),
+    observacao: nullableText,
+    causa_provavel: nullableText,
+    risco: nullableText,
+    limite_minimo_proposto: Type.Union([Type.Null(), Type.Number()]),
+    limite_maximo_proposto: Type.Union([Type.Null(), Type.Number()]),
+  },
+  { additionalProperties: false },
+);
+
 export const stopListQuerySchema = Type.Object(
   {
     busca: Type.Optional(Type.String({ maxLength: 160 })),

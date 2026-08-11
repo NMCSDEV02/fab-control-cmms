@@ -24,6 +24,7 @@ function normalizeText(value: string): string {
 }
 
 function scalarText(value: unknown, fallback = ''): string {
+  if (value instanceof Date) return value.toISOString();
   return typeof value === 'string' || typeof value === 'number' ? String(value) : fallback;
 }
 
@@ -352,7 +353,7 @@ export class AdminService {
   private readonly passwordService: PasswordService;
 
   constructor(
-    environment: Environment,
+    private readonly environment: Environment,
     private readonly database: Database,
   ) {
     this.passwordService = new PasswordService(environment.auth.passwordPepper);
@@ -1434,8 +1435,81 @@ export class AdminService {
     return this.database.withTransaction(
       { tenantId: user.tenantId, userId: user.id, readOnly: true },
       async (client) => {
-        const eventos = await this.repository.listAudit(client, query);
+        const rows = await this.repository.listAudit(client, query);
+        const eventos = rows.map((row) => ({
+          id: scalarText(row.id),
+          usuario_id: scalarText(row.responsavel_id),
+          perfil: scalarText(row.perfil),
+          acao: scalarText(row.acao),
+          entidade: scalarText(row.entidade),
+          entidade_id: scalarText(row.registro),
+          antes_json: row.antes === null ? undefined : JSON.stringify(row.antes),
+          depois_json: row.depois === null ? undefined : JSON.stringify(row.depois),
+          criado_em: new Date(scalarText(row.data_hora)).toISOString(),
+        }));
         return { total: eventos.length, eventos };
+      },
+    );
+  }
+
+  monitoring(user: AuthenticatedUser) {
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id, readOnly: true },
+      async (client) => {
+        const summary = await this.repository.monitoringSummary(client);
+        const issues = await this.repository.monitoringIssues(client);
+        const latestRows = await this.repository.listAudit(client, {
+          search: '',
+          actionGroup: null,
+          entityType: null,
+          responsibleId: null,
+          limit: 1,
+        });
+        const byCode = issues.reduce<Record<string, number>>((counts, issue) => {
+          counts[issue.code] = (counts[issue.code] ?? 0) + 1;
+          return counts;
+        }, {});
+        const latest = latestRows[0];
+        return {
+          health: {
+            ok: true,
+            app: 'fab-control-api',
+            version: this.environment.release.api,
+            spreadsheetId: 'postgresql',
+            serverTime: new Date().toISOString(),
+            environment: this.environment.release.environment,
+            schemaVersion: this.environment.release.schema,
+          },
+          diagnostico: {
+            dry_run: true,
+            total_issues: issues.length,
+            by_code: byCode,
+            issues,
+          },
+          cache: {
+            provider: 'none',
+            source_of_truth: 'postgresql',
+            stale: false,
+          },
+          auditoria: {
+            eventos_24h: Number(summary.audit_events_24h),
+            ultimo_evento: latest
+              ? {
+                  id: scalarText(latest.id),
+                  usuario_id: scalarText(latest.responsavel_id),
+                  perfil: scalarText(latest.perfil),
+                  acao: scalarText(latest.acao),
+                  entidade: scalarText(latest.entidade),
+                  entidade_id: scalarText(latest.registro),
+                  antes_json: latest.antes === null ? undefined : JSON.stringify(latest.antes),
+                  depois_json: latest.depois === null ? undefined : JSON.stringify(latest.depois),
+                  criado_em: new Date(scalarText(latest.data_hora)).toISOString(),
+                }
+              : null,
+          },
+          tabelas_declaradas: Number(summary.declared_tables),
+          verificado_em: new Date().toISOString(),
+        };
       },
     );
   }

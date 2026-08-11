@@ -52,6 +52,19 @@ export interface TechnicalAnalysisInput {
   readonly report: Readonly<Record<string, unknown>>;
 }
 
+export type ParameterActionRequestType = 'INSPECTION' | 'CHECKLIST' | 'LIMIT_ADJUSTMENT';
+
+export interface ParameterActionRequestInput {
+  readonly readingId: string;
+  readonly requestType: ParameterActionRequestType;
+  readonly priority: Severity | null;
+  readonly observation: string | null;
+  readonly probableCause: string | null;
+  readonly risk: string | null;
+  readonly proposedMinimum: number | null;
+  readonly proposedMaximum: number | null;
+}
+
 export interface StopListQuery extends PageQuery {
   readonly status: StopStatus | null;
   readonly assetId: string | null;

@@ -99,6 +99,10 @@ interface CompleteBody {
   readonly observacao: string | null;
   readonly modo_parada: ExecutionStopMode;
 }
+interface ActionReviewBody {
+  readonly decisao: 'APPROVE' | 'REJECT';
+  readonly comentario: string;
+}
 
 function user(request: FastifyRequest): AuthenticatedUser {
   if (request.auth) return request.auth.user;
@@ -340,6 +344,23 @@ export class OperationsController {
       request,
       'maintenance.operator-actions.get',
       await this.service.getOperatorAction(user(request), id(request.params, 'actionId')),
+    );
+
+  reviewMaintenanceAction = async (
+    request: FastifyRequest<{ Params: Params; Body: ActionReviewBody }>,
+  ) =>
+    successEnvelope(
+      request,
+      'maintenance.actions.review',
+      await this.service.reviewMaintenanceAction(
+        user(request),
+        id(request.params, 'actionId'),
+        {
+          decision: request.body.decisao,
+          comment: request.body.comentario,
+        },
+        audit(request),
+      ),
     );
 
   startOperatorAction = async (request: FastifyRequest<{ Params: Params; Body: StartBody }>) =>

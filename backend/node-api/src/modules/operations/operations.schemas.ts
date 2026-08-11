@@ -183,3 +183,11 @@ export const completeExecutionBodySchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
+export const actionReviewBodySchema = Type.Object(
+  {
+    decisao: Type.Union([Type.Literal('APPROVE'), Type.Literal('REJECT')]),
+    comentario: Type.String({ minLength: 3, maxLength: 4_000 }),
+  },
+  { additionalProperties: false },
+);

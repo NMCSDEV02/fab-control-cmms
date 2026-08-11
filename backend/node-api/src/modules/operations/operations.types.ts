@@ -104,4 +104,9 @@ export interface CompletionInput {
   readonly observation: string | null;
   readonly stopMode: ExecutionStopMode;
 }
+
+export interface ActionReviewInput {
+  readonly decision: 'APPROVE' | 'REJECT';
+  readonly comment: string;
+}
 import type { Readable } from 'node:stream';

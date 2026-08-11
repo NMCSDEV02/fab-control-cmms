@@ -204,8 +204,8 @@ test(
     await transaction(pool, async (client) => {
       await client.query(
         `INSERT INTO platform.maintenance_windows
-           (tenant_id,status,reason,starts_at,ends_at,opened_by)
-         VALUES ($1,'OPEN','Teste controlado do catálogo',clock_timestamp()-interval '1 minute',clock_timestamp()+interval '30 minutes',$2)`,
+           (tenant_id,status,reason,starts_at,ends_at,opened_by,challenge_hash)
+         VALUES ($1,'OPEN','Teste controlado do catálogo',clock_timestamp()-interval '1 minute',clock_timestamp()+interval '30 minutes',$2,'0000000000000000000000000000000000000000000000000000000000000000')`,
         [tenantId, adminId],
       );
     });
@@ -224,5 +224,29 @@ test(
     });
     assert.equal(catalogPublish.statusCode, 200, catalogPublish.body);
     assert.equal(catalogPublish.json().data.ativa.numero, 1);
+
+    const monitoring = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/monitoring',
+      headers: bearer(token),
+    });
+    assert.equal(monitoring.statusCode, 200, monitoring.body);
+    assert.equal(monitoring.json().data.health.ok, true);
+    assert.equal(monitoring.json().data.health.spreadsheetId, 'postgresql');
+    assert.equal(monitoring.json().data.diagnostico.total_issues, 0);
+    assert.ok(Number(monitoring.json().data.tabelas_declaradas) >= 40);
+    assert.ok(Number(monitoring.json().data.auditoria.eventos_24h) >= 1);
+
+    const auditTrail = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/audit?limite=5',
+      headers: bearer(token),
+    });
+    assert.equal(auditTrail.statusCode, 200, auditTrail.body);
+    const event = auditTrail.json().data.eventos[0];
+    assert.equal(typeof event.usuario_id, 'string');
+    assert.equal(typeof event.acao, 'string');
+    assert.equal(typeof event.entidade_id, 'string');
+    assert.equal(typeof event.criado_em, 'string');
   },
 );

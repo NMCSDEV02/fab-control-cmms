@@ -10,6 +10,7 @@ import type {
   RequestAuditMetadata,
   StopListQuery,
   TechnicalAnalysisInput,
+  ParameterActionRequestInput,
   TransitionStopInput,
 } from './monitoring.types.js';
 
@@ -20,6 +21,55 @@ function first(rows: readonly MonitoringRow[]): MonitoringRow | null {
 }
 
 export class MonitoringRepository {
+  async findParameterReadingContext(
+    client: PoolClient,
+    readingId: string,
+    lock = false,
+  ): Promise<MonitoringRow | null> {
+    const result = await client.query<MonitoringRow>(
+      `SELECT reading.id,reading.parameter_definition_id,reading.numeric_value,
+              reading.text_value,reading.boolean_value,reading.unit,reading.classification,
+              reading.recorded_by,reading.recorded_at,definition.asset_id,definition.component_id,
+              definition.code AS parameter_code,definition.name AS parameter_name,
+              definition.status AS parameter_status,asset.tag AS asset_tag,asset.name AS asset_name,
+              asset.lifecycle_status AS asset_status,component.tag AS component_tag,
+              component.name AS component_name,component.lifecycle_status AS component_status,
+              policy.warning_min,policy.warning_max,policy.critical_min,policy.critical_max
+       FROM cmms.parameter_readings reading
+       JOIN cmms.parameter_definitions definition
+         ON definition.id=reading.parameter_definition_id AND definition.deleted_at IS NULL
+       JOIN cmms.assets asset ON asset.id=definition.asset_id AND asset.deleted_at IS NULL
+       LEFT JOIN cmms.components component
+         ON component.id=definition.component_id AND component.deleted_at IS NULL
+       LEFT JOIN cmms.parameter_policies policy
+         ON policy.id=reading.parameter_policy_id
+       WHERE reading.id=$1
+       ${lock ? 'FOR UPDATE OF reading' : ''}`,
+      [readingId],
+    );
+    return first(result.rows);
+  }
+
+  async findParameterActionRequest(
+    client: PoolClient,
+    readingId: string,
+    requestType: ParameterActionRequestInput['requestType'],
+  ): Promise<MonitoringRow | null> {
+    const result = await client.query<MonitoringRow>(
+      `SELECT occurrence.id,occurrence.technical_analysis_id,occurrence.status,
+              occurrence.treatment_status
+       FROM maintenance.operational_occurrences occurrence
+       JOIN workflow.technical_analyses analysis ON analysis.id=occurrence.technical_analysis_id
+       WHERE occurrence.occurrence_type='TECHNICAL_PARAMETER'
+         AND analysis.report->'parametro_contexto'->>'leitura_id'=$1
+         AND analysis.report->'parametro_contexto'->>'tipo_solicitacao'=$2
+         AND occurrence.status NOT IN ('CANCELLED','CLOSED')
+       ORDER BY occurrence.created_at DESC LIMIT 1`,
+      [readingId, requestType],
+    );
+    return first(result.rows);
+  }
+
   async findAssetContext(
     client: PoolClient,
     assetId: string,

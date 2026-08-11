@@ -13,6 +13,7 @@ import type {
   CreateStopInput,
   NotificationListQuery,
   OccurrenceListQuery,
+  ParameterActionRequestInput,
   RequestAuditMetadata,
   StopListQuery,
   StopStatus,
@@ -281,6 +282,286 @@ export class MonitoringService {
           roles: ['ADMIN'],
         });
         return detail;
+      },
+    );
+  }
+
+  async requestParameterAction(
+    user: AuthenticatedUser,
+    rawInput: ParameterActionRequestInput,
+    audit: RequestAuditMetadata,
+  ) {
+    const input: ParameterActionRequestInput = {
+      ...rawInput,
+      observation: nullableText(rawInput.observation),
+      probableCause: nullableText(rawInput.probableCause),
+      risk: nullableText(rawInput.risk),
+    };
+    if (
+      input.requestType === 'LIMIT_ADJUSTMENT' &&
+      input.proposedMinimum === null &&
+      input.proposedMaximum === null
+    ) {
+      throw appError(
+        'PROPOSED_LIMIT_REQUIRED',
+        'Informe ao menos um limite proposto para solicitar a revisão da faixa.',
+        422,
+      );
+    }
+    if (
+      input.proposedMinimum !== null &&
+      input.proposedMaximum !== null &&
+      input.proposedMinimum > input.proposedMaximum
+    ) {
+      throw appError(
+        'PROPOSED_LIMIT_RANGE_INVALID',
+        'O limite mínimo proposto não pode ser maior que o limite máximo.',
+        422,
+      );
+    }
+
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const reading = await this.repository.findParameterReadingContext(
+          client,
+          input.readingId,
+          true,
+        );
+        if (!reading) {
+          throw appError(
+            'PARAMETER_READING_NOT_FOUND',
+            'A leitura selecionada não foi encontrada.',
+            404,
+          );
+        }
+        if (reading.asset_status !== 'ACTIVE' || reading.parameter_status !== 'ACTIVE') {
+          throw appError(
+            'PARAMETER_CONTEXT_NOT_ACTIVE',
+            'O ativo ou o parâmetro da leitura não está ativo.',
+            409,
+          );
+        }
+        if (reading.component_id !== null && reading.component_status !== 'ACTIVE') {
+          throw appError(
+            'PARAMETER_COMPONENT_NOT_ACTIVE',
+            'O componente da leitura não está ativo.',
+            409,
+          );
+        }
+
+        const previous = await this.repository.findParameterActionRequest(
+          client,
+          input.readingId,
+          input.requestType,
+        );
+        if (previous) {
+          const occurrenceId = text(previous, 'id');
+          const detail = await this.requiredOccurrenceDetail(client, occurrenceId);
+          return {
+            requested: true,
+            already_requested: true,
+            tipo_solicitacao: input.requestType,
+            status_parametro: this.parameterStatus(reading.classification),
+            ocorrencia: detail,
+            analise: {
+              id: text(previous, 'technical_analysis_id'),
+              status: 'SENT_TO_ADMIN',
+            },
+          };
+        }
+
+        const context = await this.repository.technicalContext(client, user.id);
+        if (!context) {
+          throw appError(
+            'TECHNICAL_ASSIGNMENT_REQUIRED',
+            'O usuário precisa de uma atribuição técnica ativa para solicitar a ação.',
+            403,
+          );
+        }
+        const classification = this.parameterStatus(reading.classification);
+        const priority = input.priority ?? (classification === 'NORMAL' ? 'MEDIUM' : 'HIGH');
+        const labels = {
+          INSPECTION: 'Solicitar inspeção',
+          CHECKLIST: 'Solicitar checklist',
+          LIMIT_ADJUSTMENT: 'Revisar limites',
+        } as const;
+        const requestLabel = labels[input.requestType];
+        const parameterName = text(reading, 'parameter_name');
+        const assetLabel = `${text(reading, 'asset_tag')} · ${text(reading, 'asset_name')}`;
+        const value = this.parameterValue(reading);
+        const unit = typeof reading.unit === 'string' ? reading.unit : '';
+        const valueLabel = `${value}${unit ? ` ${unit}` : ''}`;
+        const minimum = reading.warning_min ?? reading.critical_min ?? null;
+        const maximum = reading.warning_max ?? reading.critical_max ?? null;
+        const range = [
+          minimum === null ? null : `mínimo ${this.parameterLimit(minimum)}`,
+          maximum === null ? null : `máximo ${this.parameterLimit(maximum)}`,
+        ].filter((item): item is string => item !== null);
+        const description =
+          input.observation ??
+          `A leitura de ${parameterName} em ${valueLabel} requer avaliação administrativa.`;
+        const recommendation =
+          input.requestType === 'CHECKLIST'
+            ? 'Criar um checklist de inspeção para confirmar a causa, registrar evidências e validar o retorno à faixa esperada.'
+            : input.requestType === 'INSPECTION'
+              ? 'Programar uma inspeção técnica para confirmar a condição e definir o tratamento.'
+              : 'Revisar tecnicamente os limites propostos antes de alterar a configuração mestre.';
+        const probableCause =
+          input.probableCause ?? 'A confirmar por inspeção técnica no equipamento.';
+        const risk =
+          input.risk ??
+          (classification === 'NORMAL'
+            ? 'A tendência deve ser confirmada antes de qualquer alteração operacional.'
+            : 'A leitura fora da faixa pode indicar degradação ou condição operacional insegura.');
+
+        const occurrenceId = randomUUID();
+        await this.repository.createOccurrence(
+          client,
+          user.tenantId,
+          occurrenceId,
+          user.id,
+          roleSnapshot(user),
+          {
+            assetId: text(reading, 'asset_id'),
+            componentId: typeof reading.component_id === 'string' ? reading.component_id : null,
+            occurrenceType: 'TECHNICAL_PARAMETER',
+            title: `${requestLabel}: ${parameterName} - ${text(reading, 'asset_tag')}`,
+            description,
+            severity: priority,
+            equipmentStopped: false,
+            stopType: null,
+            stopReason: null,
+            occurredAt: dateTime(reading, 'recorded_at'),
+          },
+        );
+        const occurrence = await this.repository.findOccurrence(client, occurrenceId, true);
+        if (!occurrence) throw new Error('A ocorrência técnica criada não foi encontrada.');
+
+        const analysisId = randomUUID();
+        const report = {
+          situacao: `${parameterName} em ${valueLabel} no ativo ${assetLabel}.`,
+          causa_provavel: probableCause,
+          resultado_esperado:
+            'Confirmar a causa e restabelecer ou validar a faixa operacional segura.',
+          riscos: [{ tipo: priority, titulo: 'Parâmetro técnico', descricao: risk }],
+          seguranca: [
+            'Confirmar a identificação do ativo e a condição segura da área.',
+            'Usar instrumento compatível e calibrado para repetir a medição.',
+            'Interromper a operação se a leitura representar risco imediato.',
+          ],
+          nrs: ['NR-12'],
+          ferramentas: [{ tipo: 'MEDICAO', nome: `Instrumento compatível com ${parameterName}` }],
+          etapas: [
+            {
+              ordem: 1,
+              titulo: 'Confirmar a leitura',
+              descricao: 'Repetir a medição e registrar data, condição operacional e evidência.',
+            },
+            {
+              ordem: 2,
+              titulo: 'Inspecionar a causa',
+              descricao: 'Verificar o componente e os fatores que podem alterar o parâmetro.',
+            },
+            {
+              ordem: 3,
+              titulo: 'Definir o tratamento',
+              descricao: 'Corrigir, monitorar ou revisar a faixa após avaliação técnica.',
+            },
+            {
+              ordem: 4,
+              titulo: 'Validar o resultado',
+              descricao: 'Registrar a leitura final e confirmar a condição segura.',
+            },
+          ],
+          evidencias_requeridas: [
+            'Leitura inicial',
+            'Condição encontrada',
+            'Leitura após o tratamento',
+          ],
+          criterio_aceite: 'Parâmetro confirmado em faixa aprovada e condição segura documentada.',
+          parametro_contexto: {
+            leitura_id: input.readingId,
+            ativo_id: reading.asset_id,
+            componente_id: reading.component_id,
+            parametro: parameterName,
+            valor: value,
+            unidade: unit,
+            limite_min: minimum,
+            limite_max: maximum,
+            limite_min_proposto: input.proposedMinimum,
+            limite_max_proposto: input.proposedMaximum,
+            status: classification,
+            registrado_por: reading.recorded_by,
+            registrado_em: dateTime(reading, 'recorded_at'),
+            tipo_solicitacao: input.requestType,
+          },
+        };
+        await this.repository.createTechnicalAnalysis(
+          client,
+          user.tenantId,
+          analysisId,
+          occurrence,
+          user.id,
+          text(context, 'technical_area_id'),
+          typeof context.technical_role_id === 'string' ? context.technical_role_id : null,
+          {
+            title: `${requestLabel}: ${parameterName} - ${text(reading, 'asset_tag')}`,
+            diagnosis: `${parameterName} registrou ${valueLabel}${
+              range.length > 0
+                ? ` (faixa configurada: ${range.join(', ')}).`
+                : ' sem faixa configurada.'
+            }`,
+            risk,
+            probableCause,
+            recommendation,
+            recommendsChecklist: input.requestType === 'CHECKLIST',
+            recommendsWorkOrder: input.requestType === 'INSPECTION',
+            priority,
+            report,
+          },
+        );
+        const detail = await this.requiredOccurrenceDetail(client, occurrenceId);
+        await this.repository.writeHistory(
+          client,
+          user.tenantId,
+          text(reading, 'asset_id'),
+          typeof reading.component_id === 'string' ? reading.component_id : null,
+          user.id,
+          roleSnapshot(user),
+          'PARAMETER_ACTION_REQUESTED',
+          `${requestLabel}: ${parameterName} em ${valueLabel}.`,
+          { readingId: input.readingId, occurrenceId, analysisId, requestType: input.requestType },
+        );
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          'PARAMETER_ACTION_REQUESTED',
+          'TECHNICAL_ANALYSIS',
+          analysisId,
+          detail,
+        );
+        await this.notifyRoles(client, user, {
+          type: 'PARAMETER_ACTION_REQUESTED',
+          title: `${requestLabel}: ${parameterName}`,
+          message: description,
+          entityType: 'TECHNICAL_ANALYSIS',
+          entityId: analysisId,
+          priority,
+          actionRoute: `/workflow/technical-analyses/${analysisId}`,
+          deduplicationKey: `parameter-reading:${input.readingId}:${input.requestType}`,
+          roles: ['ADMIN'],
+        });
+        return {
+          requested: true,
+          already_requested: false,
+          tipo_solicitacao: input.requestType,
+          status_parametro: classification,
+          ocorrencia: detail,
+          analise: { id: analysisId, status: 'SENT_TO_ADMIN' },
+        };
       },
     );
   }
@@ -795,6 +1076,29 @@ export class MonitoringService {
     const detail = await this.repository.getStopDetail(client, stopId);
     if (!detail) throw appError('STOP_NOT_FOUND', 'Parada não encontrada.', 404);
     return detail;
+  }
+
+  private parameterStatus(value: unknown): string {
+    const classification = typeof value === 'string' ? value : 'UNCLASSIFIED';
+    if (classification.endsWith('_HIGH')) return 'ACIMA_LIMITE';
+    if (classification.endsWith('_LOW')) return 'ABAIXO_LIMITE';
+    return classification === 'NORMAL' ? 'NORMAL' : 'SEM_FAIXA';
+  }
+
+  private parameterValue(reading: MonitoringRow): string | number | boolean {
+    if (reading.numeric_value !== null && reading.numeric_value !== undefined) {
+      const numeric = Number(reading.numeric_value);
+      if (Number.isFinite(numeric)) return numeric;
+    }
+    if (typeof reading.text_value === 'string') return reading.text_value;
+    if (typeof reading.boolean_value === 'boolean') return reading.boolean_value;
+    throw new Error('A leitura técnica não contém um valor válido.');
+  }
+
+  private parameterLimit(value: unknown): string | number {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') return value;
+    throw new Error('A política do parâmetro contém um limite inválido.');
   }
 
   private async notifyRoles(

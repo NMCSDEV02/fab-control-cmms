@@ -461,6 +461,12 @@ export class AdminController {
         limit: request.query.limite ?? 200,
       }),
     );
+  monitoring = async (request: FastifyRequest) =>
+    successEnvelope(
+      request,
+      'admin.monitoring.state',
+      await this.service.monitoring(user(request)),
+    );
   listAnalyses = async (request: FastifyRequest) =>
     successEnvelope(
       request,

@@ -1238,12 +1238,88 @@ export class OperationsRepository {
       [execution.id, input.result, input.observation, input.stopMode],
     );
     await client.query(
-      `UPDATE maintenance.work_order_actions SET status='COMPLETED', completed_at=clock_timestamp() WHERE id=$1`,
+      `UPDATE maintenance.work_order_actions
+       SET status='PENDING', completed_at=clock_timestamp(), updated_at=clock_timestamp()
+       WHERE id=$1`,
       [execution.work_order_action_id],
     );
+  }
+
+  async reviewCompletedAction(
+    client: PoolClient,
+    action: OperationsRow,
+    execution: OperationsRow,
+    decision: 'APPROVE' | 'REJECT',
+  ): Promise<void> {
+    if (decision === 'APPROVE') {
+      await client.query(
+        `UPDATE maintenance.work_order_actions
+         SET status='COMPLETED', completed_at=COALESCE(completed_at,clock_timestamp()),
+             updated_at=clock_timestamp()
+         WHERE id=$1`,
+        [action.id],
+      );
+      await client.query(
+        `UPDATE maintenance.work_orders
+         SET status='COMPLETED', completed_at=clock_timestamp(), updated_at=clock_timestamp()
+         WHERE id=$1`,
+        [action.work_order_id],
+      );
+      return;
+    }
     await client.query(
-      `UPDATE maintenance.work_orders SET status='COMPLETED', completed_at=clock_timestamp() WHERE id=$1`,
-      [execution.work_order_id],
+      `UPDATE maintenance.work_order_actions
+       SET status='READY', responsible_id=NULL, started_at=NULL, completed_at=NULL,
+           updated_at=clock_timestamp()
+       WHERE id=$1`,
+      [action.id],
+    );
+    await client.query(
+      `UPDATE maintenance.work_orders
+       SET status='RELEASED', responsible_id=NULL, completed_at=NULL, updated_at=clock_timestamp()
+       WHERE id=$1`,
+      [action.work_order_id],
+    );
+    await client.query(
+      `UPDATE maintenance.executions
+       SET observation=concat_ws(E'\n\n',NULLIF(observation,''),$2), updated_at=clock_timestamp()
+       WHERE id=$1`,
+      [
+        execution.id,
+        'Execucao devolvida pelo filtro tecnico; um novo ciclo operacional foi liberado.',
+      ],
+    );
+  }
+
+  async writeHistory(
+    client: PoolClient,
+    tenantId: string,
+    action: OperationsRow,
+    executionId: string,
+    userId: string,
+    roleSnapshot: string,
+    eventType: string,
+    description: string,
+    payload: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO maintenance.history_events
+       (tenant_id,asset_id,component_id,work_order_id,work_order_action_id,execution_id,
+        event_type,description,user_id,role_snapshot,payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
+      [
+        tenantId,
+        action.asset_id,
+        action.component_id,
+        action.work_order_id,
+        action.id,
+        executionId,
+        eventType,
+        description,
+        userId,
+        roleSnapshot,
+        JSON.stringify(payload),
+      ],
     );
   }
 

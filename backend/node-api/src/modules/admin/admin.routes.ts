@@ -194,6 +194,11 @@ export function createAdminRoutes(controller: AdminController): FastifyPluginAsy
       schema: { ...secured, querystring: auditListQuerySchema },
       handler: controller.listAudit,
     });
+    app.get('/v1/admin/monitoring', {
+      preHandler: (request) => app.authorize(request, 'admin.governance.read'),
+      schema: secured,
+      handler: controller.monitoring,
+    });
     app.get('/v1/admin/technical-analyses', {
       preHandler: (request) => app.authorize(request, 'admin.governance.read'),
       schema: secured,

@@ -974,6 +974,12 @@ function nodeActionRequest(
         path: "/v1/auth/recovery",
         body: { matricula: payload.matricula },
       };
+    case "auth.maintenance.exchange":
+      return {
+        method: "POST",
+        path: "/v1/auth/maintenance/exchange",
+        body: { codigo: payload.codigo },
+      };
     case "auth.logout":
       return { method: "POST", path: "/v1/auth/logout", body: {}, token };
     case "sistema.health":
@@ -1137,6 +1143,22 @@ function nodeActionRequest(
             auditoria: { integridade_ok: true },
           };
         },
+      };
+    case "gestor.validar_acao":
+      return {
+        method: "POST",
+        path: `/v1/maintenance/actions/${encodeURIComponent(String(payload.acao_id))}/review`,
+        body: {
+          decisao: payload.decisao === "APROVAR" ? "APPROVE" : "REJECT",
+          comentario: payload.comentario,
+        },
+        token,
+        transform: (data) => ({
+          ...data,
+          status:
+            actionStatusFromNode[String(data.status ?? "").toUpperCase()] ??
+            data.status,
+        }),
       };
     case "gestor.listar_paradas":
       return {
@@ -1871,6 +1893,8 @@ function nodeActionRequest(
         }),
         token,
       };
+    case "admin.monitoramento.estado":
+      return { method: "GET", path: "/v1/admin/monitoring", token };
     case "admin.analises_tecnicas.listar":
       return {
         method: "GET",
@@ -2049,6 +2073,47 @@ function nodeActionRequest(
         token,
         transform: (data) => ({ saved: true, parametro: data.parametro }),
       };
+    case "gestor.parametros.solicitar_acao": {
+      const requestTypeToNode: Readonly<Record<string, string>> = {
+        INSPECAO: "INSPECTION",
+        CHECKLIST: "CHECKLIST",
+        AJUSTE_LIMITE: "LIMIT_ADJUSTMENT",
+      };
+      const requestTypeFromNode: Readonly<Record<string, string>> = {
+        INSPECTION: "INSPECAO",
+        CHECKLIST: "CHECKLIST",
+        LIMIT_ADJUSTMENT: "AJUSTE_LIMITE",
+      };
+      return {
+        method: "POST",
+        path: "/v1/monitoring/parameter-action-requests",
+        body: {
+          leitura_id: payload.parametro_id,
+          tipo_solicitacao:
+            requestTypeToNode[upperText(payload.tipo_solicitacao)] ??
+            upperText(payload.tipo_solicitacao),
+          prioridade:
+            priorityToNode[upperText(payload.prioridade)] ??
+            (payload.prioridade ? upperText(payload.prioridade) : null),
+          observacao: nullableTextValue(payload.observacao),
+          causa_provavel: nullableTextValue(payload.causa_provavel),
+          risco: nullableTextValue(payload.risco),
+          limite_minimo_proposto: nullableNumberValue(
+            payload.limite_min_proposto,
+          ),
+          limite_maximo_proposto: nullableNumberValue(
+            payload.limite_max_proposto,
+          ),
+        },
+        token,
+        transform: (data) => ({
+          ...data,
+          tipo_solicitacao:
+            requestTypeFromNode[upperText(data.tipo_solicitacao)] ??
+            data.tipo_solicitacao,
+        }),
+      };
+    }
     case "gestor.analises.salvar": {
       const analysis = record(payload.analise);
       return {

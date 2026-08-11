@@ -525,9 +525,7 @@ test(
     const workOrderListBody: {
       data: { itens: (Record<string, unknown> & { id: string })[] };
     } = workOrderList.json();
-    const listedWorkOrder = workOrderListBody.data.itens.find(
-      (item) => item.id === workOrderId,
-    );
+    const listedWorkOrder = workOrderListBody.data.itens.find((item) => item.id === workOrderId);
     assert.ok(listedWorkOrder);
     assert.equal(listedWorkOrder.plano_id, ids.plan);
     assert.equal(listedWorkOrder.plano_versao_id, ids.planVersion);
@@ -751,6 +749,7 @@ test(
       headers: bearer(identities.quality),
     });
     assert.equal(completedAction.statusCode, 200, completedAction.body);
+    assert.equal(completedAction.json().data.acao.status, 'PENDING');
     assert.equal(completedAction.json().data.execucao.status, 'COMPLETED');
     assert.equal(completedAction.json().data.execucao.itens.length, 3);
 
@@ -761,6 +760,31 @@ test(
     });
     assert.equal(emptyQueue.statusCode, 200, emptyQueue.body);
     assert.equal(emptyQueue.json().data.itens.length, 0);
+
+    const reviewed = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/actions/${actionId}/review`,
+      headers: bearer(identities.quality),
+      payload: {
+        decisao: 'APPROVE',
+        comentario: 'Execucao e evidencias conferidas pelo filtro tecnico.',
+      },
+    });
+    assert.equal(reviewed.statusCode, 200, reviewed.body);
+    assert.equal(reviewed.json().data.status, 'COMPLETED');
+    assert.equal(reviewed.json().data.already_validated, false);
+
+    const repeatedReview = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/actions/${actionId}/review`,
+      headers: bearer(identities.quality),
+      payload: {
+        decisao: 'APPROVE',
+        comentario: 'Confirmacao idempotente da revisao.',
+      },
+    });
+    assert.equal(repeatedReview.statusCode, 200, repeatedReview.body);
+    assert.equal(repeatedReview.json().data.already_validated, true);
 
     await transaction(pool, async (client) => {
       const persisted = await client.query(

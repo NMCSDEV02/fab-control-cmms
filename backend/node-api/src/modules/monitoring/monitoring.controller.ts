@@ -5,6 +5,7 @@ import { successEnvelope } from '../../core/http/envelope.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import type { MonitoringService } from './monitoring.service.js';
 import type { AlertSeverity, Severity, StopStatus } from './monitoring.types.js';
+import type { ParameterActionRequestType } from './monitoring.types.js';
 
 interface Params {
   readonly occurrenceId?: string;
@@ -45,6 +46,17 @@ interface TechnicalAnalysisBody {
   readonly recomenda_ordem_servico: boolean;
   readonly prioridade: Severity;
   readonly relatorio: Readonly<Record<string, unknown>>;
+}
+
+interface ParameterActionRequestBody {
+  readonly leitura_id: string;
+  readonly tipo_solicitacao: ParameterActionRequestType;
+  readonly prioridade: Severity | null;
+  readonly observacao: string | null;
+  readonly causa_provavel: string | null;
+  readonly risco: string | null;
+  readonly limite_minimo_proposto: number | null;
+  readonly limite_maximo_proposto: number | null;
 }
 
 interface StopQuery {
@@ -195,6 +207,26 @@ export class MonitoringController {
           recommendsWorkOrder: request.body.recomenda_ordem_servico,
           priority: request.body.prioridade,
           report: request.body.relatorio,
+        },
+        audit(request),
+      ),
+    );
+
+  requestParameterAction = async (request: FastifyRequest<{ Body: ParameterActionRequestBody }>) =>
+    successEnvelope(
+      request,
+      'monitoring.parameter-action.request',
+      await this.service.requestParameterAction(
+        user(request),
+        {
+          readingId: request.body.leitura_id,
+          requestType: request.body.tipo_solicitacao,
+          priority: request.body.prioridade,
+          observation: request.body.observacao,
+          probableCause: request.body.causa_provavel,
+          risk: request.body.risco,
+          proposedMinimum: request.body.limite_minimo_proposto,
+          proposedMaximum: request.body.limite_maximo_proposto,
         },
         audit(request),
       ),

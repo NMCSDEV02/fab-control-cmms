@@ -1,4 +1,4 @@
-import type { PoolClient } from 'pg';
+import type { PoolClient, QueryResultRow } from 'pg';
 
 import type {
   AdminAuditMetadata,
@@ -14,6 +14,18 @@ import type {
 
 function profileRoleType(profile: AdminProfile): string {
   return profile === 'GESTOR' ? 'MANAGER' : profile;
+}
+
+export interface MonitoringIssueRow extends QueryResultRow {
+  readonly code: string;
+  readonly entity: string;
+  readonly entity_id: string;
+  readonly message: string;
+}
+
+export interface MonitoringSummaryRow extends QueryResultRow {
+  readonly audit_events_24h: number | string;
+  readonly declared_tables: number | string;
 }
 
 export class AdminRepository {
@@ -710,6 +722,102 @@ export class AdminRepository {
        ORDER BY event.occurred_at DESC,event.id DESC LIMIT $5`,
       [query.search, query.actionGroup, query.entityType, query.responsibleId, query.limit],
     );
+    return result.rows;
+  }
+
+  async monitoringSummary(client: PoolClient): Promise<MonitoringSummaryRow> {
+    const result = await client.query<MonitoringSummaryRow>(`
+      SELECT
+        (SELECT count(*) FROM audit.events
+          WHERE occurred_at >= clock_timestamp() - interval '24 hours')::integer AS audit_events_24h,
+        (SELECT count(*) FROM information_schema.tables
+          WHERE table_type = 'BASE TABLE'
+            AND table_schema IN ('platform','iam','cmms','maintenance','workflow','governance','audit','migration'))::integer
+          AS declared_tables
+    `);
+    const row = result.rows[0];
+    if (!row) throw new Error('O PostgreSQL não retornou o resumo de monitoramento.');
+    return row;
+  }
+
+  async monitoringIssues(client: PoolClient): Promise<readonly MonitoringIssueRow[]> {
+    const result = await client.query<MonitoringIssueRow>(`
+      SELECT * FROM (
+        SELECT
+          'CHECKLIST_PUBLICADO_SEM_ITENS'::text AS code,
+          'checklist_template_versions'::text AS entity,
+          version.id::text AS entity_id,
+          'Checklist publicado sem etapa ativa.'::text AS message
+        FROM maintenance.checklist_template_versions version
+        WHERE version.status = 'PUBLISHED'
+          AND NOT EXISTS (
+            SELECT 1 FROM maintenance.checklist_items item
+            WHERE item.checklist_template_version_id = version.id AND item.status = 'ACTIVE'
+          )
+
+        UNION ALL
+
+        SELECT
+          'PLANO_PUBLICADO_CHECKLIST_INVALIDO', 'maintenance_plan_versions', plan.id::text,
+          'Plano publicado sem checklist publicado e executável.'
+        FROM maintenance.maintenance_plan_versions plan
+        LEFT JOIN maintenance.checklist_template_versions checklist
+          ON checklist.id = plan.checklist_template_version_id
+        WHERE plan.status = 'PUBLISHED'
+          AND (
+            checklist.id IS NULL OR checklist.status <> 'PUBLISHED'
+            OR NOT EXISTS (
+              SELECT 1 FROM maintenance.checklist_items item
+              WHERE item.checklist_template_version_id = checklist.id AND item.status = 'ACTIVE'
+            )
+          )
+
+        UNION ALL
+
+        SELECT
+          'OS_PLANO_INCONSISTENTE', 'work_orders', work_order.id::text,
+          'Ordem operacional aponta para plano não publicado ou checklist sem etapas.'
+        FROM maintenance.work_orders work_order
+        JOIN maintenance.maintenance_plan_versions plan ON plan.id = work_order.maintenance_plan_version_id
+        JOIN maintenance.checklist_template_versions checklist ON checklist.id = plan.checklist_template_version_id
+        WHERE work_order.status IN ('APPROVED','RELEASED','IN_PROGRESS','BLOCKED','COMPLETED')
+          AND (
+            plan.status <> 'PUBLISHED' OR checklist.status <> 'PUBLISHED'
+            OR NOT EXISTS (
+              SELECT 1 FROM maintenance.checklist_items item
+              WHERE item.checklist_template_version_id = checklist.id AND item.status = 'ACTIVE'
+            )
+          )
+
+        UNION ALL
+
+        SELECT
+          'ACAO_ABERTA_OS_TERMINAL', 'work_order_actions', action.id::text,
+          'Ação aberta vinculada a uma ordem já encerrada.'
+        FROM maintenance.work_order_actions action
+        JOIN maintenance.work_orders work_order ON work_order.id = action.work_order_id
+        WHERE action.status IN ('PENDING','READY','IN_PROGRESS','BLOCKED')
+          AND work_order.status IN ('COMPLETED','CANCELLED','QUARANTINED')
+
+        UNION ALL
+
+        SELECT
+          'EXECUCAO_TERMINAL_SEM_FIM', 'executions', execution.id::text,
+          'Execução encerrada sem data final registrada.'
+        FROM maintenance.executions execution
+        WHERE execution.status IN ('COMPLETED','CANCELLED') AND execution.completed_at IS NULL
+
+        UNION ALL
+
+        SELECT
+          'PARADA_ENCERRADA_SEM_RETORNO', 'equipment_stops', equipment_stop.id::text,
+          'Parada encerrada sem horário de retorno operacional.'
+        FROM maintenance.equipment_stops equipment_stop
+        WHERE equipment_stop.status IN ('COMPLETED','CANCELLED') AND equipment_stop.completed_at IS NULL
+      ) issues
+      ORDER BY code, entity, entity_id
+      LIMIT 300
+    `);
     return result.rows;
   }
 

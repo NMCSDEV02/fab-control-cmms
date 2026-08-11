@@ -25,6 +25,9 @@ const ids = {
   line: randomUUID(),
   asset: randomUUID(),
   alert: randomUUID(),
+  parameter: randomUUID(),
+  parameterPolicy: randomUUID(),
+  parameterReading: randomUUID(),
 } as const;
 
 interface Tokens {
@@ -194,6 +197,26 @@ async function seed(pool: Pool): Promise<Tokens> {
        VALUES ($1,$2,$3,'EQ-MON-001','FAB:ASSET:EQ-MON-001','Virador de tambor','MACHINE','CRITICAL','ACTIVE','OPERATING')`,
       [ids.asset, tenantId, ids.line],
     );
+    await client.query(
+      `INSERT INTO cmms.parameter_definitions
+         (id,tenant_id,asset_id,code,name,unit,value_type,source_type,status)
+       VALUES ($1,$2,$3,'TEMPERATURE','Temperatura do mancal','°C','DECIMAL','MANUAL','ACTIVE')`,
+      [ids.parameter, tenantId, ids.asset],
+    );
+    await client.query(
+      `INSERT INTO cmms.parameter_policies
+         (id,tenant_id,parameter_definition_id,version,warning_min,warning_max,
+          critical_min,critical_max,effective_from,status,content_hash_sha256,created_by,approved_by,approved_at)
+       VALUES ($1,$2,$3,1,20,70,10,90,clock_timestamp(),'ACTIVE',$4,$5,$5,clock_timestamp())`,
+      [ids.parameterPolicy, tenantId, ids.parameter, 'a'.repeat(64), ids.admin],
+    );
+    await client.query(
+      `INSERT INTO cmms.parameter_readings
+         (id,tenant_id,parameter_definition_id,parameter_policy_id,numeric_value,unit,
+          classification,source,recorded_by,recorded_at,raw_value)
+       VALUES ($1,$2,$3,$4,82,'°C','WARNING_HIGH','MANUAL',$5,clock_timestamp(),'82')`,
+      [ids.parameterReading, tenantId, ids.parameter, ids.parameterPolicy, ids.manager],
+    );
   });
   return { admin: admin.raw, manager: manager.raw, operator: operator.raw };
 }
@@ -290,6 +313,46 @@ test(
     });
     assert.equal(adminNotifications.statusCode, 200, adminNotifications.body);
     assert.equal(adminNotifications.json().data.itens.length, 1);
+
+    const parameterAction = await app.inject({
+      method: 'POST',
+      url: '/v1/monitoring/parameter-action-requests',
+      headers: bearer(tokens.manager),
+      payload: {
+        leitura_id: ids.parameterReading,
+        tipo_solicitacao: 'CHECKLIST',
+        prioridade: null,
+        observacao: 'Confirmar aquecimento e condição de lubrificação do mancal.',
+        causa_provavel: 'Lubrificação insuficiente.',
+        risco: 'Falha prematura do rolamento.',
+        limite_minimo_proposto: null,
+        limite_maximo_proposto: null,
+      },
+    });
+    assert.equal(parameterAction.statusCode, 200, parameterAction.body);
+    assert.equal(parameterAction.json().data.requested, true);
+    assert.equal(parameterAction.json().data.already_requested, false);
+    assert.equal(parameterAction.json().data.status_parametro, 'ACIMA_LIMITE');
+    assert.equal(parameterAction.json().data.ocorrencia.tratamento_status, 'CHECKLIST_REQUESTED');
+    assert.equal(parameterAction.json().data.analise.status, 'SENT_TO_ADMIN');
+
+    const repeatedParameterAction = await app.inject({
+      method: 'POST',
+      url: '/v1/monitoring/parameter-action-requests',
+      headers: bearer(tokens.manager),
+      payload: {
+        leitura_id: ids.parameterReading,
+        tipo_solicitacao: 'CHECKLIST',
+        prioridade: null,
+        observacao: null,
+        causa_provavel: null,
+        risco: null,
+        limite_minimo_proposto: null,
+        limite_maximo_proposto: null,
+      },
+    });
+    assert.equal(repeatedParameterAction.statusCode, 200, repeatedParameterAction.body);
+    assert.equal(repeatedParameterAction.json().data.already_requested, true);
 
     for (const status of ['IN_MAINTENANCE', 'WAITING_OPERATIONAL_RETURN', 'COMPLETED'] as const) {
       const transition = await app.inject({

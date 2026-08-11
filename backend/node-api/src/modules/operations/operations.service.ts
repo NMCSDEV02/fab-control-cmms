@@ -13,6 +13,7 @@ import {
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { OperationsRepository, type OperationsRow } from './operations.repository.js';
 import type {
+  ActionReviewInput,
   CompletionInput,
   EvidenceInput,
   EvidenceUploadInput,
@@ -824,7 +825,7 @@ export class OperationsService {
         const actionStatus = text(action, 'status');
         let execution = await this.repository.findExecutionByAction(client, actionId, true);
         if (actionStatus === 'READY') {
-          if (execution) {
+          if (execution && !['COMPLETED', 'CANCELLED'].includes(text(execution, 'status'))) {
             throw error(
               'OPERATOR_ACTION_EXECUTION_CONFLICT',
               'A ação possui uma execução incompatível com seu estado atual.',
@@ -1058,6 +1059,102 @@ export class OperationsService {
           detail,
         );
         return { finalizada: true, acao_id: actionId, execucao: detail };
+      },
+    );
+  }
+
+  async reviewMaintenanceAction(
+    user: AuthenticatedUser,
+    actionId: string,
+    input: ActionReviewInput,
+    audit: RequestAuditMetadata,
+  ) {
+    const comment = input.comment.trim();
+    return this.database.withTransaction(
+      { tenantId: user.tenantId, userId: user.id },
+      async (client) => {
+        const action = await this.repository.findAction(client, actionId, true);
+        if (!action) {
+          throw error('MAINTENANCE_ACTION_NOT_FOUND', 'Acao operacional nao encontrada.', 404);
+        }
+        const status = text(action, 'status');
+        const terminalStatus = input.decision === 'APPROVE' ? 'COMPLETED' : 'READY';
+        if (status === terminalStatus) {
+          return {
+            validated: true,
+            already_validated: true,
+            acao_id: actionId,
+            decisao: input.decision === 'APPROVE' ? 'APROVAR' : 'REPROVAR',
+            status: terminalStatus,
+          };
+        }
+        if (status !== 'PENDING') {
+          throw error(
+            'MAINTENANCE_ACTION_NOT_AWAITING_REVIEW',
+            `A acao nao esta aguardando validacao. Status atual: ${status}.`,
+            409,
+          );
+        }
+        const execution = await this.repository.findExecutionByAction(client, actionId, true);
+        if (!execution || text(execution, 'status') !== 'COMPLETED') {
+          throw error(
+            'MAINTENANCE_ACTION_EXECUTION_INCOMPLETE',
+            'A validacao exige uma execucao concluida e rastreavel.',
+            409,
+          );
+        }
+        const blockers = await this.repository.blockingExecutionItems(client, execution.id);
+        const detail = await this.requiredExecutionDetail(client, execution.id);
+        const completion = this.completionState(execution, blockers, detail);
+        if (
+          completion.respostas_pendentes > 0 ||
+          completion.evidencias_pendentes > 0 ||
+          completion.nao_conformes_bloqueantes > 0
+        ) {
+          throw error(
+            'MAINTENANCE_ACTION_REVIEW_BLOCKED',
+            'A execucao possui respostas ou evidencias obrigatorias pendentes.',
+            409,
+            completion,
+          );
+        }
+
+        await this.repository.reviewCompletedAction(client, action, execution, input.decision);
+        const result = {
+          validated: true,
+          already_validated: false,
+          acao_id: actionId,
+          execucao_id: execution.id,
+          decisao: input.decision === 'APPROVE' ? 'APROVAR' : 'REPROVAR',
+          status: terminalStatus,
+          comentario: comment,
+        };
+        await this.repository.writeHistory(
+          client,
+          user.tenantId,
+          action,
+          execution.id,
+          user.id,
+          audit.roleSnapshot,
+          input.decision === 'APPROVE' ? 'ACTION_REVIEW_APPROVED' : 'ACTION_REVIEW_REJECTED',
+          input.decision === 'APPROVE'
+            ? 'Execucao aprovada pelo filtro tecnico.'
+            : 'Execucao devolvida para nova realizacao pelo Operador.',
+          { comentario: comment, decisao: input.decision },
+        );
+        await this.repository.writeAudit(
+          client,
+          user.tenantId,
+          user.id,
+          audit,
+          input.decision === 'APPROVE'
+            ? 'MAINTENANCE_ACTION_REVIEW_APPROVED'
+            : 'MAINTENANCE_ACTION_REVIEW_REJECTED',
+          'WORK_ORDER_ACTION',
+          actionId,
+          result,
+        );
+        return result;
       },
     );
   }
