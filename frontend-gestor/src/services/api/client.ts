@@ -678,6 +678,9 @@ function checklistPlan(value: unknown): JsonRecord {
   return {
     ...item,
     ...version,
+    // O construtor trabalha com o ID do modelo. A versão atual possui outro ID
+    // e não pode sobrescrever a identidade usada nas rotas de salvar/enviar.
+    id: item.id,
     criticidade:
       criticalityFromNode[
         String(item.criticidade ?? version.criticidade ?? "").toUpperCase()
