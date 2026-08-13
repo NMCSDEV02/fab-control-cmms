@@ -60,6 +60,16 @@ function operadorMinhasAcoes110_(p, usuario){
   var ativoId = clean_(p.ativo_id);
   var componenteId = clean_(p.componente_id);
   var operadorId = clean_(auth.usuario_id);
+  var operationalPlanIds = {};
+  rows_("planos_manutencao", true).forEach(function(plan){
+    if(isPlanoOperacional_(plan)) operationalPlanIds[String(plan.id)] = true;
+  });
+  var planItemCounts = {};
+  rows_("plano_itens", true).forEach(function(item){
+    if(upper_(item.status || ST.ATIVO) !== ST.ATIVO) return;
+    var planId = String(item.plano_id || "");
+    planItemCounts[planId] = (planItemCounts[planId] || 0) + 1;
+  });
 
   var cards = rows_("os_acoes").filter(function(a){
     var st = upper_(a.status);
@@ -67,6 +77,7 @@ function operadorMinhasAcoes110_(p, usuario){
     if(ativoId && String(a.ativo_id) !== String(ativoId)) return false;
     if(componenteId && String(a.componente_id) !== String(componenteId)) return false;
     if(terminal_(st) && !bool_(p.incluir_concluidas)) return false;
+    if(!clean_(a.plano_id) || !operationalPlanIds[String(a.plano_id)] || !planItemCounts[String(a.plano_id)]) return false;
 
     var resp = clean_(a.responsavel_id);
     if(st === ST.PENDENTE) return !resp || String(resp) === String(operadorId);
@@ -302,6 +313,63 @@ function CMMS110_buildActionCard_(acao, auth){
   };
 }
 
+function CMMS110_technicalBrief_(acao, ctx, checklist){
+  ctx = ctx || {};
+  checklist = checklist || {itens:[]};
+  var raw = clean_(
+    acao && acao.analise_tecnica_json ||
+    ctx.os && ctx.os.analise_tecnica_json ||
+    ctx.plano && ctx.plano.analise_tecnica_json
+  );
+  var modelSteps = (checklist.itens || []).map(function(item, index){
+    return {
+      ordem:index + 1,
+      titulo:clean_(item.titulo || "Etapa " + (index + 1)),
+      descricao:clean_(item.instrucao || "Executar conforme o procedimento aprovado.")
+    };
+  }).filter(function(item){ return item.titulo && item.descricao; });
+  var requiresLock = upper_(ctx.plano && ctx.plano.requer_bloqueio) === "SIM";
+  var fallback = {
+    situacao:clean_(acao && acao.descricao || ctx.os && ctx.os.descricao || acao && acao.titulo),
+    causa_provavel:"A confirmar na inspeção inicial do equipamento.",
+    resultado_esperado:"Concluir " + clean_(acao && acao.titulo || "a atividade") + " em condição segura e operacional.",
+    riscos:[{
+      tipo:upper_(acao && acao.prioridade || ctx.plano && ctx.plano.criticidade || "OPERACIONAL"),
+      titulo:"Risco operacional",
+      descricao:"Interromper a atividade se a condição encontrada exceder o escopo autorizado."
+    }],
+    seguranca:[
+      "Confirmar autorização, identificação do ativo e condição segura da área.",
+      requiresLock
+        ? "Aplicar bloqueio e confirmar energia zero antes da intervenção."
+        : "Isolar as fontes de energia aplicáveis antes de acessar a zona de risco.",
+      "Registrar e comunicar qualquer desvio do escopo aprovado."
+    ],
+    nrs:["NR-12"],
+    ferramentas:[],
+    etapas:modelSteps,
+    evidencias_requeridas:upper_(ctx.plano && ctx.plano.requer_evidencia) === "SIM"
+      ? ["Condição encontrada", "Teste ou condição final"]
+      : ["Registro da condição final"],
+    criterio_aceite:"Serviço concluído, condição segura confirmada e evidências obrigatórias registradas."
+  };
+  if(typeof technicalNormalizeBrief_ === "function"){
+    return technicalNormalizeBrief_(raw, fallback);
+  }
+  var parsed = {};
+  if(raw){
+    try{ parsed = JSON.parse(raw); } catch(e){ parsed = {}; }
+  }
+  return Object.assign({}, fallback, parsed, {
+    etapas:Array.isArray(parsed.etapas) && parsed.etapas.length ? parsed.etapas : (modelSteps.length ? modelSteps : [
+      {ordem:1, titulo:"Preparar e isolar", descricao:"Confirmar o equipamento, a autorização e as medidas de segurança."},
+      {ordem:2, titulo:"Inspecionar", descricao:"Verificar a condição informada e registrar a evidência inicial."},
+      {ordem:3, titulo:"Executar", descricao:"Realizar somente o serviço aprovado e comunicar qualquer desvio."},
+      {ordem:4, titulo:"Testar e liberar", descricao:"Validar o resultado e registrar a condição operacional final."}
+    ])
+  });
+}
+
 function CMMS110_buildActionScreen_(acao, auth, ex){
   if(!acao) err_("ACTION_NOT_FOUND", "Ação não encontrada para montar tela.", 404);
   var ctx = CMMS109_actionContext_(acao);
@@ -340,6 +408,7 @@ function CMMS110_buildActionScreen_(acao, auth, ex){
     execucao:ex ? CMMS109_cleanExecucao_(ex) : null,
     executor:executor ? {id:executor.id, nome:executor.nome, email:executor.email} : null,
     checklist:checklist,
+    analise_tecnica:CMMS110_technicalBrief_(acao, ctx, checklist),
     finalizacao:finalizacao,
     disponibilidade:disponibilidade,
     ui:ui,

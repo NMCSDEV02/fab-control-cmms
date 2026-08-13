@@ -8,7 +8,11 @@ function operadorMinhasAcoes117_(p, auth){
   auth = auth || p.__auth || {};
 
   var sync = sincronizarMotorFilaOperador117_(auth, bool_(p.forcar_motor));
-  var result = operadorMinhasAcoes112_(p, auth);
+  var queueRequest = Object.assign({}, p, {
+    status:"PENDENTE,EM_EXECUCAO",
+    incluir_concluidas:false
+  });
+  var result = operadorMinhasAcoes112_(queueRequest, auth);
   result.queue_sync = sync;
   result.version = FAB.VERSION;
   return result;

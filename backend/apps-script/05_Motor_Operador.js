@@ -1,11 +1,18 @@
 function cmmsMotorRecalcular_(p){
   var alvo = clean_(p.ativo_id);
-  var ativos = alvo ? rows_("ativos").filter(function(a){ return String(a.id) === alvo; }) : rows_("ativos");
+  var ativos = (alvo ? rows_("ativos").filter(function(a){ return String(a.id) === alvo; }) : rows_("ativos"))
+    .filter(function(a){ return upper_(a.status) !== ST.INATIVO; });
+  var componentesAtivos = {};
+  rows_("componentes").forEach(function(component){
+    componentesAtivos[String(component.id)] = upper_(component.status) !== ST.INATIVO;
+  });
   var criadas = [];
 
   ativos.forEach(function(ativo){
     rows_("planos_manutencao").filter(function(pl){
-      return String(pl.ativo_id) === String(ativo.id) && isPlanoOperacional_(pl);
+      return String(pl.ativo_id) === String(ativo.id) &&
+        isPlanoOperacional_(pl) &&
+        (!clean_(pl.componente_id) || componentesAtivos[String(pl.componente_id)] === true);
     }).forEach(function(plano){
       ensureDefaultPlanoItem_(plano);
 
@@ -117,6 +124,7 @@ function createOs_(ativo, plano){
     codigo:"OS-"+Utilities.formatDate(new Date(), FAB.TZ, "yyyyMMdd-HHmmss"),
     ativo_id:ativo.id,
     componente_id:plano.componente_id||"",
+    plano_id:plano.id,
     origem:"MOTOR",
     tipo:plano.tipo,
     titulo:plano.nome,
@@ -613,6 +621,15 @@ function operadorIniciarAcao_(p){
     iniciado_em:acao.iniciado_em||startedAt,
     modo_parada_manutencao:policy.modo_configurado,
     atualizado_em:startedAt
+  });
+  rows_("ocorrencias_operacionais", true).filter(function(occurrence){
+    return String(occurrence.acao_id) === String(acao.id);
+  }).forEach(function(occurrence){
+    update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+      status:"EM_EXECUCAO",
+      tratamento_status:"EM_EXECUCAO",
+      atualizado_em:startedAt
+    });
   });
 
   var os = acao.os_id ? find_("ordens_servico","id",acao.os_id) : null;

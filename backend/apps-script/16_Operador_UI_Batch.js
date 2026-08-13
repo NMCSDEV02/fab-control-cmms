@@ -291,12 +291,13 @@ function CMMS109_cleanAcao_(a){
     origem:a.origem, tipo:a.tipo, titulo:a.titulo, descricao:a.descricao, prioridade:a.prioridade,
     status:a.status, responsavel_id:a.responsavel_id, gerado_em:a.gerado_em, iniciado_em:a.iniciado_em,
     finalizado_em:a.finalizado_em, atualizado_em:a.atualizado_em,
-    modo_parada_manutencao:normalizaModoParadaManutencao115_(a.modo_parada_manutencao)
+    modo_parada_manutencao:normalizaModoParadaManutencao115_(a.modo_parada_manutencao),
+    analise_tecnica_json:a.analise_tecnica_json
   };
 }
 
 function CMMS109_cleanOs_(o){
-  return {id:o.id, codigo:o.codigo, titulo:o.titulo, descricao:o.descricao, prioridade:o.prioridade, status:o.status, aberta_em:o.aberta_em, planejada_para:o.planejada_para, iniciada_em:o.iniciada_em, finalizada_em:o.finalizada_em};
+  return {id:o.id, codigo:o.codigo, titulo:o.titulo, descricao:o.descricao, prioridade:o.prioridade, status:o.status, aberta_em:o.aberta_em, planejada_para:o.planejada_para, iniciada_em:o.iniciada_em, finalizada_em:o.finalizada_em, analise_tecnica_json:o.analise_tecnica_json};
 }
 
 function CMMS109_cleanAtivo_(a){
@@ -308,7 +309,7 @@ function CMMS109_cleanComponente_(c){
 }
 
 function CMMS109_cleanPlano_(p){
-  return {id:p.id, nome:p.nome, tipo:p.tipo, criticidade:p.criticidade, gatilho_tipo:p.gatilho_tipo, gatilho_valor:p.gatilho_valor, unidade:p.unidade, tempo_estimado_min:p.tempo_estimado_min, requer_bloqueio:p.requer_bloqueio, requer_evidencia:p.requer_evidencia, max_sessoes:p.max_sessoes, status:p.status, workflow_status:p.workflow_status, revisao:p.revisao, modo_parada_manutencao:normalizaModoParadaManutencao115_(p.modo_parada_manutencao)};
+  return {id:p.id, nome:p.nome, tipo:p.tipo, criticidade:p.criticidade, gatilho_tipo:p.gatilho_tipo, gatilho_valor:p.gatilho_valor, unidade:p.unidade, tempo_estimado_min:p.tempo_estimado_min, requer_bloqueio:p.requer_bloqueio, requer_evidencia:p.requer_evidencia, max_sessoes:p.max_sessoes, status:p.status, workflow_status:p.workflow_status, revisao:p.revisao, modo_parada_manutencao:normalizaModoParadaManutencao115_(p.modo_parada_manutencao), analise_tecnica_json:p.analise_tecnica_json};
 }
 
 function CMMS109_cleanExecucao_(e){

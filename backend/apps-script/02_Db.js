@@ -50,6 +50,7 @@ function invalidateSheetCache_(name){
 
 function invalidateRuntimeCache_(){
   DB_CACHE = {};
+  if(typeof CONFIG_ENGINE_RUNTIME_CACHE !== "undefined") CONFIG_ENGINE_RUNTIME_CACHE = null;
   safeCacheRemove_(metaCacheKey_("admin_resumo"));
   safeCacheRemove_(metaCacheKey_("qr_index"));
   safeCacheRemove_(metaCacheKey_("qr_index_v3"));

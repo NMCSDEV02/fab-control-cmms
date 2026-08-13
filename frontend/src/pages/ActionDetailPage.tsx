@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MaintenanceStartDecision, MaintenanceStopMode, OperatorActionDetailData, OperatorStopData, RawChecklistItem } from '../types/api'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
+import { EvidenceFileLink } from '../components/EvidenceFileLink'
 
 interface ActionDetailPageProps {
   detail: OperatorActionDetailData | null
@@ -156,10 +157,12 @@ function CompletedActionSummary({ detail, onBack }: { detail: OperatorActionDeta
         {evidences.length ? (
           <div className="completed-evidence-grid">
             {evidences.slice(0, 4).map((evidence, index) => (
-              <a key={evidence.id || `${evidence.url}-${index}`} href={evidence.url || '#'} target="_blank" rel="noreferrer">
-                {evidence.thumbnail_url || evidence.url ? <img src={evidence.thumbnail_url || evidence.url} alt={evidence.nome_arquivo || `Evidência ${index + 1}`} /> : <span>Arquivo</span>}
-                <strong>{evidence.nome_arquivo || `Evidência ${index + 1}`}</strong>
-              </a>
+              <EvidenceFileLink
+                key={evidence.id || `${evidence.url}-${index}`}
+                evidence={evidence}
+                index={index}
+                showFileName
+              />
             ))}
           </div>
         ) : <p className="completed-empty">Nenhuma evidência foi anexada.</p>}
@@ -398,6 +401,28 @@ export function ActionDetailPage({
   if (completedReadOnly) return <CompletedActionSummary detail={detail} onBack={onBack} />
 
   const technical = detail.analise_tecnica
+  const defaultSteps = [
+    {
+      ordem: 1,
+      titulo: 'Preparar e isolar',
+      descricao: 'Confirmar o equipamento, a autorização e as medidas de segurança.',
+    },
+    {
+      ordem: 2,
+      titulo: 'Inspecionar',
+      descricao: 'Verificar a condição informada e registrar a evidência inicial.',
+    },
+    {
+      ordem: 3,
+      titulo: 'Executar',
+      descricao: 'Realizar somente o serviço aprovado e comunicar qualquer desvio.',
+    },
+    {
+      ordem: 4,
+      titulo: 'Testar e liberar',
+      descricao: 'Validar o resultado e registrar a condição operacional final.',
+    },
+  ]
   const steps =
     technical?.etapas?.length
       ? technical.etapas.map((step, index) => ({
@@ -405,14 +430,83 @@ export function ActionDetailPage({
           titulo: step.titulo || `Etapa ${index + 1}`,
           descricao: step.descricao || '',
         }))
-      : items.map((item) => ({
-          ordem: item.ordem,
-          titulo: item.titulo,
-          descricao: item.instrucao || 'Executar conforme procedimento.',
-        }))
+      : items.length
+        ? items.map((item) => ({
+            ordem: item.ordem,
+            titulo: item.titulo,
+            descricao: item.instrucao || 'Executar conforme procedimento.',
+          }))
+        : defaultSteps
 
   const nrs = technical?.nrs ?? []
   const tools = technical?.ferramentas ?? []
+  const displayRisks = technical?.riscos?.length
+    ? technical.riscos.map((risk) => ({
+        icon: '⚠',
+        title: risk.titulo || risk.tipo || 'Risco técnico',
+        text: risk.descricao || 'Interromper a atividade se a condição exceder o escopo.',
+      }))
+    : risks
+  const safetyItems = technical?.seguranca?.length
+    ? technical.seguranca
+    : [
+        ...(detail.plano?.requer_bloqueio === 'SIM'
+          ? ['Aplicar bloqueio e confirmar energia zero antes da intervenção.']
+          : []),
+        'Confirmar autorização, identificação do ativo e condição segura da área.',
+        'Isolar as fontes de energia aplicáveis antes de acessar a zona de risco.',
+        'Executar somente o escopo aprovado e comunicar qualquer desvio.',
+      ]
+  const requiredEvidence = technical?.evidencias_requeridas?.length
+    ? technical.evidencias_requeridas
+    : detail.plano?.requer_evidencia === 'SIM'
+      ? ['Foto da condição encontrada', 'Registro do teste ou condição final']
+      : ['Registro da condição final']
+  const checklistTotal = Number(detail.checklist?.total ?? items.length)
+  const stopModeLabel = alreadyStarted && detail.execucao?.modo_execucao_manutencao
+    ? detail.execucao.modo_execucao_manutencao === 'SEM_PARADA'
+      ? 'Execução sem parada'
+      : 'Parada do equipamento ativa'
+    : configuredStopMode === 'OBRIGATORIA'
+      ? 'Obrigatória'
+      : configuredStopMode === 'SEM_PARADA'
+        ? 'Sem parada'
+        : 'Decisão do executor'
+  const technicalFacts = [
+    detail.os?.codigo || detail.os?.id
+      ? { label: 'OS', value: String(detail.os?.codigo || detail.os?.id) }
+      : null,
+    Number(detail.plano?.tempo_estimado_min) > 0
+      ? {
+          label: 'Duração prevista',
+          value: `${Number(detail.plano?.tempo_estimado_min)} min`,
+        }
+      : null,
+    detail.acao.gerado_em
+      ? { label: 'Gerada em', value: formatDate(detail.acao.gerado_em) }
+      : null,
+    checklistTotal > 0
+      ? {
+          label: 'Checklist',
+          value: `${checklistTotal} ${checklistTotal === 1 ? 'item' : 'itens'}`,
+        }
+      : null,
+    { label: 'Parada da máquina', value: stopModeLabel },
+  ].filter((fact): fact is { label: string; value: string } => Boolean(fact))
+  const technicalIdentifications = [
+    {
+      key: 'ativo',
+      code: String(detail.ativo?.tag || detail.ativo?.id || '').trim(),
+      name: String(detail.ativo?.nome || '').trim(),
+    },
+    {
+      key: 'componente',
+      code: String(
+        detail.componente?.tag || detail.componente?.id || '',
+      ).trim(),
+      name: String(detail.componente?.nome || '').trim(),
+    },
+  ].filter((item) => item.code || item.name)
 
   return (
     <section ref={screenRef} className="screen technical-screen">
@@ -446,10 +540,16 @@ export function ActionDetailPage({
         </div>
         <h1>{detail.acao.titulo || detail.os?.titulo || 'Ação de manutenção'}</h1>
         <p>{detail.acao.descricao || detail.os?.descricao || 'Sem descrição operacional.'}</p>
-        <div className="technical-identification">
-          <span><strong>{detail.ativo?.tag || detail.ativo?.id}</strong>{detail.ativo?.nome}</span>
-          <span><strong>{detail.componente?.tag || detail.componente?.id}</strong>{detail.componente?.nome}</span>
-        </div>
+        {technicalIdentifications.length ? (
+          <div className="technical-identification">
+            {technicalIdentifications.map((item) => (
+              <span key={item.key}>
+                {item.code ? <strong>{item.code}</strong> : null}
+                {item.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </article>
 
       {availability?.plannedAt && !alreadyStarted && (
@@ -483,7 +583,7 @@ export function ActionDetailPage({
           <b>02</b>
           <div>
             <strong>Causa provável</strong>
-            <p>{technical?.causa_provavel || 'Não informada no contrato atual. Confirmar durante a inspeção.'}</p>
+            <p>{technical?.causa_provavel || 'Confirmar a causa durante a inspeção e registrar o diagnóstico encontrado.'}</p>
           </div>
         </div>
         <div className="technical-summary-row">
@@ -516,11 +616,11 @@ export function ActionDetailPage({
         </div>
       </article>
 
-      {risks.length > 0 && (
+      {displayRisks.length > 0 && (
         <article className="technical-section-card">
           <span className="technical-kicker">Riscos identificados</span>
           <div className="risk-icon-grid">
-            {risks.map((risk) => (
+            {displayRisks.map((risk) => (
               <div className="risk-icon-card" key={risk.title}>
                 <span aria-hidden="true">{risk.icon}</span>
                 <div><strong>{risk.title}</strong><p>{risk.text}</p></div>
@@ -530,19 +630,30 @@ export function ActionDetailPage({
         </article>
       )}
 
-      <article className="technical-section-card">
-        <span className="technical-kicker">Segurança obrigatória</span>
-        <ul className="technical-list">
-          {detail.plano?.requer_bloqueio === 'SIM' && <li>Aplicar bloqueio antes da intervenção.</li>}
-          <li>Confirmar condição segura do equipamento e da área.</li>
-          <li>Executar somente os itens previstos no checklist.</li>
-        </ul>
-        {nrs.length > 0 && (
-          <div className="nr-chip-row">
-            {nrs.map((nr) => <span key={nr}>{nr}</span>)}
-          </div>
-        )}
-      </article>
+      <div className="technical-requirements-grid">
+        <article className="technical-section-card">
+          <span className="technical-kicker">Segurança obrigatória</span>
+          <ul className="technical-list">
+            {safetyItems.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+          {nrs.length > 0 && (
+            <div className="nr-chip-row">
+              {nrs.map((nr) => <span key={nr}>{nr}</span>)}
+            </div>
+          )}
+        </article>
+
+        <article className="technical-section-card">
+          <span className="technical-kicker">Aceite e evidências</span>
+          <strong className="technical-acceptance-title">Condição para concluir</strong>
+          <p className="technical-acceptance-copy">
+            {technical?.criterio_aceite || 'Serviço concluído, condição segura confirmada e evidências registradas.'}
+          </p>
+          <ul className="technical-list">
+            {requiredEvidence.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </article>
+      </div>
 
       {tools.length > 0 && (
         <article className="technical-section-card">
@@ -559,24 +670,12 @@ export function ActionDetailPage({
       )}
 
       <div className="technical-data-grid">
-        <div><span>OS</span><strong>{detail.os?.codigo || detail.os?.id || 'Não informada'}</strong></div>
-        <div><span>Duração prevista</span><strong>{detail.plano?.tempo_estimado_min ? `${detail.plano.tempo_estimado_min} min` : 'Não informada'}</strong></div>
-        <div><span>Gerada em</span><strong>{formatDate(detail.acao.gerado_em)}</strong></div>
-        <div><span>Checklist</span><strong>{detail.checklist?.total ?? items.length} itens</strong></div>
-        <div>
-          <span>Parada da máquina</span>
-          <strong>
-            {alreadyStarted && detail.execucao?.modo_execucao_manutencao
-              ? detail.execucao.modo_execucao_manutencao === 'SEM_PARADA'
-                ? 'Execução sem parada'
-                : 'Parada do equipamento ativa'
-              : configuredStopMode === 'OBRIGATORIA'
-                ? 'Obrigatória'
-                : configuredStopMode === 'SEM_PARADA'
-                  ? 'Sem parada'
-                  : 'Decisão do executor'}
-          </strong>
-        </div>
+        {technicalFacts.map((fact) => (
+          <div key={fact.label}>
+            <span>{fact.label}</span>
+            <strong>{fact.value}</strong>
+          </div>
+        ))}
       </div>
 
       <div ref={endRef} className="reading-gate">

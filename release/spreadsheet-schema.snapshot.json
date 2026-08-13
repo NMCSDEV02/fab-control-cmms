@@ -1,9 +1,9 @@
 {
   "snapshotVersion": 1,
-  "release": "1.3.1",
-  "schemaVersion": "1.3.1",
+  "release": "1.4.0",
+  "schemaVersion": "1.4.0",
   "spreadsheetAlias": "FAB_CONTROL_CORE",
-  "declaredSheetCount": 32,
+  "declaredSheetCount": 48,
   "declaredSheets": [
     "config",
     "usuarios",
@@ -27,6 +27,16 @@
     "paradas_equipamento",
     "paradas_manutencao",
     "ocorrencias_operacionais",
+    "areas_tecnicas",
+    "cargos_tecnicos",
+    "demandas_tecnicas",
+    "demanda_tramitacoes",
+    "assinaturas_tecnicas",
+    "analises_tecnicas",
+    "notificacoes",
+    "turnos",
+    "apontamentos_producao",
+    "sla_politicas",
     "historico",
     "execucao_locks",
     "telemetria_sessoes",
@@ -36,6 +46,12 @@
     "checklist_validacao_regras",
     "modelo_checklist_auditoria",
     "dashboard_cache",
+    "configuracao_versoes",
+    "configuracao_rascunhos",
+    "importacao_lotes",
+    "importacao_registros",
+    "documentos_tecnicos",
+    "documento_revisoes",
     "legado_quarentena"
   ],
   "liveSheetNamesConfirmedAgainstBaseline": true,
@@ -59,7 +75,11 @@
       "ultimo_login_em",
       "senha_atualizada_em",
       "recuperacao_referencia",
-      "recuperacao_solicitada_em"
+      "recuperacao_solicitada_em",
+      "area_id",
+      "cargo_id",
+      "especialidades_json",
+      "escopo_ids_json"
     ],
     "sessoes": [
       "token",
@@ -73,7 +93,10 @@
       "escopo",
       "expira_ms",
       "revogado_em",
-      "motivo_revogacao"
+      "motivo_revogacao",
+      "janela_id",
+      "ambiente",
+      "tenant_id"
     ],
     "migration": "append-only-columns-on-first-auth-call",
     "dataIncluded": false,

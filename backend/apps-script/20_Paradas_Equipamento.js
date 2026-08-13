@@ -75,8 +75,7 @@ function cmmsParadasOperacionaisSchemaUpgrade114_(p, auth){
 }
 
 function paradaToleranciaMin114_(){
-  var cfg = find_("config", "chave", "parada.tolerancia_retorno_min");
-  return Math.max(0, num_(cfg && cfg.valor, 10));
+  return Math.max(0, num_(configurationRuntimeValue_("parada.tolerancia_retorno_min", 10), 10));
 }
 
 function paradaStatusAberto114_(status){

@@ -228,6 +228,10 @@ p {
   gap: 9px;
 }
 
+.summary-grid--active-queue {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .summary-card {
   padding: 12px 10px;
   border: 1px solid var(--line);
@@ -1155,7 +1159,7 @@ p {
 
 .technical-identification {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 9px;
   margin-top: 16px;
 }
@@ -1331,6 +1335,29 @@ p {
   line-height: 1.5;
 }
 
+.technical-requirements-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.technical-requirements-grid .technical-section-card {
+  min-width: 0;
+}
+
+.technical-acceptance-title {
+  display: block;
+  margin-top: 12px;
+  font-size: 0.84rem;
+}
+
+.technical-acceptance-copy {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
 .nr-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -1345,6 +1372,12 @@ p {
   background: #172234;
   font-size: 0.72rem;
   font-weight: 950;
+}
+
+@media (max-width: 680px) {
+  .technical-requirements-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .technical-data-grid {
@@ -5379,4 +5412,77 @@ p {
   border-color: #d5e0e6;
   color: #60747f;
   background: #f7fafb;
+}
+
+.occurrence-compact__top > div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.occurrence-compact__treatment {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #155ab2;
+  background: #eaf3ff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 540px) {
+  .occurrence-compact__top {
+    align-items: flex-start;
+  }
+
+  .occurrence-compact__top > div {
+    justify-content: flex-start;
+  }
+}
+
+.operator-auto-sync {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid #cfe3db;
+  border-radius: 12px;
+  background: #f3fbf7;
+  color: #18704f;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.operator-auto-sync > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22a16f;
+  box-shadow: 0 0 0 4px rgba(34, 161, 111, 0.12);
+}
+
+.operator-auto-sync.is-syncing > i {
+  animation: operator-sync-pulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes operator-sync-pulse {
+  to {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+
+@media (max-width: 540px) {
+  .operator-auto-sync {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 0.64rem;
+  }
 }
