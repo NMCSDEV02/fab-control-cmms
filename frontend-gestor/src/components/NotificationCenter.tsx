@@ -85,7 +85,7 @@ function isUnread(notification: GestorNotification): boolean {
 }
 
 function isCritical(notification: GestorNotification): boolean {
-  return ["CRITICA", "CRÍTICA", "ALTA"].includes(
+  return ["CRITICAL", "HIGH", "CRITICA", "CRÍTICA", "ALTA"].includes(
     upper(notification.prioridade),
   );
 }
@@ -164,11 +164,16 @@ function metadataOf(notification: GestorNotification): NotificationMetadata {
     };
   }
 
-  if (
-    entity === "ATIVOS" ||
-    entity === "PLANOS_MANUTENCAO" ||
-    entity === "CHECKLIST_MODELO"
-  ) {
+  if (entity === "CHECKLIST_MODELO") {
+    return {
+      category: "technical",
+      typeLabel: "Checklist para validar",
+      actionLabel: "Validar checklist",
+      entityLabel: "Filtro técnico",
+    };
+  }
+
+  if (entity === "ATIVOS" || entity === "PLANOS_MANUTENCAO") {
     return {
       category: "operation",
       typeLabel:

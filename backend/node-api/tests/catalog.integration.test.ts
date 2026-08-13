@@ -399,6 +399,28 @@ test(
     assert.equal(qrContext.json().data.parametros_atuais[0].ultimo_valor_numerico, '75');
     assert.ok(qrContext.json().data.historico_recente.length >= 1);
 
+    const assetContextById = await app.inject({
+      method: 'GET',
+      url: `/v1/cmms/qr-context/${assetId}`,
+      headers: authorization,
+    });
+    assert.equal(assetContextById.statusCode, 200, assetContextById.body);
+    assert.equal(assetContextById.json().data.encontrado, true);
+    assert.equal(assetContextById.json().data.tipo_contexto, 'ASSET');
+    assert.equal(assetContextById.json().data.ativo.id, assetId);
+    assert.equal(assetContextById.json().data.componente, null);
+
+    const componentContextById = await app.inject({
+      method: 'GET',
+      url: `/v1/cmms/qr-context/${componentId}`,
+      headers: authorization,
+    });
+    assert.equal(componentContextById.statusCode, 200, componentContextById.body);
+    assert.equal(componentContextById.json().data.encontrado, true);
+    assert.equal(componentContextById.json().data.tipo_contexto, 'COMPONENT');
+    assert.equal(componentContextById.json().data.ativo.id, assetId);
+    assert.equal(componentContextById.json().data.componente.id, componentId);
+
     const technicalHistory = await app.inject({
       method: 'GET',
       url: `/v1/cmms/assets/${assetId}/history?componente_id=${componentId}&limite=2`,

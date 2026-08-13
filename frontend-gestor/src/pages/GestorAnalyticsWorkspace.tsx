@@ -727,12 +727,14 @@ export function GestorAnalyticsWorkspace({
         </div>
       </section>
 
-      {error ? (
-        <div className="dashboard-error" role="alert">
-          <strong>Falha ao consolidar a análise.</strong>
-          <span>{error}</span>
-        </div>
-      ) : null}
+      <div className="manager-analytics-alert-slot">
+        {error ? (
+          <div className="dashboard-error" role="alert">
+            <strong>Falha ao consolidar a análise.</strong>
+            <span>{error}</span>
+          </div>
+        ) : null}
+      </div>
 
       <nav className="manager-analytics-tabs" aria-label="Áreas do modo analítico">
         {views.map((item) => (
@@ -751,7 +753,7 @@ export function GestorAnalyticsWorkspace({
         ))}
       </nav>
 
-      <section className="manager-analytics-stage">
+      <section className={`manager-analytics-stage is-${view}`}>
         {view === 'indicators' ? (
           <div className="manager-analytics-indicators">
             {(overview?.occurrences.length ?? 0) + (overview?.openStops.length ?? 0) > 0 ? (

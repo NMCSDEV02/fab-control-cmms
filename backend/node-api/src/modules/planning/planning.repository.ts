@@ -29,6 +29,11 @@ export interface ReviewProgressRow extends QueryResultRow {
   readonly safety_approved: boolean;
 }
 
+export interface ChecklistNotificationCoverage {
+  readonly recipientCount: number;
+  readonly areaCodes: readonly string[];
+}
+
 export class PlanningRepository {
   async listItemTypes(client: PoolClient): Promise<readonly PlanningRow[]> {
     const result = await client.query<PlanningRow>(
@@ -253,6 +258,206 @@ export class PlanningRepository {
       [versionId, userId],
     );
     return result.rows[0]?.eligible ?? false;
+  }
+
+  async createChecklistValidationNotification(
+    client: PoolClient,
+    tenantId: string,
+    input: {
+      readonly checklistId: string;
+      readonly versionId: string;
+      readonly contentHash: string;
+      readonly title: string;
+      readonly message: string;
+      readonly priority: string;
+      readonly signaturePolicy: string;
+    },
+  ): Promise<string> {
+    const result = await client.query<{ id: string }>(
+      `
+        INSERT INTO workflow.notifications (
+          tenant_id, notification_type, title, message, entity_type, entity_id,
+          priority, action_route, action_payload, audience, deduplication_key
+        )
+        VALUES (
+          $1, 'CHECKLIST_VALIDATION_REQUESTED', $2, $3, 'CHECKLIST_MODELO', $4,
+          $5, $6, $7::jsonb, $8::jsonb, $9
+        )
+        ON CONFLICT (tenant_id, deduplication_key)
+        WHERE deduplication_key IS NOT NULL AND status = 'ACTIVE'
+        DO UPDATE SET
+          title = EXCLUDED.title,
+          message = EXCLUDED.message,
+          priority = EXCLUDED.priority,
+          action_route = EXCLUDED.action_route,
+          action_payload = EXCLUDED.action_payload,
+          audience = EXCLUDED.audience
+        RETURNING id
+      `,
+      [
+        tenantId,
+        input.title,
+        input.message,
+        input.checklistId,
+        input.priority,
+        `/maintenance/checklists/${input.checklistId}/review`,
+        JSON.stringify({
+          entityType: 'CHECKLIST_MODELO',
+          entityId: input.checklistId,
+          checklistVersionId: input.versionId,
+        }),
+        JSON.stringify({ signaturePolicy: input.signaturePolicy }),
+        `checklist-validation:${input.versionId}:${input.contentHash}`,
+      ],
+    );
+    const notification = result.rows[0];
+    if (!notification) throw new Error('A notificação de validação não foi persistida.');
+    return notification.id;
+  }
+
+  async attachChecklistValidationRecipients(
+    client: PoolClient,
+    tenantId: string,
+    notificationId: string,
+    versionId: string,
+    signaturePolicy: string,
+  ): Promise<ChecklistNotificationCoverage> {
+    await client.query(
+      `
+        INSERT INTO workflow.notification_recipients (
+          tenant_id, notification_id, user_id, delivery_status,
+          delivered_at, last_notified_at, delivery_attempts
+        )
+        SELECT DISTINCT
+          $1::uuid,
+          $2::uuid,
+          user_account.id,
+          'DELIVERED',
+          clock_timestamp(),
+          clock_timestamp(),
+          1
+        FROM iam.users user_account
+        JOIN iam.user_technical_assignments assignment
+          ON assignment.tenant_id = user_account.tenant_id
+         AND assignment.user_id = user_account.id
+         AND assignment.status = 'ACTIVE'
+         AND assignment.valid_from <= clock_timestamp()
+         AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
+        JOIN iam.technical_areas area
+          ON area.tenant_id = assignment.tenant_id
+         AND area.id = assignment.technical_area_id
+         AND area.status = 'ACTIVE'
+        LEFT JOIN iam.technical_roles technical_role
+          ON technical_role.tenant_id = assignment.tenant_id
+         AND technical_role.id = assignment.technical_role_id
+         AND technical_role.status = 'ACTIVE'
+        WHERE user_account.tenant_id = $1
+          AND user_account.status = 'ACTIVE'
+          AND user_account.deleted_at IS NULL
+          AND COALESCE(technical_role.can_sign, false)
+          AND (
+            (
+              $4 = 'PERSONALIZADA'
+              AND EXISTS (
+                SELECT 1
+                FROM maintenance.checklist_version_validator_users selected
+                WHERE selected.checklist_template_version_id = $3
+                  AND selected.tenant_id = $1
+                  AND selected.user_id = user_account.id
+              )
+            )
+            OR (
+              $4 IN (
+                'QUALIDADE',
+                'SEGURANCA',
+                'QUALIDADE_OU_SEGURANCA',
+                'QUALIDADE_E_SEGURANCA'
+              )
+              AND (
+                ($4 = 'QUALIDADE' AND area.code = 'QUALITY')
+                OR ($4 = 'SEGURANCA' AND area.code = 'SAFETY')
+                OR ($4 IN ('QUALIDADE_OU_SEGURANCA', 'QUALIDADE_E_SEGURANCA')
+                    AND area.code IN ('QUALITY', 'SAFETY'))
+              )
+              AND (
+                EXISTS (
+                  SELECT 1
+                  FROM maintenance.checklist_version_validator_users selected
+                  WHERE selected.checklist_template_version_id = $3
+                    AND selected.tenant_id = $1
+                    AND selected.user_id = user_account.id
+                )
+                OR NOT EXISTS (
+                  SELECT 1
+                  FROM maintenance.checklist_version_validator_users selected
+                  WHERE selected.checklist_template_version_id = $3
+                    AND selected.tenant_id = $1
+                )
+              )
+            )
+          )
+        ON CONFLICT (tenant_id, notification_id, user_id) DO NOTHING
+      `,
+      [tenantId, notificationId, versionId, signaturePolicy],
+    );
+
+    const coverage = await client.query<{ recipient_count: number; area_codes: string[] }>(
+      `
+        SELECT
+          count(DISTINCT recipient.user_id)::integer AS recipient_count,
+          COALESCE(
+            array_agg(DISTINCT area.code) FILTER (WHERE area.code IS NOT NULL),
+            ARRAY[]::text[]
+          ) AS area_codes
+        FROM workflow.notification_recipients recipient
+        LEFT JOIN iam.user_technical_assignments assignment
+          ON assignment.tenant_id = recipient.tenant_id
+         AND assignment.user_id = recipient.user_id
+         AND assignment.status = 'ACTIVE'
+         AND assignment.valid_from <= clock_timestamp()
+         AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
+        LEFT JOIN iam.technical_areas area
+          ON area.tenant_id = assignment.tenant_id
+         AND area.id = assignment.technical_area_id
+        WHERE recipient.tenant_id = $1
+          AND recipient.notification_id = $2
+          AND recipient.dismissed_at IS NULL
+      `,
+      [tenantId, notificationId],
+    );
+    const row = coverage.rows[0];
+    return {
+      recipientCount: row?.recipient_count ?? 0,
+      areaCodes: row?.area_codes ?? [],
+    };
+  }
+
+  async retractChecklistValidationNotifications(
+    client: PoolClient,
+    tenantId: string,
+    versionId: string,
+  ): Promise<void> {
+    await client.query(
+      `
+        WITH retracted AS (
+          UPDATE workflow.notifications
+          SET status = 'RETRACTED'
+          WHERE tenant_id = $1
+            AND notification_type = 'CHECKLIST_VALIDATION_REQUESTED'
+            AND status = 'ACTIVE'
+            AND action_payload ->> 'checklistVersionId' = $2
+          RETURNING id
+        )
+        UPDATE workflow.notification_recipients recipient
+        SET
+          read_at = COALESCE(recipient.read_at, clock_timestamp()),
+          dismissed_at = COALESCE(recipient.dismissed_at, clock_timestamp())
+        FROM retracted
+        WHERE recipient.tenant_id = $1
+          AND recipient.notification_id = retracted.id
+      `,
+      [tenantId, versionId],
+    );
   }
 
   async listChecklists(

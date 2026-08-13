@@ -1153,7 +1153,11 @@ export class CatalogRepository {
             asset.lifecycle_status AS status_ciclo_vida
           FROM cmms.assets asset
           WHERE asset.deleted_at IS NULL
-            AND (upper(asset.tag) = upper($1) OR asset.qr_payload = $1)
+            AND (
+              asset.id::text = $1
+              OR upper(asset.tag) = upper($1)
+              OR asset.qr_payload = $1
+            )
 
           UNION ALL
 
@@ -1169,7 +1173,11 @@ export class CatalogRepository {
             component.lifecycle_status AS status_ciclo_vida
           FROM cmms.components component
           WHERE component.deleted_at IS NULL
-            AND (upper(component.tag) = upper($1) OR component.qr_payload = $1)
+            AND (
+              component.id::text = $1
+              OR upper(component.tag) = upper($1)
+              OR component.qr_payload = $1
+            )
         ) resolved
         LIMIT 1
       `,

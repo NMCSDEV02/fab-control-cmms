@@ -815,6 +815,19 @@ export class PlanningService {
           version,
           { status, content_hash_sha256: contentHash },
         );
+        if (status === 'IN_REVIEW') {
+          await this.notifyChecklistValidation(
+            client,
+            user,
+            checklistId,
+            versionId,
+            contentHash,
+            text(version, 'signature_policy') as SignaturePolicy,
+            typeof version.manager_guidance === 'string'
+              ? normalizeNullableText(version.manager_guidance)
+              : null,
+          );
+        }
         return this.requiredChecklistDetail(client, checklistId);
       },
     );
@@ -928,6 +941,15 @@ export class PlanningService {
             hash_conteudo: contentHash,
           },
         );
+        await this.notifyChecklistValidation(
+          client,
+          user,
+          checklistId,
+          versionId,
+          contentHash,
+          route.signaturePolicy,
+          guidance,
+        );
         return this.requiredChecklistDetail(client, checklistId);
       },
     );
@@ -994,6 +1016,13 @@ export class PlanningService {
           nextStatus,
           contentHash,
         );
+        if (nextStatus !== 'IN_REVIEW') {
+          await this.repository.retractChecklistValidationNotifications(
+            client,
+            user.tenantId,
+            versionId,
+          );
+        }
         await this.repository.writeAudit(
           client,
           user.tenantId,
@@ -1485,6 +1514,71 @@ export class PlanningService {
     const detail = await this.repository.getChecklistDetail(client, checklistId);
     if (!detail) throw notFound('Checklist');
     return detail;
+  }
+
+  private async notifyChecklistValidation(
+    client: PoolClient,
+    user: AuthenticatedUser,
+    checklistId: string,
+    versionId: string,
+    contentHash: string,
+    signaturePolicy: SignaturePolicy,
+    managerGuidance: string | null,
+  ): Promise<void> {
+    const template = await this.repository.findChecklistTemplate(client, checklistId);
+    if (!template) throw notFound('Checklist');
+
+    const notificationId = await this.repository.createChecklistValidationNotification(
+      client,
+      user.tenantId,
+      {
+        checklistId,
+        versionId,
+        contentHash,
+        title: `Validar checklist: ${text(template, 'name')}`,
+        message:
+          managerGuidance ??
+          'Revise as etapas, os riscos, as evidências e os critérios de aceite desta versão.',
+        priority: this.notificationPriority(template.criticality),
+        signaturePolicy,
+      },
+    );
+    const coverage = await this.repository.attachChecklistValidationRecipients(
+      client,
+      user.tenantId,
+      notificationId,
+      versionId,
+      signaturePolicy,
+    );
+    const areas = new Set(coverage.areaCodes);
+    const complete =
+      signaturePolicy === 'QUALIDADE'
+        ? areas.has('QUALITY')
+        : signaturePolicy === 'SEGURANCA'
+          ? areas.has('SAFETY')
+          : signaturePolicy === 'QUALIDADE_OU_SEGURANCA'
+            ? areas.has('QUALITY') || areas.has('SAFETY')
+            : signaturePolicy === 'QUALIDADE_E_SEGURANCA'
+              ? areas.has('QUALITY') && areas.has('SAFETY')
+              : coverage.recipientCount > 0;
+    if (!complete) {
+      throw invalid(
+        'CHECKLIST_VALIDATION_RECIPIENT_REQUIRED',
+        'Não existe assinante ativo para atender à política de validação selecionada.',
+        { politica_assinatura: signaturePolicy, areas_disponiveis: [...areas] },
+      );
+    }
+  }
+
+  private notificationPriority(value: unknown): 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+    const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+    if (normalized === 'CRITICAL' || normalized === 'CRITICA' || normalized === 'CRÍTICA') {
+      return 'CRITICAL';
+    }
+    if (normalized === 'HIGH' || normalized === 'ALTA') return 'HIGH';
+    if (normalized === 'LOW' || normalized === 'BAIXA') return 'LOW';
+    if (normalized === 'INFO') return 'INFO';
+    return 'MEDIUM';
   }
 
   private async requiredPlanDetail(client: PoolClient, planId: string): Promise<PlanningRow> {

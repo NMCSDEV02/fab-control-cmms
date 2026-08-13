@@ -21704,3 +21704,122 @@ body,
     padding: 7px;
   }
 }
+
+/* Centro técnico: estrutura estável e aproveitamento profissional no desktop. */
+.manager-analytics-workspace {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.manager-analytics-alert-slot {
+  min-width: 0;
+  min-height: 0;
+}
+
+.manager-analytics-alert-slot .dashboard-error {
+  margin: 0;
+}
+
+.manager-analytics-tabs {
+  align-self: start;
+  min-height: 50px;
+}
+
+.manager-analytics-stage.is-history,
+.manager-completed-view,
+.manager-completed-list {
+  min-height: 0;
+  max-width: 100%;
+}
+
+.manager-analytics-stage.is-history {
+  overflow: hidden;
+}
+
+.manager-completed-list {
+  max-height: none;
+}
+
+@media (min-width: 901px) {
+  .app-shell--manager .topbar {
+    padding-inline: clamp(18px, 2.2vw, 34px);
+  }
+
+  .manager-analytics-workspace {
+    width: min(1480px, calc(100vw - 36px));
+    height: calc(100dvh - 170px);
+    min-height: 560px;
+    margin-top: 14px;
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  .manager-workspace-heading {
+    min-height: 52px;
+  }
+
+  .manager-workspace-heading h1 {
+    font-size: clamp(24px, 2.2vw, 30px);
+  }
+
+  .manager-analytics-tabs {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .manager-analytics-tabs button {
+    flex: 0 0 auto;
+    min-width: 116px;
+  }
+
+  .manager-analytics-stage {
+    height: auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .manager-analytics-indicators,
+  .manager-monitoring-view,
+  .manager-completed-view,
+  .manager-library-view {
+    min-height: 100%;
+  }
+
+  .manager-monitoring-dashboard {
+    grid-template-columns: minmax(300px, 0.78fr) minmax(460px, 1.22fr);
+  }
+
+  .manager-monitoring-attention,
+  .manager-monitoring-board {
+    min-height: 220px;
+  }
+
+  .manager-completed-view {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .manager-completed-list {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (min-width: 1280px) {
+  .manager-analytics-workspace {
+    width: calc(100vw - 48px);
+  }
+
+  .manager-analytics-filters {
+    grid-template-columns: minmax(320px, 430px) 132px;
+  }
+
+  .manager-field-filters {
+    grid-template-columns:
+      minmax(170px, 0.9fr)
+      minmax(200px, 1fr)
+      minmax(150px, 0.72fr)
+      minmax(240px, 1.25fr);
+  }
+}

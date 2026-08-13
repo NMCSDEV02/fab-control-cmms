@@ -9,7 +9,7 @@ test('carrega configuração segura de teste', () => {
 
   assert.equal(environment.nodeEnv, 'test');
   assert.equal(environment.defaultTenantId, '00000000-0000-4000-8000-000000000001');
-  assert.equal(environment.release.schema, 'postgres-0016');
+  assert.equal(environment.release.schema, 'postgres-0017');
   assert.deepEqual(environment.corsAllowedOrigins, ['http://127.0.0.1:5173']);
 });
 

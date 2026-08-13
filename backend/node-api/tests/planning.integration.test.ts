@@ -5,6 +5,7 @@ import test from 'node:test';
 import { Pool, type PoolClient } from 'pg';
 
 import { buildApp } from '../src/app.js';
+import { PlanningRepository } from '../src/modules/planning/planning.repository.js';
 import { createTestEnvironment } from './helpers/environment.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -15,12 +16,15 @@ const ids = {
   admin: '00000000-0000-4000-8000-000000003001',
   quality: '00000000-0000-4000-8000-000000003002',
   safety: '00000000-0000-4000-8000-000000003003',
+  maintenance: '00000000-0000-4000-8000-000000003004',
   adminRole: '00000000-0000-4000-8000-000000003011',
   validatorRole: '00000000-0000-4000-8000-000000003012',
   qualityArea: '00000000-0000-4000-8000-000000003021',
   safetyArea: '00000000-0000-4000-8000-000000003022',
+  maintenanceArea: '00000000-0000-4000-8000-000000003023',
   qualityTechnicalRole: '00000000-0000-4000-8000-000000003031',
   safetyTechnicalRole: '00000000-0000-4000-8000-000000003032',
+  maintenanceTechnicalRole: '00000000-0000-4000-8000-000000003033',
   plant: '00000000-0000-4000-8000-000000003041',
   sector: '00000000-0000-4000-8000-000000003042',
   line: '00000000-0000-4000-8000-000000003043',
@@ -147,7 +151,12 @@ async function seedPlanningScenario(pool: Pool): Promise<TestIdentities> {
       [
         tenantId,
         ids.validatorRole,
-        ['maintenance.checklists.read', 'maintenance.checklists.review', 'maintenance.plans.read'],
+        [
+          'maintenance.checklists.read',
+          'maintenance.checklists.review',
+          'maintenance.plans.read',
+          'workflow.notifications.read',
+        ],
       ],
     );
     await client.query(
@@ -199,6 +208,35 @@ async function seedPlanningScenario(pool: Pool): Promise<TestIdentities> {
         ids.safetyArea,
         ids.safetyTechnicalRole,
       ],
+    );
+    await client.query(
+      `
+        WITH inserted_user AS (
+          INSERT INTO iam.users (
+          id, tenant_id, employee_number, name, email, first_access_required
+          )
+          VALUES ($1, $2, 'USR-PLN-MAN', 'Validador Manutencao', 'planning.maintenance@fabcontrol.local', false)
+          RETURNING id
+        ), inserted_area AS (
+          INSERT INTO iam.technical_areas (
+          id, tenant_id, code, name, description, validation_area,
+          default_signature_required, created_by
+          )
+          VALUES ($3, $2, 'MAINTENANCE', 'Manutencao', 'Especialidade fora da politica fixa.', false, false, $4)
+          RETURNING id
+        ), inserted_role AS (
+          INSERT INTO iam.technical_roles (
+          id, tenant_id, technical_area_id, code, name, description, can_sign, created_by
+          )
+          VALUES ($5, $2, $3, 'MAINTENANCE_TECHNICIAN', 'Tecnico de manutencao', 'Assinante fora da politica fixa.', true, $4)
+          RETURNING id
+        )
+        INSERT INTO iam.user_technical_assignments (
+          tenant_id, user_id, technical_area_id, technical_role_id, is_primary, assigned_by
+        )
+        VALUES ($2, $1, $3, $5, true, $4)
+      `,
+      [ids.maintenance, tenantId, ids.maintenanceArea, ids.admin, ids.maintenanceTechnicalRole],
     );
     for (const [userId, tokenHash] of [
       [ids.admin, admin.hash],
@@ -393,12 +431,97 @@ test(
 
     const submitResponse = await app.inject({
       method: 'POST',
-      url: `/v1/maintenance/checklists/${checklistId}/submit`,
+      url: `/v1/maintenance/checklists/${checklistId}/submit-configured`,
       headers: adminHeaders,
+      payload: {
+        politica_assinatura: 'QUALIDADE_E_SEGURANCA',
+        comentario: 'Validar segurança, qualidade, riscos e critérios de aceite.',
+        exige_segregacao: true,
+        responsavel_atual_id: null,
+        usuarios_validadores: [],
+      },
     });
     assert.equal(submitResponse.statusCode, 200, submitResponse.body);
     assert.equal(submitResponse.json().data.versao_atual.status, 'IN_REVIEW');
     assert.equal(submitResponse.json().data.itens.length, 9);
+
+    const qualityNotifications = await app.inject({
+      method: 'GET',
+      url: '/v1/notifications?somente_nao_lidas=true',
+      headers: bearer(identities.qualityToken),
+    });
+    assert.equal(qualityNotifications.statusCode, 200, qualityNotifications.body);
+    assert.equal(qualityNotifications.json().data.contadores.nao_lidas, 1);
+    assert.equal(qualityNotifications.json().data.itens.length, 1);
+    assert.equal(qualityNotifications.json().data.itens[0].tipo, 'CHECKLIST_VALIDATION_REQUESTED');
+    assert.equal(qualityNotifications.json().data.itens[0].entidade_tipo, 'CHECKLIST_MODELO');
+    assert.equal(qualityNotifications.json().data.itens[0].entidade_id, checklistId);
+
+    const safetyNotifications = await app.inject({
+      method: 'GET',
+      url: '/v1/notifications?somente_nao_lidas=true',
+      headers: bearer(identities.safetyToken),
+    });
+    assert.equal(safetyNotifications.statusCode, 200, safetyNotifications.body);
+    assert.equal(safetyNotifications.json().data.contadores.nao_lidas, 1);
+    assert.equal(safetyNotifications.json().data.itens.length, 1);
+    assert.equal(safetyNotifications.json().data.itens[0].tipo, 'CHECKLIST_VALIDATION_REQUESTED');
+    assert.equal(safetyNotifications.json().data.itens[0].entidade_id, checklistId);
+
+    const submittedVersion = submitResponse.json().data.versao_atual;
+    await inTenantTransaction(pool, async (client) => {
+      const repository = new PlanningRepository();
+      const notificationInput = {
+        checklistId,
+        versionId: String(submittedVersion.id),
+        contentHash: String(submittedVersion.hash_conteudo),
+        title: 'Validar checklist: Checklist integral de teste',
+        message: 'Reenvio idempotente do mesmo evento.',
+        priority: 'HIGH',
+        signaturePolicy: 'QUALIDADE_E_SEGURANCA',
+      } as const;
+      const firstId = await repository.createChecklistValidationNotification(
+        client,
+        tenantId,
+        notificationInput,
+      );
+      const secondId = await repository.createChecklistValidationNotification(
+        client,
+        tenantId,
+        notificationInput,
+      );
+      assert.equal(secondId, firstId);
+      const coverage = await repository.attachChecklistValidationRecipients(
+        client,
+        tenantId,
+        secondId,
+        String(submittedVersion.id),
+        'QUALIDADE_E_SEGURANCA',
+      );
+      assert.equal(coverage.recipientCount, 2);
+      assert.deepEqual(new Set(coverage.areaCodes), new Set(['QUALITY', 'SAFETY']));
+    });
+
+    const notificationPersistence = await inTenantTransaction(pool, async (client) => {
+      const notificationCount = await client.query<{ total: number }>(
+        `SELECT count(*)::integer AS total
+         FROM workflow.notifications
+         WHERE entity_type = 'CHECKLIST_MODELO' AND entity_id = $1`,
+        [checklistId],
+      );
+      const recipientCount = await client.query<{ total: number }>(
+        `SELECT count(*)::integer AS total
+         FROM workflow.notification_recipients recipient
+         JOIN workflow.notifications notification ON notification.id = recipient.notification_id
+         WHERE notification.entity_type = 'CHECKLIST_MODELO' AND notification.entity_id = $1`,
+        [checklistId],
+      );
+      return {
+        notifications: notificationCount.rows[0]?.total ?? 0,
+        recipients: recipientCount.rows[0]?.total ?? 0,
+      };
+    });
+    assert.deepEqual(notificationPersistence, { notifications: 1, recipients: 2 });
 
     const immutableThroughApi = await app.inject({
       method: 'POST',
@@ -425,6 +548,41 @@ test(
     });
     assert.equal(safetyReview.statusCode, 200, safetyReview.body);
     assert.equal(safetyReview.json().data.versao_atual.status, 'APPROVED');
+
+    for (const token of [identities.qualityToken, identities.safetyToken]) {
+      const resolvedNotifications = await app.inject({
+        method: 'GET',
+        url: '/v1/notifications?somente_nao_lidas=true',
+        headers: bearer(token),
+      });
+      assert.equal(resolvedNotifications.statusCode, 200, resolvedNotifications.body);
+      assert.equal(resolvedNotifications.json().data.contadores.nao_lidas, 0);
+      assert.equal(resolvedNotifications.json().data.itens.length, 0);
+    }
+    const resolvedNotificationPersistence = await inTenantTransaction(pool, async (client) => {
+      const result = await client.query<{ status: string; pending_recipients: number }>(
+        `
+          SELECT
+            notification.status,
+            count(*) FILTER (
+              WHERE recipient.read_at IS NULL OR recipient.dismissed_at IS NULL
+            )::integer AS pending_recipients
+          FROM workflow.notifications notification
+          JOIN workflow.notification_recipients recipient
+            ON recipient.notification_id = notification.id
+           AND recipient.tenant_id = notification.tenant_id
+          WHERE notification.tenant_id = $1
+            AND notification.action_payload ->> 'checklistVersionId' = $2
+          GROUP BY notification.status
+        `,
+        [tenantId, String(submittedVersion.id)],
+      );
+      return result.rows[0];
+    });
+    assert.deepEqual(resolvedNotificationPersistence, {
+      status: 'RETRACTED',
+      pending_recipients: 0,
+    });
 
     const publishResponse = await app.inject({
       method: 'POST',
@@ -554,6 +712,24 @@ test(
     assert.equal(aggregateResponse.json().data.itens.length, 2);
     assert.ok(aggregateResponse.json().data.itens[0].parametro_id);
     const aggregateChecklistId: string = aggregateResponse.json().data.id;
+
+    const invalidFixedPolicyValidator = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/checklists/${aggregateChecklistId}/submit-configured`,
+      headers: adminHeaders,
+      payload: {
+        politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+        comentario: 'Validador explicitamente selecionado fora das areas permitidas.',
+        exige_segregacao: true,
+        responsavel_atual_id: ids.maintenance,
+        usuarios_validadores: [ids.maintenance],
+      },
+    });
+    assert.equal(invalidFixedPolicyValidator.statusCode, 422, invalidFixedPolicyValidator.body);
+    assert.equal(
+      invalidFixedPolicyValidator.json().error.code,
+      'CHECKLIST_VALIDATION_RECIPIENT_REQUIRED',
+    );
 
     const configuredSubmit = await app.inject({
       method: 'POST',
