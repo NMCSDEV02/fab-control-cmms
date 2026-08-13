@@ -404,11 +404,12 @@ export function GestorDecisionWorkspace({
   return (
     <>
       <main className="content manager-decision-workspace">
-        <section className="manager-workspace-heading">
+        <section className="manager-workspace-heading manager-decision-heading">
           <div>
             <h1>Validar</h1>
           </div>
-          <div className="manager-workspace-heading__status">
+          <div className="manager-decision-heading__controls">
+            <div className="manager-workspace-heading__status">
             <button
               type="button"
               className={!priority && activeView === 'all' ? 'is-active' : ''}
@@ -439,6 +440,72 @@ export function GestorDecisionWorkspace({
             >
               <strong>{criticalCount}</strong> críticos
             </button>
+            </div>
+
+            <section className="manager-simple-search">
+              <div className="manager-decision-search">
+                <label>
+                  <SearchIcon />
+                  <input
+                    value={search}
+                    placeholder="Buscar documento"
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </label>
+                <button
+                  className={
+                    filtersOpen || priority || activeView !== 'all'
+                      ? 'is-active'
+                      : ''
+                  }
+                  type="button"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                >
+                  Refinar
+                </button>
+                {filtersOpen ? (
+                  <div className="manager-filter-popover">
+                    <label>
+                      <span>Mostrar</span>
+                      <select
+                        value={activeView}
+                        onChange={(event) =>
+                          setActiveView(event.target.value as QueueFilter)}
+                      >
+                        <option value="all">Tudo ({items.length})</option>
+                        <option value="demands">Solicitações ({counts.demands})</option>
+                        <option value="actions">Execuções ({counts.actions})</option>
+                        <option value="models">Checklists ({counts.models})</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Prioridade</span>
+                      <select
+                        value={priority}
+                        onChange={(event) => setPriority(event.target.value)}
+                      >
+                        <option value="">Todas</option>
+                        <option value="CRITICAL_OR_OVERDUE">Críticas ou vencidas</option>
+                        <option value="CRITICA">Crítica</option>
+                        <option value="ALTA">Alta</option>
+                        <option value="MEDIA">Média</option>
+                        <option value="NORMAL">Normal</option>
+                        <option value="BAIXA">Baixa</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPriority('')
+                        setActiveView('all')
+                      }}
+                    >
+                      Limpar filtros
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
           </div>
         </section>
 
@@ -454,71 +521,6 @@ export function GestorDecisionWorkspace({
             <span>{error}</span>
           </div>
         ) : null}
-
-        <section className="manager-simple-search">
-          <div className="manager-decision-search">
-            <label>
-              <SearchIcon />
-              <input
-                value={search}
-              placeholder="Buscar documento"
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </label>
-            <button
-              className={
-                filtersOpen || priority || activeView !== 'all'
-                  ? 'is-active'
-                  : ''
-              }
-              type="button"
-              onClick={() => setFiltersOpen((current) => !current)}
-            >
-              Refinar
-            </button>
-            {filtersOpen ? (
-              <div className="manager-filter-popover">
-                <label>
-                  <span>Mostrar</span>
-                  <select
-                    value={activeView}
-                    onChange={(event) =>
-                      setActiveView(event.target.value as QueueFilter)}
-                  >
-                    <option value="all">Tudo ({items.length})</option>
-                    <option value="demands">Solicitações ({counts.demands})</option>
-                    <option value="actions">Execuções ({counts.actions})</option>
-                    <option value="models">Checklists ({counts.models})</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Prioridade</span>
-                  <select
-                    value={priority}
-                    onChange={(event) => setPriority(event.target.value)}
-                  >
-                    <option value="">Todas</option>
-                    <option value="CRITICAL_OR_OVERDUE">Críticas ou vencidas</option>
-                    <option value="CRITICA">Crítica</option>
-                    <option value="ALTA">Alta</option>
-                    <option value="MEDIA">Média</option>
-                    <option value="NORMAL">Normal</option>
-                    <option value="BAIXA">Baixa</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPriority('')
-                    setActiveView('all')
-                  }}
-                >
-                  Limpar filtros
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </section>
 
         <section
           className={`manager-simple-decision-stage${remainingItems.length ? '' : ' is-single'}`}

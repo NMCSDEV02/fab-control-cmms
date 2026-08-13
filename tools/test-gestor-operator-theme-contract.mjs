@@ -7,6 +7,7 @@ const read = (file) => readFileSync(resolve(root, file), 'utf8')
 
 const app = read('frontend-gestor/src/app/App.tsx')
 const main = read('frontend-gestor/src/main.tsx')
+const decision = read('frontend-gestor/src/pages/GestorDecisionWorkspace.tsx')
 const theme = read(
   'frontend-gestor/src/styles/manager-operator-theme.css',
 )
@@ -53,6 +54,26 @@ assert.match(
   theme,
   /@media \(max-width: 699px\)\s*\{[\s\S]*?\.app-shell--manager\s*\{[\s\S]*?width: 100%;[\s\S]*?border-radius: 0;/,
   'No mobile, o Gestor deve ocupar a tela sem moldura ou corte lateral.',
+)
+assert.match(
+  decision,
+  /manager-decision-heading__controls[\s\S]*?manager-workspace-heading__status[\s\S]*?manager-simple-search/,
+  'Contadores e filtros da validação devem compartilhar um controle responsivo.',
+)
+assert.match(
+  theme,
+  /\.app-shell--manager \.manager-decision-heading__controls\s*\{[\s\S]*?align-items: center;[\s\S]*?justify-content: flex-end;/,
+  'Os controles da validação devem permanecer centralizados no desktop.',
+)
+assert.match(
+  theme,
+  /@media \(max-width: 900px\)\s*\{[\s\S]*?\.app-shell--manager \.manager-decision-heading__controls\s*\{[\s\S]*?grid-template-columns: auto minmax\(0, 1fr\);/,
+  'No tablet, os contadores e a busca devem ocupar uma grade equilibrada.',
+)
+assert.match(
+  theme,
+  /@media \(max-width: 699px\)\s*\{[\s\S]*?\.app-shell--manager \.manager-decision-heading__controls\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/,
+  'No mobile, os controles devem empilhar sem formar uma coluna lateral.',
 )
 assert.doesNotMatch(
   theme,
