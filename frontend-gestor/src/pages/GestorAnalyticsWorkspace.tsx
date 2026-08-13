@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertIcon,
-  AssetIcon,
   ChartIcon,
   CheckIcon,
   SearchIcon,
@@ -669,22 +668,6 @@ export function GestorAnalyticsWorkspace({
       .slice(0, 5)
   }, [assetId, overview?.completedActions, periodMs])
 
-  const filteredAssets = useMemo(() => {
-    const normalized = assetLookup
-      .trim()
-      .toLocaleLowerCase('pt-BR')
-      .split('·')[0]
-      .trim()
-    if (!normalized) return catalog.assets
-    return catalog.assets.filter((asset) => [
-      asset.id,
-      asset.tag,
-      asset.nome,
-      asset.tipo,
-      asset.localizacao_tecnica,
-    ].some((value) => String(value ?? '').toLocaleLowerCase('pt-BR').includes(normalized)))
-  }, [assetLookup, catalog.assets])
-
   const views: Array<{
     id: AnalyticsView
     label: string
@@ -1211,33 +1194,7 @@ export function GestorAnalyticsWorkspace({
 
         {view === 'library' ? (
           <div className="manager-library-view">
-            <header className="manager-stage-toolbar">
-              <div>
-                <h2>Ativos</h2>
-              </div>
-            </header>
-            <div className="manager-library-layout">
-              <div className="manager-library-list">
-                {filteredAssets.map((asset) => (
-                  <button
-                    className={asset.id === assetId ? 'is-selected' : ''}
-                    type="button"
-                    key={asset.id}
-                    onClick={() => {
-                      setAssetId(asset.id)
-                      setAssetLookup(assetOptionLabel(asset))
-                    }}
-                  >
-                    <AssetIcon />
-                    <span>
-                      <small>{asset.tag || asset.id}</small>
-                      <strong>{asset.nome || 'Ativo sem nome'}</strong>
-                      <p>{asset.localizacao_tecnica || 'Localização não informada'}</p>
-                    </span>
-                    <b>{humanize(asset.status)}</b>
-                  </button>
-                ))}
-              </div>
+            <div className="manager-library-layout manager-library-layout--filter-only">
               <AssetAnalyticDetail
                 asset={selectedAsset}
                 components={selectedComponents}

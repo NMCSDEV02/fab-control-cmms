@@ -35,10 +35,15 @@ assert.doesNotMatch(
   /placeholder="TAG, equipamento ou localização"/,
   'A busca de ativos não pode aparecer duplicada dentro da biblioteca.',
 )
+assert.doesNotMatch(
+  analytics,
+  /className="manager-library-list"/,
+  'A biblioteca não deve repetir o catálogo em uma faixa horizontal.',
+)
 assert.match(
   analytics,
-  /const normalized = assetLookup/,
-  'A busca principal deve filtrar a biblioteca de ativos.',
+  /manager-library-layout manager-library-layout--filter-only/,
+  'A ficha do ativo deve ocupar toda a largura e depender do filtro principal.',
 )
 assert.match(
   assetSearch,

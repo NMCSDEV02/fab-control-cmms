@@ -1012,6 +1012,14 @@
   gap: 10px;
 }
 
+.app-shell--manager .manager-library-layout--filter-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell--manager .manager-library-layout--filter-only .manager-library-detail {
+  width: 100%;
+}
+
 .app-shell--manager .manager-library-list,
 .app-shell--manager .manager-library-detail {
   border: 1px solid var(--line);

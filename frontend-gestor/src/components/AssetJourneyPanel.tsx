@@ -94,7 +94,7 @@ export function AssetJourneyPanel({
         <div className="manager-decision-empty">
           <AssetIcon />
           <strong>Selecione um equipamento</strong>
-          <span>A ficha completa aparecerá aqui.</span>
+          <span>Use o filtro acima para abrir a ficha técnica completa.</span>
         </div>
       </aside>
     )
