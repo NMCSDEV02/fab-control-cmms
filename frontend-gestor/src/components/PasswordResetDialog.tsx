@@ -9,7 +9,7 @@ interface PasswordResetDialogProps {
 }
 
 function passwordMeetsRules(value: string): boolean {
-  return value.length >= 8 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value)
+  return value.length >= 12 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value)
 }
 
 export function PasswordResetDialog({ user, onClose, onReset }: PasswordResetDialogProps) {
@@ -23,7 +23,7 @@ export function PasswordResetDialog({ user, onClose, onReset }: PasswordResetDia
     event.preventDefault()
     setError('')
     if (!passwordMeetsRules(password)) {
-      setError('A senha precisa ter 8 caracteres, letra maiúscula, minúscula e número.')
+    setError('A senha precisa ter 12 caracteres, letra maiúscula, minúscula e número.')
       return
     }
     if (password !== confirmation) {

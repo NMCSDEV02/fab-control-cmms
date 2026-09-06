@@ -1,17 +1,9 @@
 const API_URL_KEY = "fab-control.gestor-api-url";
-const GESTOR_TOKEN_SESSION_KEY = "fab-control.gestor-token";
 const LEGACY_GESTOR_TOKEN_PERSISTENT_KEY =
   "fab-control.gestor-token-persistent";
+const AUTH_SESSION_KEY = "fab-control.gestor-auth-session";
 
 export type ApiTransport = "auto" | "node" | "apps-script";
-
-let inMemoryGestorToken = "";
-
-function environmentGestorToken(): string {
-  return (
-    (import.meta.env.VITE_GESTOR_TOKEN as string | undefined)?.trim() ?? ""
-  );
-}
 
 export function getEnvironmentApiUrl(): string {
   return (
@@ -33,23 +25,6 @@ function writeLocalStorage(key: string, value: string): void {
     else window.localStorage.removeItem(key);
   } catch {
     // Configuração em memória/ambiente continua disponível quando o storage é bloqueado.
-  }
-}
-
-function readSessionStorage(key: string): string {
-  try {
-    return window.sessionStorage.getItem(key)?.trim() ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function writeSessionStorage(key: string, value: string): void {
-  try {
-    if (value) window.sessionStorage.setItem(key, value);
-    else window.sessionStorage.removeItem(key);
-  } catch {
-    // A sessão pode continuar em memória no componente atual.
   }
 }
 
@@ -94,21 +69,30 @@ export function saveApiUrl(value: string): void {
 
 export function getGestorToken(): string {
   clearLegacyPersistentToken();
-  return (
-    readSessionStorage(GESTOR_TOKEN_SESSION_KEY) ||
-    inMemoryGestorToken ||
-    environmentGestorToken()
-  );
+  try {
+    const raw = window.sessionStorage.getItem(AUTH_SESSION_KEY);
+    if (!raw) return "";
+    const value = JSON.parse(raw) as { token?: unknown; expiresAt?: unknown };
+    return typeof value.token === "string" && Number(value.expiresAt) > Date.now()
+      ? value.token.trim()
+      : "";
+  } catch {
+    return "";
+  }
 }
 
-export function saveGestorToken(value: string): void {
+/** @deprecated The authenticated session is the sole token authority. */
+export function saveGestorToken(_value: string): void {
   clearLegacyPersistentToken();
-  inMemoryGestorToken = value.trim();
-  writeSessionStorage(GESTOR_TOKEN_SESSION_KEY, inMemoryGestorToken);
 }
 
 export function clearGestorToken(): void {
-  saveGestorToken("");
+  clearLegacyPersistentToken();
+  try {
+    window.sessionStorage.removeItem("fab-control.gestor-token");
+  } catch {
+    // A limpeza da sessão continua no chamador.
+  }
 }
 
 export function hasApiConfiguration(): boolean {

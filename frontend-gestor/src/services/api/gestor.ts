@@ -691,7 +691,6 @@ export function isGestorAuthenticationError(error: unknown): boolean {
     "TOKEN_INACTIVE",
     "TOKEN_INVALID",
     "TOKEN_SCOPE_INVALID",
-    "USER_INACTIVE",
     "GESTOR_SESSION_MISSING",
     "MOTOR_MAINTENANCE_REQUIRED",
   ].includes(error.code);

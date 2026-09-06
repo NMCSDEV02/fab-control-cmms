@@ -27,7 +27,7 @@ function createTemporaryPassword(): string {
 }
 
 function passwordMeetsRules(value: string): boolean {
-  return value.length >= 8 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value)
+  return value.length >= 12 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value)
 }
 
 export function UserEditorDialog({
@@ -98,7 +98,7 @@ export function UserEditorDialog({
       return
     }
     if (!editing && !passwordMeetsRules(temporaryPassword)) {
-      setError('A senha temporária precisa ter 8 caracteres, letra maiúscula, minúscula e número.')
+    setError('A senha temporária precisa ter 12 caracteres, letra maiúscula, minúscula e número.')
       return
     }
 

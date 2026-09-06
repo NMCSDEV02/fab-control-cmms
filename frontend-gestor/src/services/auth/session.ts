@@ -1,9 +1,4 @@
 import type { GestorSession } from '../api/auth'
-import {
-  clearGestorToken,
-  getGestorToken,
-  saveGestorToken,
-} from '../api/config'
 
 const AUTH_SESSION_KEY = 'fab-control.gestor-auth-session'
 const AUTH_NOTICE_KEY = 'fab-control.gestor-auth-notice'
@@ -41,7 +36,6 @@ function isValidSession(value: unknown): value is GestorSession {
 export function markExpiredGestorSession(): void {
   try {
     removeSessionData()
-    clearGestorToken()
     window.sessionStorage.removeItem(STARTUP_COMPLETED_KEY)
     window.sessionStorage.setItem(AUTH_NOTICE_KEY, 'session-expired')
   } catch {
@@ -57,7 +51,6 @@ export function readGestorSession(): GestorSession | null {
     const parsed = JSON.parse(raw) as unknown
     if (!isValidSession(parsed)) {
       removeSessionData()
-      clearGestorToken()
       return null
     }
 
@@ -66,25 +59,15 @@ export function readGestorSession(): GestorSession | null {
       return null
     }
 
-    const currentToken = getGestorToken()
-    if (currentToken && currentToken !== parsed.token) {
-      removeSessionData()
-      clearGestorToken()
-      return null
-    }
-
-    saveGestorToken(parsed.token)
     return parsed
   } catch {
     removeSessionData()
-    clearGestorToken()
     return null
   }
 }
 
 export function saveGestorSession(session: GestorSession): void {
   try {
-    saveGestorToken(session.token)
     window.sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
     window.sessionStorage.removeItem(AUTH_NOTICE_KEY)
     window.sessionStorage.removeItem(STARTUP_COMPLETED_KEY)
@@ -97,7 +80,6 @@ export function saveGestorSession(session: GestorSession): void {
 export function clearGestorSession(): void {
   try {
     removeSessionData()
-    clearGestorToken()
     window.sessionStorage.removeItem(AUTH_NOTICE_KEY)
     window.sessionStorage.removeItem(STARTUP_COMPLETED_KEY)
   } catch {

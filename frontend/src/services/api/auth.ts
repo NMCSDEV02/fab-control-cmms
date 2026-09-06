@@ -7,6 +7,11 @@ export interface AuthenticatedOperator {
   email: string
   matricula: string
   perfil: string
+  papeis?: string[]
+  capacidades?: string[]
+  area_id?: string | null
+  cargo_tecnico_id?: string | null
+  escopo_ids?: string[]
 }
 
 export interface OperatorSession {
@@ -33,10 +38,8 @@ export interface LoginResponseData {
   warmup_action?: string
 }
 
-export interface FirstAccessResponseData {
+export interface FirstAccessResponseData extends Omit<LoginResponseData, 'requires_password_change'> {
   password_changed: boolean
-  usuario: AuthenticatedOperator
-  release_version?: string
 }
 
 export interface RecoveryResponseData {
@@ -76,6 +79,15 @@ export async function loginOperator(
   }
 
   assertReleaseVersion(response.data.release_version)
+  const roles = [response.data.usuario.perfil, ...(response.data.usuario.papeis ?? [])]
+    .map((profile) => profile.trim().toUpperCase())
+  if (!roles.includes('OPERADOR')) {
+    throw new ApiRequestError(
+      'Este aplicativo permite acesso apenas ao perfil OPERADOR.',
+      'ROLE_NOT_ALLOWED',
+      { received: roles },
+    )
+  }
   return response.data
 }
 

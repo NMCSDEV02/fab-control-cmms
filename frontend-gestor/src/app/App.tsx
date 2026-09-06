@@ -41,6 +41,7 @@ import type {
   GestorTechnicalContext,
   GestorWorkView,
 } from '../types/gestor'
+import { isAdministrator } from '../portal'
 
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
@@ -60,7 +61,7 @@ export function App() {
   const [workspaceReady, setWorkspaceReady] = useState(hasCompletedStartup)
   const [technicalContext, setTechnicalContext] =
     useState<GestorTechnicalContext | null>(null)
-  const isAdmin = session?.user.perfil.trim().toUpperCase() === 'ADMIN'
+  const isAdmin = session ? isAdministrator(session.user) : false
   const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
   const compactDevice = useAdaptiveDevice()
 
@@ -110,7 +111,7 @@ export function App() {
     void getGestorTechnicalContext(controller.signal)
       .then((context) => {
         setTechnicalContext(context)
-        if (!context.pode_validar) setSection('validations')
+        if (context.pode_validar) setSection('validations')
       })
       .catch((cause) => {
         if (controller.signal.aborted) return

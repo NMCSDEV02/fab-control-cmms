@@ -63,8 +63,8 @@ async function runGroup(
     completedGroups,
     totalGroups,
   })
-  await Promise.all(tasks.map((task) => task()))
-  return tasks.length
+  const results = await Promise.allSettled(tasks.map((task) => task()))
+  return results.filter((result) => result.status === 'fulfilled').length
 }
 
 async function prepareAdminWorkspace(

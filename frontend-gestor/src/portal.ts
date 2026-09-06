@@ -8,6 +8,31 @@ export interface PortalPresentation {
   exclusiveProfileLabel: string
 }
 
+export interface PortalIdentity {
+  perfil: string
+  papeis?: string[]
+  capacidades?: string[]
+  area_id?: string | null
+  cargo_tecnico_id?: string | null
+  escopo_ids?: string[]
+}
+
+function identityRoles(identity: PortalIdentity | string): string[] {
+  if (typeof identity === 'string') return [identity.trim().toUpperCase()]
+  return [identity.perfil, ...(identity.papeis ?? [])]
+    .map((role) => role.trim().toUpperCase())
+    .filter(Boolean)
+}
+
+export function isAdministrator(identity: PortalIdentity | string): boolean {
+  return identityRoles(identity).includes('ADMIN')
+}
+
+export function isGestorIdentity(identity: PortalIdentity | string): boolean {
+  const roles = identityRoles(identity)
+  return roles.includes('GESTOR') || roles.includes('GESTOR_TECNICO') || isAdministrator(identity)
+}
+
 function readPortalProfile(): PortalProfile {
   const configured = String(import.meta.env.VITE_PORTAL_PROFILE ?? '')
     .trim()
@@ -20,10 +45,9 @@ function readPortalProfile(): PortalProfile {
 
 export const PORTAL_PROFILE = readPortalProfile()
 
-export function portalAllowsProfile(profile: string): boolean {
-  const normalized = profile.trim().toUpperCase()
-  if (PORTAL_PROFILE === 'SHARED') return ['GESTOR', 'ADMIN'].includes(normalized)
-  return normalized === PORTAL_PROFILE
+export function portalAllowsProfile(identity: PortalIdentity | string): boolean {
+  if (PORTAL_PROFILE === 'SHARED') return isGestorIdentity(identity)
+  return PORTAL_PROFILE === 'ADMIN' ? isAdministrator(identity) : isGestorIdentity(identity) && !isAdministrator(identity)
 }
 
 export function getPortalPresentation(): PortalPresentation {

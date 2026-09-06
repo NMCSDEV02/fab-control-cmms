@@ -326,9 +326,16 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     setSubmitting(true)
     try {
-      await completeFirstAccess(firstAccessToken, firstAccessCurrentPassword, newPassword)
-      setRegistration(firstAccessRegistration)
-      returnToLogin('Nova senha definida. Entre novamente para continuar.')
+      const result = await completeFirstAccess(firstAccessToken, firstAccessCurrentPassword, newPassword)
+      if (!result.token || !result.expira_ms) {
+        throw new ApiRequestError('A API não retornou uma sessão operacional válida após a troca de senha.', 'AUTH_SESSION_INVALID')
+      }
+      onAuthenticated({
+        token: result.token,
+        startedAt: new Date().toISOString(),
+        expiresAt: result.expira_ms,
+        user: result.usuario,
+      })
     } catch (cause) {
       if (
         cause instanceof ApiRequestError &&
@@ -601,7 +608,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
               <div className="auth-password-rules">
                 <strong>Requisitos mínimos</strong>
-                <span>8 caracteres · letra maiúscula · letra minúscula · número</span>
+                <span>12 caracteres · letra maiúscula · letra minúscula · número</span>
               </div>
 
               {error && <p className="auth-feedback auth-feedback--error" role="alert">{error}</p>}

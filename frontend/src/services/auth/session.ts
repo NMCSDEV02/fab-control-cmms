@@ -1,9 +1,4 @@
 import type { OperatorSession } from '../api/auth'
-import {
-  clearOperatorToken,
-  getOperatorToken,
-  saveOperatorToken,
-} from '../api/config'
 
 const AUTH_SESSION_KEY = 'fab-control.auth-session'
 const AUTH_NOTICE_KEY = 'fab-control.auth-notice'
@@ -38,7 +33,6 @@ function isValidSession(value: unknown): value is OperatorSession {
 export function markExpiredOperatorSession(): void {
   try {
     removeSessionData()
-    clearOperatorToken()
     window.sessionStorage.setItem(AUTH_NOTICE_KEY, 'session-expired')
   } catch {
     // O estado em memória ainda será encerrado pelo aplicativo.
@@ -53,7 +47,6 @@ export function readOperatorSession(): OperatorSession | null {
     const parsed = JSON.parse(raw) as unknown
     if (!isValidSession(parsed)) {
       removeSessionData()
-      clearOperatorToken()
       return null
     }
 
@@ -62,25 +55,15 @@ export function readOperatorSession(): OperatorSession | null {
       return null
     }
 
-    const currentToken = getOperatorToken()
-    if (currentToken && currentToken !== parsed.token) {
-      removeSessionData()
-      clearOperatorToken()
-      return null
-    }
-
-    saveOperatorToken(parsed.token)
     return parsed
   } catch {
     removeSessionData()
-    clearOperatorToken()
     return null
   }
 }
 
 export function saveOperatorSession(session: OperatorSession): void {
   try {
-    saveOperatorToken(session.token)
     window.sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session))
     window.sessionStorage.removeItem(AUTH_NOTICE_KEY)
     for (const key of LEGACY_PREVIEW_KEYS) window.sessionStorage.removeItem(key)
@@ -92,7 +75,6 @@ export function saveOperatorSession(session: OperatorSession): void {
 export function clearOperatorSession(): void {
   try {
     removeSessionData()
-    clearOperatorToken()
     window.sessionStorage.removeItem(AUTH_NOTICE_KEY)
     window.sessionStorage.removeItem(STARTUP_COMPLETED_KEY)
   } catch {

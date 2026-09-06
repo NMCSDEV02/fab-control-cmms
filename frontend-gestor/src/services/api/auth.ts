@@ -7,6 +7,11 @@ export interface AuthenticatedGestor {
   email: string
   matricula: string
   perfil: string
+  papeis?: string[]
+  capacidades?: string[]
+  area_id?: string | null
+  cargo_tecnico_id?: string | null
+  escopo_ids?: string[]
 }
 
 export interface GestorSession {
@@ -33,10 +38,8 @@ export interface LoginResponseData {
   warmup_action?: string
 }
 
-export interface FirstAccessResponseData {
+export interface FirstAccessResponseData extends Omit<LoginResponseData, 'requires_password_change'> {
   password_changed: boolean
-  usuario: AuthenticatedGestor
-  release_version?: string
 }
 
 export interface RecoveryResponseData {
@@ -90,8 +93,9 @@ export async function loginGestor(
 
   assertReleaseVersion(response.data.release_version)
 
-  const profile = response.data.usuario.perfil.trim().toUpperCase()
-  if (!['GESTOR', 'ADMIN'].includes(profile)) {
+  const profiles = [response.data.usuario.perfil, ...(response.data.usuario.papeis ?? [])]
+    .map((profile) => profile.trim().toUpperCase())
+  if (!profiles.some((profile) => ['GESTOR', 'GESTOR_TECNICO', 'ADMIN'].includes(profile))) {
     throw new ApiRequestError(
       'Este aplicativo permite acesso apenas aos perfis GESTOR ou ADMIN.',
       'ROLE_NOT_ALLOWED',

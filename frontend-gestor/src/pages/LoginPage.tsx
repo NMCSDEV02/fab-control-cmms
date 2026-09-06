@@ -161,7 +161,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setSubmitting(true)
     try {
       const result = await loginGestor(normalizedRegistration, password)
-      if (!portalAllowsProfile(result.usuario.perfil)) {
+      if (!portalAllowsProfile(result.usuario)) {
         const issuedToken = result.token || result.change_token
         if (issuedToken) {
           try {
@@ -277,14 +277,18 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     setSubmitting(true)
     try {
-      await completeFirstAccess(changeToken, firstAccessCurrentPassword, newPassword)
-      setRegistration(firstAccessRegistration)
+      const result = await completeFirstAccess(changeToken, firstAccessCurrentPassword, newPassword)
+      if (!portalAllowsProfile(result.usuario)) {
+        throw new ApiRequestError('Este acesso não pertence ao portal selecionado.', 'PORTAL_PROFILE_MISMATCH')
+      }
+      if (!result.token || !result.expira_ms) {
+        throw new ApiRequestError('A API não retornou uma sessão válida após a troca de senha.', 'AUTH_SESSION_INVALID')
+      }
       setChangeToken('')
       setFirstAccessCurrentPassword('')
       setNewPassword('')
       setConfirmation('')
-      setView('login')
-      setMessage('Nova senha definida. Entre novamente para continuar.')
+      onAuthenticated({ token: result.token, startedAt: new Date().toISOString(), expiresAt: result.expira_ms, user: result.usuario })
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -466,7 +470,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
             </label>
 
             <p className="password-rule">
-              Mínimo de 8 caracteres, com maiúscula, minúscula e número.
+              Mínimo de 12 caracteres, com maiúscula, minúscula e número.
             </p>
 
             {error ? <p className="feedback feedback--error">{error}</p> : null}
