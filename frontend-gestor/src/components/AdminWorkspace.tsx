@@ -25,6 +25,7 @@ import type {
 import type { GestorNotification } from '../types/gestor'
 import { AdminPage, type AdminModule } from '../pages/AdminPage'
 import { AdminCompanyDialog } from './AdminCompanyDialog'
+import { BrandLogo } from './BrandLogo'
 import { NotificationCenter } from './NotificationCenter'
 import {
   AssetIcon,
@@ -904,10 +905,14 @@ export function AdminWorkspace({
 
       <header className="admin-desktop-topbar">
         <div className="admin-desktop-brand">
+          <BrandLogo className="admin-desktop-brand__logo" decorative />
+          <div className="admin-desktop-brand__copy">
+            <strong>{PRODUCT_NAME}</strong>
+            <small title={companyProfile.nome}>{companyProfile.nome}</small>
+          </div>
           {companyProfile.logo_data_url
-            ? <img src={companyProfile.logo_data_url} alt="" />
-            : <span aria-hidden="true">TOZ</span>}
-          <strong title={companyProfile.nome}>{companyProfile.nome}</strong>
+            ? <img className="admin-desktop-company-logo" src={companyProfile.logo_data_url} alt={`Logomarca de ${companyProfile.nome}`} />
+            : null}
         </div>
 
         <button className="admin-desktop-command" type="button" onClick={() => setPaletteOpen(true)}>

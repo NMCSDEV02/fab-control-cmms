@@ -72,7 +72,7 @@ assert(styles.includes('.admin-catalog-dialog > section > footer button'), 'aç�
 assert(styles.includes('.admin-backup-confirm input:checked::after'), 'confirmação de backup permanece com checkbox nativo')
 assert(styles.includes('minmax(160px, 0.52fr)') && styles.includes('font-size: 0.74rem'), 'campos de seleção do Motor podem truncar opções')
 assert(configurationPanel.includes('configOptionLabel(option)'), 'opções do Motor não possuem rótulos legíveis')
-assert(styles.includes('.config-actions {\n  position: static;'), 'barra de ações do Motor ainda cobre os campos de configuração')
+assert(/\.config-actions\s*\{\s*position:\s*static\s*;/.test(styles), 'barra de ações do Motor ainda cobre os campos de configuração')
 assert(configurationPanel.includes('PROTECTED_KEY_LABELS[key]') && !configurationPanel.includes('<code key={key}>{key}</code>'), 'Motor expõe chaves internas na interface')
 assert(workspace.includes('getAdminCommercialAccess') && workspace.includes('isModuleAvailable'), 'workspace não aplica o plano comercial aos módulos')
 assert(workspace.includes("feature: 'MOTOR_LIMITADO'") && workspace.includes("feature: 'CONTINUIDADE'"), 'mapeamento comercial dos módulos está incompleto')
@@ -104,9 +104,10 @@ assert(workspace.includes('useState<WorkspaceWindow[]>([])'), 'Workspace não in
 for (const layout of ['smart', 'focus', 'columns', 'rows', 'grid', 'cascade']) {
   assert(workspace.includes(`arrangeWindows('${layout}')`), `layout da vFinal ausente: ${layout}`)
 }
-for (const shellFeature of ['FAB CONTROL · ADMINISTRAÇÃO INDUSTRIAL', 'admin-profile-menu', 'Organizar ao abrir', 'DESEMPENHO DO WORKSPACE', 'Otimizar cache']) {
+for (const shellFeature of ['BrandLogo', 'admin-profile-menu', 'Organizar ao abrir', 'DESEMPENHO DO WORKSPACE', 'Otimizar cache']) {
   assert(workspace.includes(shellFeature), `refinamento da vFinal ausente: ${shellFeature}`)
 }
+assert(!workspace.includes('>TOZ<'), 'placeholder técnico antigo ainda aparece no cabeçalho administrativo')
 assert(!workspace.includes('vFinal Enterprise'), 'tela inicial ainda exibe marcacao interna de desenvolvimento')
 assert(workspace.includes('CENTRAL DE AJUDA'), 'ajuda nao possui apresentacao de produto final')
 assert(workspace.includes('Em caso de dúvida, acesse a Central de Ajuda'), 'tela inicial nao direciona duvidas ao botao de ajuda')

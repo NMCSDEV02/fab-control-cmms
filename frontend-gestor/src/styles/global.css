@@ -10805,7 +10805,7 @@ p {
   white-space: nowrap;
 }
 
-.admin-desktop-brand > span {
+.admin-desktop-brand > span:not(.brand-logo) {
   display: grid;
   place-items: center;
   width: 27px;
@@ -10818,7 +10818,36 @@ p {
   letter-spacing: 0.04em;
 }
 
-.admin-desktop-brand strong {
+.admin-desktop-brand > .brand-logo.admin-desktop-brand__logo {
+  width: 128px;
+  height: 38px;
+  flex: 0 0 128px;
+}
+
+.admin-desktop-brand__copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.admin-desktop-brand__copy strong {
+  overflow: hidden;
+  color: #203139;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-desktop-brand__copy small {
+  overflow: hidden;
+  color: #667a83;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-desktop-brand > strong {
   min-width: 0;
   overflow: hidden;
   color: #203139;
@@ -10827,7 +10856,7 @@ p {
   white-space: nowrap;
 }
 
-.admin-desktop-brand > img {
+.admin-desktop-brand > .admin-desktop-company-logo {
   width: auto;
   max-width: 76px;
   height: 27px;
@@ -12556,17 +12585,10 @@ p {
   object-fit: contain;
 }
 
-.admin-company-logo-preview b {
-  display: grid;
-  width: 38px;
+.admin-company-logo-preview > .brand-logo.admin-company-logo-preview__brand {
+  width: 124px;
   height: 38px;
   flex: 0 0 auto;
-  place-items: center;
-  border: 1.5px solid var(--admin-brand);
-  border-radius: 6px;
-  color: var(--admin-brand);
-  font-size: 0.63rem;
-  letter-spacing: 0.04em;
 }
 
 .admin-company-logo-preview strong {

@@ -1,5 +1,6 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import type { AdminCompanyProfile } from '../types/admin'
+import { BrandLogo } from './BrandLogo'
 import { FactoryIcon, UploadIcon } from './Icons'
 
 interface AdminCompanyDialogProps {
@@ -130,7 +131,7 @@ export function AdminCompanyDialog({ company, initialError = '', onClose, onSave
           <section className="admin-company-logo-panel">
             <span>Prévia no cabeçalho</span>
             <div className="admin-company-logo-preview">
-              {logoDataUrl ? <img src={logoDataUrl} alt="Logomarca da empresa" /> : <b aria-hidden="true">TOZ</b>}
+              {logoDataUrl ? <img src={logoDataUrl} alt="Logomarca da empresa" /> : <BrandLogo className="admin-company-logo-preview__brand" decorative />}
               <strong>{name.trim() || 'Nome da empresa'}</strong>
             </div>
             <p>A imagem é ajustada automaticamente para manter o cabeçalho leve e nítido.</p>
