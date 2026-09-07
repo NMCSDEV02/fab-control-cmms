@@ -1,6 +1,6 @@
 # Frontend Gestor
 
-Aplicação React + TypeScript do gestor do Fab Control.
+Aplicação React + TypeScript de gestão do VORQIX.
 
 ## Módulos disponíveis
 
