@@ -122,16 +122,24 @@ p {
 
 .brand-mark,
 .auth-brand__mark {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  color: #ffffff;
-  background: #172234;
-  font-size: 14px;
-  font-weight: 950;
-  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: transparent;
+}
+
+.brand-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.auth-brand__mark.brand-logo {
+  width: min(164px, 46vw);
+  height: 54px;
+  flex: 0 1 164px;
 }
 
 .topbar__actions {
@@ -2097,11 +2105,9 @@ p {
 }
 
 .auth-brand__mark--startup {
-  width: 56px;
-  height: 56px;
+  width: min(180px, 68vw);
+  height: 62px;
   margin-bottom: 22px;
-  border-radius: 18px;
-  background: #0f6f78;
 }
 
 .auth-startup__spinner,
@@ -13251,16 +13257,10 @@ p {
   gap: 11px;
 }
 
-.platform-motor-brand > span {
-  display: grid;
-  width: 38px;
+.platform-motor-brand > .brand-logo {
+  width: 108px;
   height: 38px;
-  place-items: center;
-  border-radius: 10px;
-  background: #0e6f78;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
+  flex: 0 0 108px;
 }
 
 .platform-motor-brand div,

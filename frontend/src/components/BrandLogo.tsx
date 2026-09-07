@@ -1,13 +1,15 @@
 import { useState } from 'react'
 
-const officialBrandAsset = String(import.meta.env.VITE_VORQIX_BRAND_ASSET ?? '').trim()
+const officialBrandAsset = String(
+  import.meta.env.VITE_VORQIX_BRAND_ASSET ?? '/assets/brand/vorqix-logo.png',
+).trim()
 
 interface BrandLogoProps {
   className?: string
   decorative?: boolean
 }
 
-/** Reserva para o asset oficial, sem transformar iniciais em uma falsa logo. */
+/** Renderiza a marca oficial sem acoplar a URL de distribuição à autenticação. */
 export function BrandLogo({ className = '', decorative = false }: BrandLogoProps) {
   const [assetUnavailable, setAssetUnavailable] = useState(false)
   const showOfficialAsset = Boolean(officialBrandAsset) && !assetUnavailable

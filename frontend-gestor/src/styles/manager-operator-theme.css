@@ -51,17 +51,10 @@
 }
 
 .app-shell--manager .topbar__identity--manager .brand-mark {
-  width: 42px;
+  width: 124px;
   height: 42px;
-  flex: 0 0 42px;
-  border-radius: 14px;
-  color: #fff;
-  background: #172234;
-  display: grid;
-  place-items: center;
-  font-size: 0.72rem;
-  font-weight: 950;
-  letter-spacing: 0.04em;
+  flex: 0 0 124px;
+  border-radius: 0;
 }
 
 .app-shell--manager .topbar__identity--manager strong {
@@ -1773,6 +1766,13 @@
     gap: 8px;
   }
 
+  .app-shell--manager .topbar__identity--manager .brand-mark {
+    width: 106px;
+    height: 36px;
+    flex-basis: 106px;
+    border-radius: 0;
+  }
+
   .app-shell--manager .topbar__identity--manager::before {
     width: 34px;
     height: 34px;
@@ -2084,6 +2084,12 @@
 }
 
 @media (max-width: 420px) {
+  .app-shell--manager .topbar__identity--manager .brand-mark {
+    width: 96px;
+    height: 33px;
+    flex-basis: 96px;
+  }
+
   .app-shell--manager .topbar__identity--manager span {
     max-width: 118px;
   }
