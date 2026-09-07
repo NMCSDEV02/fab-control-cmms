@@ -346,6 +346,7 @@ export function App() {
             <GestorDecisionWorkspace
               initialView={decisionView}
               focus={decisionFocus}
+              isPcm={isPcm}
               onQueueCountChange={setValidationCount}
               onOpenAnalytics={(assetId) => handleOpenAnalytics(assetId)}
               onSessionExpired={expireSession}

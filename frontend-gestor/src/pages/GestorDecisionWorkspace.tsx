@@ -34,6 +34,7 @@ export interface GestorDecisionFocus {
 interface GestorDecisionWorkspaceProps {
   initialView?: GestorWorkView
   focus?: GestorDecisionFocus | null
+  isPcm?: boolean
   onQueueCountChange: (count: number) => void
   onOpenAnalytics: (assetId?: string) => void
   onSessionExpired: () => void
@@ -148,7 +149,9 @@ function includesSearch(item: DecisionItem, search: string): boolean {
 }
 
 export function GestorDecisionWorkspace({
+  initialView,
   focus,
+  isPcm = false,
   onQueueCountChange,
   onOpenAnalytics,
   onSessionExpired,
@@ -234,6 +237,10 @@ export function GestorDecisionWorkspace({
     void load(controller.signal)
     return () => controller.abort()
   }, [load])
+
+  useEffect(() => {
+    if (initialView) setActiveView(initialView)
+  }, [initialView])
 
   useAutoRefresh(
     () => load(undefined, true),
@@ -368,15 +375,15 @@ export function GestorDecisionWorkspace({
     (item) => item.overdue || ['CRITICA', 'CRÍTICA'].includes(item.priority),
   ).length
 
-  if (technicalContext && !technicalContext.pode_validar) {
+  if (technicalContext && !technicalContext.pode_validar && !isPcm) {
     return (
       <main className="content manager-decision-workspace">
         <section className="manager-decision-empty">
           <ShieldIcon />
           <strong>Perfil de acompanhamento técnico</strong>
           <span>
-            As assinaturas ficam com Qualidade e Segurança. Use Acompanhar para
-            investigar ativos, parâmetros, paradas e ocorrências.
+            As assinaturas só aparecem quando um documento exigir sua participação.
+            Use Acompanhar para investigar ativos, parâmetros, paradas e ocorrências.
           </span>
         </section>
       </main>
@@ -406,7 +413,7 @@ export function GestorDecisionWorkspace({
       <main className="content manager-decision-workspace">
         <section className="manager-workspace-heading manager-decision-heading">
           <div>
-            <h1>Validar</h1>
+            <h1>{isPcm ? 'Comando de manutenção' : 'Validar'}</h1>
           </div>
           <div className="manager-decision-heading__controls">
             <div className="manager-workspace-heading__status">
@@ -448,7 +455,7 @@ export function GestorDecisionWorkspace({
                   <SearchIcon />
                   <input
                     value={search}
-                    placeholder="Buscar documento"
+                    placeholder={isPcm ? 'Buscar demanda, execução ou checklist' : 'Buscar documento'}
                     onChange={(event) => setSearch(event.target.value)}
                   />
                 </label>
@@ -532,7 +539,11 @@ export function GestorDecisionWorkspace({
             <div className="manager-decision-empty">
               <CheckIcon />
               <strong>Nenhum documento pendente</strong>
-              <span>Quando o Administrador solicitar uma assinatura, aparecerá aqui.</span>
+              <span>
+                {isPcm
+                  ? 'Novas demandas, execuções e checklists aparecerão aqui para priorização técnica.'
+                  : 'Quando um documento exigir sua assinatura, ele aparecerá aqui.'}
+              </span>
             </div>
           ) : null}
 
