@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { PRODUCT_NAME } from '../brand'
+import { PRODUCT_MARK, PRODUCT_NAME } from '../brand'
 import {
   AppNavigation,
   type GestorSection,
@@ -291,6 +291,7 @@ export function App() {
       <div className="app-shell app-shell--manager">
         <header className="topbar">
         <div className="topbar__identity topbar__identity--manager">
+          <span className="brand-mark" aria-hidden="true">{PRODUCT_MARK}</span>
           <div>
             <strong>{PRODUCT_NAME}</strong>
             <span>

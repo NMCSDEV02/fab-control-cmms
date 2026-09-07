@@ -398,7 +398,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     <main className="auth-shell">
       <section className="auth-card" aria-labelledby="auth-title">
         <header className="auth-brand">
-          <span className="auth-brand__mark" aria-hidden="true">FC</span>
+          <span className="auth-brand__mark" aria-hidden="true">{PRODUCT_MARK}</span>
           <div>
             <span className="auth-brand__eyebrow">Operação industrial</span>
             <h1 id="auth-title">{PRODUCT_NAME}</h1>

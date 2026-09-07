@@ -50,8 +50,7 @@
   min-width: 0;
 }
 
-.app-shell--manager .topbar__identity--manager::before {
-  content: "FC";
+.app-shell--manager .topbar__identity--manager .brand-mark {
   width: 42px;
   height: 42px;
   flex: 0 0 42px;

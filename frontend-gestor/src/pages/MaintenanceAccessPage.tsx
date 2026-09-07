@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { PRODUCT_MARK } from '../brand'
 import { API_COMPATIBLE_RELEASE, APP_RELEASE_VERSION } from '../release'
 import {
   exchangeMaintenanceAccess,
@@ -63,7 +64,7 @@ export function MaintenanceAccessPage({
     <main className="auth-shell maintenance-access-shell">
       <section className="auth-panel maintenance-access-panel" aria-labelledby="maintenance-access-title">
         <div className="auth-brand">
-          <span className="auth-brand__mark" aria-hidden="true">FC</span>
+          <span className="auth-brand__mark" aria-hidden="true">{PRODUCT_MARK}</span>
           <div>
             <span className="eyebrow">ACESSO INTERNO PROTEGIDO</span>
             <h1 id="maintenance-access-title">Janela de manutenção</h1>
