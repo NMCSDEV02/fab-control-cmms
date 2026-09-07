@@ -804,5 +804,52 @@ test(
     });
     assert.equal(deleteDraft.statusCode, 200, deleteDraft.body);
     assert.equal(deleteDraft.json().data.deleted, true);
+
+    const noReviewChecklist = await app.inject({
+      method: 'POST',
+      url: '/v1/maintenance/checklists',
+      headers: adminHeaders,
+      payload: {
+        codigo: 'CHK-PLN-NO-REVIEW',
+        nome: 'Checklist sem revisão documental',
+        ativo_id: ids.asset,
+        componente_id: null,
+        tipo: 'INSPECTION',
+        criticidade: 'LOW',
+        area_tecnica_id: null,
+        cargo_tecnico_id: null,
+        politica_assinatura: 'NONE',
+        assinaturas_exigidas: 0,
+        segregacao_exigida: false,
+        orientacao_gestor: null,
+        requisitos_seguranca: [],
+      },
+    });
+    assert.equal(noReviewChecklist.statusCode, 200, noReviewChecklist.body);
+    const noReviewChecklistId: string = noReviewChecklist.json().data.id;
+
+    const noReviewItem = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/checklists/${noReviewChecklistId}/items`,
+      headers: adminHeaders,
+      payload: itemPayload('CONFIRMACAO'),
+    });
+    assert.equal(noReviewItem.statusCode, 200, noReviewItem.body);
+
+    const noReviewSubmission = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/checklists/${noReviewChecklistId}/submit-configured`,
+      headers: adminHeaders,
+      payload: {
+        politica_assinatura: 'NONE',
+        comentario: '',
+        exige_segregacao: false,
+        responsavel_atual_id: null,
+        usuarios_validadores: [],
+      },
+    });
+    assert.equal(noReviewSubmission.statusCode, 200, noReviewSubmission.body);
+    assert.equal(noReviewSubmission.json().data.versao_atual.status, 'APPROVED');
+    assert.equal(noReviewSubmission.json().data.versao_atual.assinaturas_exigidas, 0);
   },
 );
