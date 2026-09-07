@@ -12,6 +12,7 @@ export interface AppNavigationProps {
   validationCount: number
   showAdmin: boolean
   canValidate: boolean
+  isPcm?: boolean
   compactDevice: boolean
   onNavigate: (section: GestorSection) => void
 }
@@ -29,12 +30,19 @@ export function AppNavigation({
   validationCount,
   showAdmin,
   canValidate,
+  isPcm = false,
   compactDevice,
   onNavigate,
 }: AppNavigationProps) {
-  const visibleItems = ITEMS.filter((item) => {
+  const visibleItems = ITEMS.map((item) => {
+    if (!isPcm) return item
+    if (item.id === 'home') return { ...item, label: 'Fila' }
+    if (item.id === 'validations') return { ...item, label: 'Ativos' }
+    if (item.id === 'more') return { ...item, label: 'Perfil' }
+    return item
+  }).filter((item) => {
     if (item.id === 'admin') return showAdmin
-    if (item.id === 'home') return canValidate
+    if (item.id === 'home') return canValidate || isPcm
     if (item.id === 'scan') return compactDevice
     return true
   })

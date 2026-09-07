@@ -42,7 +42,7 @@ import type {
   GestorTechnicalContext,
   GestorWorkView,
 } from '../types/gestor'
-import { isAdministrator, isInternalCommand } from '../portal'
+import { isAdministrator, isInternalCommand, isPcmIdentity } from '../portal'
 
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
@@ -63,6 +63,7 @@ export function App() {
   const [technicalContext, setTechnicalContext] =
     useState<GestorTechnicalContext | null>(null)
   const isAdmin = session ? isAdministrator(session.user) || isInternalCommand(session.user) : false
+  const isPcm = session ? isPcmIdentity(session.user) : false
   const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
   const compactDevice = useAdaptiveDevice()
 
@@ -112,14 +113,14 @@ export function App() {
     void getGestorTechnicalContext(controller.signal)
       .then((context) => {
         setTechnicalContext(context)
-        if (context.pode_validar) setSection('validations')
+        if (context.pode_validar && !isPcm) setSection('validations')
       })
       .catch((cause) => {
         if (controller.signal.aborted) return
         if (isGestorAuthenticationError(cause)) expireSession()
       })
     return () => controller.abort()
-  }, [expireSession, isAdmin, isSystem, session, workspaceReady])
+  }, [expireSession, isAdmin, isPcm, isSystem, session, workspaceReady])
 
   useEffect(() => {
     if (!session) return
@@ -293,7 +294,9 @@ export function App() {
           <div>
             <strong>{PRODUCT_NAME}</strong>
             <span>
-              {technicalContext?.pode_validar
+              {isPcm
+                ? 'PCM · Planejamento e controle da manutenção'
+                : technicalContext?.pode_validar
                 ? `Validação técnica · ${technicalContext.identidade.area_nome || 'Qualidade e segurança'}`
                 : `${technicalContext?.identidade.cargo_nome || 'Acompanhamento técnico'} · ${technicalContext?.identidade.area_nome || 'Área técnica'}`}
             </span>
@@ -381,12 +384,13 @@ export function App() {
           ) : null}
         </div>
 
-        <AppNavigation
-          active={section}
-          validationCount={validationCount}
-          showAdmin={false}
-          canValidate={technicalContext?.pode_validar ?? false}
-          compactDevice={compactDevice}
+          <AppNavigation
+            active={section}
+            validationCount={validationCount}
+            showAdmin={false}
+            canValidate={technicalContext?.pode_validar ?? false}
+            isPcm={isPcm}
+            compactDevice={compactDevice}
           onNavigate={handleNavigate}
         />
 
