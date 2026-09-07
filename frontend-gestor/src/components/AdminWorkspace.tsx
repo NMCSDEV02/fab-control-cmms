@@ -6,6 +6,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
+import { PRODUCT_NAME } from '../brand'
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 import {
@@ -985,7 +986,7 @@ export function AdminWorkspace({
             <section className="admin-desktop-welcome">
               <div className="admin-welcome-card">
                 <div className="admin-welcome-copy">
-                  <span className="admin-welcome-eyebrow">FAB CONTROL · ADMINISTRAÇÃO INDUSTRIAL</span>
+                  <span className="admin-welcome-eyebrow">{PRODUCT_NAME} · COMANDO INTERNO</span>
                   <h1>Command Workspace</h1>
                   <p>Centralize configurações, governança, cadastros e decisões técnicas em um único ambiente operacional.</p>
                   <div className="admin-welcome-actions">

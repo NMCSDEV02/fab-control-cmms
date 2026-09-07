@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PRODUCT_MARK, PRODUCT_NAME } from '../brand'
 import { APP_RELEASE_VERSION } from '../release'
 import type { GestorSession } from '../services/api/auth'
 import {
@@ -318,9 +319,9 @@ export function PlatformMotorWorkspace({
     <main className="platform-motor-shell">
       <header className="platform-motor-topbar">
         <div className="platform-motor-brand">
-          <span aria-hidden="true">FC</span>
+          <span aria-hidden="true">{PRODUCT_MARK}</span>
           <div>
-            <strong>Fab Control</strong>
+            <strong>{PRODUCT_NAME}</strong>
             <small>Núcleo protegido do Motor</small>
           </div>
         </div>

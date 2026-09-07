@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { PRODUCT_NAME } from '../brand'
 import type { OperatorAction } from '../types/operator'
 import { ActionCard, resolveActionAvailability } from '../components/ActionCard'
 import { ArrowIcon } from '../components/Icons'
@@ -151,7 +152,7 @@ export function OperatorHome({
         <div className="loading-panel" role="status">
           <span className="loading-spinner" aria-hidden="true" />
           <strong>Carregando ações do operador</strong>
-          <p>Consultando o FAB Control.</p>
+          <p>Consultando o {PRODUCT_NAME}.</p>
         </div>
       </section>
     )

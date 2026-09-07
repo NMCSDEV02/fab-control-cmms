@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { PRODUCT_MARK, PRODUCT_NAME } from '../brand'
 import { ApiConnectionPanel } from '../components/ApiConnectionPanel'
 import {
   API_COMPATIBLE_RELEASE,
@@ -332,9 +333,9 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     return (
       <main className="auth-shell auth-shell--startup">
         <section className="auth-startup" aria-live="polite" aria-busy="true">
-          <span className="auth-brand__mark auth-brand__mark--startup" aria-hidden="true">FC</span>
+          <span className="auth-brand__mark auth-brand__mark--startup" aria-hidden="true">{PRODUCT_MARK}</span>
           <div className="auth-startup__spinner" aria-hidden="true" />
-          <h1>FAB Control</h1>
+          <h1>{PRODUCT_NAME}</h1>
           <p>{startupLabel}</p>
           <div className="auth-startup__progress" aria-hidden="true">
             <span />
