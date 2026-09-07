@@ -25,6 +25,7 @@ const router = read('backend/apps-script/03_Http_Auth.js')
 const workflow = read('backend/apps-script/25_Workflow_Tecnico_KPI.js')
 const operationsService = read('backend/node-api/src/modules/operations/operations.service.ts')
 const documentParticipationPolicy = read('database/postgres/migrations/0019_document_participation_policy.sql')
+const noReviewPolicy = read('database/postgres/migrations/0020_document_no_review_policy.sql')
 const adminPermissions = read('backend/apps-script/04_Admin.js')
 const gestorApi = read('frontend-gestor/src/services/api/gestor.ts')
 const decisions = read('frontend-gestor/src/pages/GestorDecisionWorkspace.tsx')
@@ -135,7 +136,7 @@ assert(
 )
 assert(!decisions.includes('setSelectedOccurrence'), 'ocorrência ainda abre no fluxo reservado à assinatura')
 assert(analytics.includes('setSelectedOccurrence'), 'ocorrência não abre no acompanhamento técnico')
-assert(demandDialog.includes('Assinaturas desta versão'), 'fluxo não evidencia as assinaturas permanentes')
+assert(demandDialog.includes('Assinaturas desta versão'), 'fluxo não evidencia as assinaturas documentais')
 assert(demandDialog.includes('O ADMINISTRADOR SOLICITOU'), 'validação não apresenta a solicitação do Administrador')
 assert(demandDialog.includes('Assinar e aprovar'), 'ação principal de validação está ausente')
 assert(demandDialog.includes('Solicitar correção') && demandDialog.includes('Devolver ao Administrador'), 'alternativa de correção está ausente')
@@ -149,10 +150,12 @@ assert(
 assert(
   documentParticipationPolicy.includes('default_signature_required = false') &&
     documentParticipationPolicy.includes('validation_area = false') &&
-    operationsService.includes("input.signaturePolicy === 'QUALIDADE_E_SEGURANCA' ? 2 : 1") &&
+    noReviewPolicy.includes("'NONE'") &&
+    operationsService.includes("input.signaturePolicy === 'NONE'") &&
+    operationsService.includes('WORK_ORDER_RELEASED_WITHOUT_REVIEW') &&
     operationsService.includes("eligibleArea(text(demand, 'signature_policy') as SignaturePolicy, areaCode)") &&
     operationsService.includes("'TECHNICAL_SIGNATURE_NOT_ALLOWED'"),
-  'participação de Qualidade/Segurança não está condicionada à política do documento',
+  'participação de Qualidade/Segurança ou a liberação direta não está condicionada à política do documento',
 )
 assert(
   operationsService.includes('function hasPcmCommand') &&
@@ -284,8 +287,9 @@ assert(checklistBuilder.includes('QUICK_ITEM_TYPES') && checklistBuilder.include
 assert(
   checklistBuilder.includes('admin-checklist-routing-dialog') &&
     checklistBuilder.includes('role="dialog"') &&
-    checklistBuilder.includes('Definir filtro técnico'),
-  'filtro técnico não abre em um popup dedicado',
+    checklistBuilder.includes('Definir publicação do checklist') &&
+    checklistBuilder.includes("routing.politica_assinatura === 'NONE'"),
+  'política documental não abre em um popup dedicado ou não oferece liberação sem revisão',
 )
 for (const responseType of [
   'OK_NOK',

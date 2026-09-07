@@ -1,5 +1,6 @@
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type SignaturePolicy =
+  | 'NONE'
   | 'QUALIDADE_OU_SEGURANCA'
   | 'QUALIDADE'
   | 'SEGURANCA'

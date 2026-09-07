@@ -49,6 +49,7 @@ function isChecklist(demand: GestorTechnicalDemand): boolean {
 
 function policyLabel(value?: string): string {
   const labels: Record<string, string> = {
+    NONE: 'Sem revisão documental',
     QUALIDADE_OU_SEGURANCA: 'Qualidade ou Segurança',
     QUALIDADE: 'Somente Qualidade',
     SEGURANCA: 'Somente Segurança',

@@ -340,7 +340,7 @@ export function AdminChecklistBuilder({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [routing, setRouting] = useState<ValidationRouteDraft>({
-    politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+    politica_assinatura: 'NONE',
     comentario: '',
     exige_segregacao: 'SIM',
     responsavel_atual_id: '',
@@ -611,8 +611,8 @@ export function AdminChecklistBuilder({
       const nextModels = await listAdminChecklistModels()
       setModels(nextModels)
       setNotice(convertedFromAnalysis
-        ? 'Análise convertida em checklist rastreável. O modelo continua inativo até a assinatura técnica.'
-        : 'Rascunho salvo. O modelo continua inativo até a validação técnica.')
+        ? 'Análise convertida em checklist rastreável. Defina a política documental antes de publicar.'
+        : 'Rascunho salvo. Defina a política documental antes de publicar.')
       return result.plano
     } catch (cause) {
       handleFailure(cause, 'Não foi possível salvar o checklist.')
@@ -630,7 +630,7 @@ export function AdminChecklistBuilder({
       setError('Selecione a pessoa autorizada que fará a validação.')
       return
     }
-    if (!routing.comentario.trim()) {
+    if (routing.politica_assinatura !== 'NONE' && !routing.comentario.trim()) {
       setError('Descreva o que o Gestor deve validar.')
       return
     }
@@ -641,7 +641,7 @@ export function AdminChecklistBuilder({
       if (!saved) return
       await sendAdminChecklistForValidation({
         plano_id: saved.id,
-        comentario: routing.comentario.trim(),
+        comentario: routing.politica_assinatura === 'NONE' ? '' : routing.comentario.trim(),
         politica_assinatura: routing.politica_assinatura,
         responsavel_atual_id: routing.responsavel_atual_id,
         usuarios_validadores: routing.usuarios_validadores,
@@ -652,7 +652,11 @@ export function AdminChecklistBuilder({
       const sent = nextModels.find((model) => model.id === saved.id)
       setPlan(sent ?? { ...saved, workflow_status: 'EM_VALIDACAO_GESTAO' })
       setRoutingOpen(false)
-      setNotice('Checklist enviado para assinatura de Qualidade/Segurança. O Operador receberá somente após a validação.')
+      setNotice(
+        routing.politica_assinatura === 'NONE'
+          ? 'Checklist aprovado sem revisão documental e pronto para publicação.'
+          : 'Checklist enviado para assinatura técnica. A publicação seguirá a política documental escolhida.',
+      )
     } catch (cause) {
       handleFailure(cause, 'Não foi possível enviar o checklist para validação.')
     } finally {
@@ -847,7 +851,7 @@ export function AdminChecklistBuilder({
               </section>
 
               <footer className="admin-checklist-actions">
-                <span><CheckIcon /><small>Salvar mantém o modelo em rascunho. A assinatura técnica libera esta versão.</small></span>
+                <span><CheckIcon /><small>Salvar mantém o modelo em rascunho. A política documental define se haverá revisão antes da publicação.</small></span>
                 {canEdit ? <div><button type="button" disabled={saving || sending} onClick={() => void saveModel()}>{saving ? 'Salvando…' : 'Salvar rascunho'}</button><button className="primary-button" type="button" disabled={saving || sending} onClick={() => { setError(''); setRoutingOpen(true) }}>Enviar para validação</button></div> : canCreateRevision ? <div><button className="primary-button" type="button" disabled={libraryBusy} onClick={() => void createRevision(plan.id)}>{libraryBusy ? 'Criando revisão…' : 'Criar nova revisão'}</button></div> : null}
               </footer>
             </>
@@ -866,25 +870,25 @@ export function AdminChecklistBuilder({
           <section role="dialog" aria-modal="true" aria-labelledby="checklist-routing-title">
             <header>
               <div>
-                <span className="eyebrow">ENVIO PARA VALIDAÇÃO</span>
-                <h2 id="checklist-routing-title">Definir filtro técnico</h2>
+                <span className="eyebrow">POLÍTICA DOCUMENTAL</span>
+                <h2 id="checklist-routing-title">Definir publicação do checklist</h2>
               </div>
               <button type="button" disabled={sending} aria-label="Fechar" onClick={() => setRoutingOpen(false)}>×</button>
             </header>
             <div className="admin-checklist-routing">
-              <header><ShieldIcon /><span><strong>Filtro de assinatura</strong><small>Somente os validadores escolhidos poderão aprovar esta versão.</small></span></header>
+              <header><ShieldIcon /><span><strong>Regra de publicação</strong><small>Escolha revisão somente quando houver uma obrigação aplicável ao documento.</small></span></header>
               {error ? <div className="dashboard-error" role="alert"><strong>Revise o envio.</strong><span>{error}</span></div> : null}
               <div>
                 <ValidationPolicySelector value={routing} users={users} roles={roles} onChange={setRouting} />
                 <label><span>Separar criador e aprovador</span><select value={routing.exige_segregacao} onChange={(event) => setRouting((current) => ({ ...current, exige_segregacao: event.target.value }))}>{YES_NO.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-                <label className="is-wide"><span>Orientação ao Gestor *</span><textarea rows={3} value={routing.comentario} onChange={(event) => setRouting((current) => ({ ...current, comentario: event.target.value }))} placeholder="Explique o risco, o objetivo e os pontos que precisam ser validados." /></label>
+                {routing.politica_assinatura !== 'NONE' ? <label className="is-wide"><span>Orientação ao Gestor *</span><textarea rows={3} value={routing.comentario} onChange={(event) => setRouting((current) => ({ ...current, comentario: event.target.value }))} placeholder="Explique o risco, o objetivo e os pontos que precisam ser validados." /></label> : null}
               </div>
             </div>
             <footer>
-              <span>O checklist permanece inativo até a decisão técnica do Gestor.</span>
+              <span>{routing.politica_assinatura === 'NONE' ? 'O checklist será aprovado sem revisão documental e poderá ser publicado.' : 'O checklist permanece em revisão até atender à política documental.'}</span>
               <div>
                 <button type="button" disabled={sending} onClick={() => setRoutingOpen(false)}>Cancelar</button>
-                <button className="primary-button" type="button" disabled={saving || sending} onClick={() => void sendForValidation()}>{sending ? 'Enviando…' : 'Confirmar e enviar'}</button>
+                <button className="primary-button" type="button" disabled={saving || sending} onClick={() => void sendForValidation()}>{sending ? 'Enviando…' : routing.politica_assinatura === 'NONE' ? 'Aprovar sem revisão' : 'Confirmar e enviar'}</button>
               </div>
             </footer>
           </section>

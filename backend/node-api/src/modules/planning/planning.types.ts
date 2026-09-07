@@ -19,6 +19,7 @@ export type ChecklistResponseType =
   | 'INSTRUCAO';
 
 export type SignaturePolicy =
+  | 'NONE'
   | 'QUALIDADE_OU_SEGURANCA'
   | 'QUALIDADE'
   | 'SEGURANCA'

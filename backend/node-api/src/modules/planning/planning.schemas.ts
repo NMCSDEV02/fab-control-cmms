@@ -28,6 +28,7 @@ const lifecycleStatus = Type.Union([
   Type.Literal('ARCHIVED'),
 ]);
 const signaturePolicy = Type.Union([
+  Type.Literal('NONE'),
   Type.Literal('QUALIDADE_OU_SEGURANCA'),
   Type.Literal('QUALIDADE'),
   Type.Literal('SEGURANCA'),
@@ -186,7 +187,7 @@ export const reviewChecklistBodySchema = Type.Object(
 export const submitChecklistConfiguredBodySchema = Type.Object(
   {
     politica_assinatura: signaturePolicy,
-    comentario: Type.String({ minLength: 3, maxLength: 2_000 }),
+    comentario: Type.String({ maxLength: 2_000 }),
     exige_segregacao: Type.Boolean(),
     responsavel_atual_id: Type.Union([Type.Null(), uuid]),
     usuarios_validadores: Type.Array(uuid, { maxItems: 50 }),

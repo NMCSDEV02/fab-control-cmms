@@ -89,12 +89,13 @@ export const correctWorkOrderBodySchema = Type.Object(
 export const submitReviewBodySchema = Type.Object(
   {
     politica_assinatura: Type.Union([
+      Type.Literal('NONE'),
       Type.Literal('QUALIDADE_OU_SEGURANCA'),
       Type.Literal('QUALIDADE'),
       Type.Literal('SEGURANCA'),
       Type.Literal('QUALIDADE_E_SEGURANCA'),
     ]),
-    assinaturas_exigidas: Type.Integer({ minimum: 1, maximum: 2 }),
+    assinaturas_exigidas: Type.Integer({ minimum: 0, maximum: 2 }),
     primeira_resposta_ate: nullableDateTime,
     resolucao_ate: nullableDateTime,
   },

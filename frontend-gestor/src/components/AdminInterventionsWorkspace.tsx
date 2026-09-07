@@ -104,7 +104,7 @@ export function AdminInterventionsWorkspace({
   const [viewing, setViewing] = useState<AdminIntervention | null>(null)
   const [viewingAnalysis, setViewingAnalysis] = useState<AdminTechnicalAnalysis | null>(null)
   const [routeDraft, setRouteDraft] = useState<ValidationRouteDraft>({
-    politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+    politica_assinatura: 'NONE',
     comentario: '',
     exige_segregacao: 'SIM',
     responsavel_atual_id: '',
@@ -329,7 +329,7 @@ export function AdminInterventionsWorkspace({
   function openRouting(intervention: AdminIntervention) {
     setRouting(intervention)
     setRouteDraft({
-      politica_assinatura: 'QUALIDADE_OU_SEGURANCA',
+      politica_assinatura: 'NONE',
       comentario: intervention.descricao,
       exige_segregacao: 'SIM',
       responsavel_atual_id: '',
@@ -363,13 +363,13 @@ export function AdminInterventionsWorkspace({
   async function send() {
     if (!routing) return
     if (
-      routeDraft.comentario.trim().length < 5 ||
+      (routeDraft.politica_assinatura !== 'NONE' && routeDraft.comentario.trim().length < 5) ||
       (
         routeDraft.politica_assinatura === 'PERSONALIZADA' &&
         !routeDraft.responsavel_atual_id
       )
     ) {
-      setError('Defina o validador e informe a orientação para validação.')
+      setError('Defina o validador e informe a orientação quando houver revisão documental.')
       return
     }
     setSending(true)
@@ -378,7 +378,11 @@ export function AdminInterventionsWorkspace({
       await sendAdminInterventionForValidation({ intervencao_id: routing.id, ...routeDraft })
       await loadData()
       setRouting(null)
-      setNotice('Intervenção enviada para assinatura técnica. A ação aparecerá ao Operador após todas as assinaturas exigidas.')
+      setNotice(
+        routeDraft.politica_assinatura === 'NONE'
+          ? 'Intervenção liberada sem revisão documental. A ação já está disponível para a operação.'
+          : 'Intervenção enviada para assinatura técnica. A ação aparecerá ao Operador após as assinaturas exigidas.',
+      )
     } catch (cause) {
       handleFailure(cause, 'Não foi possível enviar a intervenção.')
     } finally {
@@ -542,8 +546,8 @@ export function AdminInterventionsWorkspace({
           allowCustom={false}
         />
         <label><span>Segregar criador e aprovador</span><select value={routeDraft.exige_segregacao} onChange={(event) => setRouteDraft((current) => ({ ...current, exige_segregacao: event.target.value }))}><option value="SIM">Sim</option><option value="NAO">Não</option></select></label>
-        <label style={{ gridColumn: '1 / -1' }}><span>Orientação ao Gestor *</span><textarea rows={4} value={routeDraft.comentario} onChange={(event) => setRouteDraft((current) => ({ ...current, comentario: event.target.value }))} /></label>
-      </div><footer><span>A ação operacional só será criada depois das assinaturas técnicas.</span><div><button type="button" disabled={sending} onClick={() => setRouting(null)}>Cancelar</button><button className="primary-button" type="button" disabled={sending} onClick={() => void send()}>{sending ? 'Enviando…' : 'Enviar para assinatura'}</button></div></footer></section></div> : null}
+        {routeDraft.politica_assinatura !== 'NONE' ? <label style={{ gridColumn: '1 / -1' }}><span>Orientação ao Gestor *</span><textarea rows={4} value={routeDraft.comentario} onChange={(event) => setRouteDraft((current) => ({ ...current, comentario: event.target.value }))} /></label> : null}
+      </div><footer><span>{routeDraft.politica_assinatura === 'NONE' ? 'A ação operacional será liberada imediatamente e ficará auditada.' : 'A ação operacional só será criada depois das assinaturas técnicas.'}</span><div><button type="button" disabled={sending} onClick={() => setRouting(null)}>Cancelar</button><button className="primary-button" type="button" disabled={sending} onClick={() => void send()}>{sending ? 'Enviando…' : routeDraft.politica_assinatura === 'NONE' ? 'Liberar intervenção' : 'Enviar para assinatura'}</button></div></footer></section></div> : null}
 
       {viewingAnalysis ? (
         <div className="admin-catalog-dialog" role="presentation" onMouseDown={(event) => {

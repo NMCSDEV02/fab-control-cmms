@@ -1,4 +1,5 @@
 export type ValidationSignaturePolicy =
+  | 'NONE'
   | 'QUALIDADE_OU_SEGURANCA'
   | 'QUALIDADE'
   | 'SEGURANCA'

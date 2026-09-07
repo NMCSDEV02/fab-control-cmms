@@ -128,11 +128,11 @@ const configurationCatalog: readonly ConfigurationDefinition[] = [
   {
     chave: 'workflow.tecnico.politica_validacao_padrao',
     grupo: 'WORKFLOW',
-    nome: 'Filtro técnico padrão',
-    descricao: 'Define quem valida quando não há política específica.',
+    nome: 'Revisão documental padrão',
+    descricao: 'Define a política quando o documento não possui uma regra específica.',
     tipo: 'ENUM',
-    padrao: 'QUALIDADE_OU_SEGURANCA',
-    opcoes: ['QUALIDADE_OU_SEGURANCA', 'QUALIDADE', 'SEGURANCA', 'QUALIDADE_E_SEGURANCA'],
+    padrao: 'NONE',
+    opcoes: ['NONE', 'QUALIDADE_OU_SEGURANCA', 'QUALIDADE', 'SEGURANCA', 'QUALIDADE_E_SEGURANCA'],
   },
   {
     chave: 'kpi.janela_padrao_dias',

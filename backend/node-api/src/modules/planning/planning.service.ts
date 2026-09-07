@@ -109,7 +109,21 @@ function checklistSignaturePolicy(input: ChecklistInput | ChecklistPatch): {
 function validateSignaturePolicy(input: ChecklistInput | ChecklistPatch): void {
   const { policy, required, areaId } = checklistSignaturePolicy(input);
   if (policy === undefined || required === undefined) return;
-  if (required === 0) return;
+  if (policy === 'NONE') {
+    if (required !== 0) {
+      throw invalid(
+        'CHECKLIST_SIGNATURE_POLICY_INVALID',
+        'A política sem validação exige exatamente zero assinaturas.',
+      );
+    }
+    return;
+  }
+  if (required === 0) {
+    throw invalid(
+      'CHECKLIST_SIGNATURE_POLICY_INVALID',
+      'Uma política de validação exige pelo menos uma assinatura.',
+    );
+  }
 
   const fixedRequirements: Partial<Record<SignaturePolicy, number>> = {
     QUALIDADE: 1,
@@ -249,6 +263,7 @@ function canReviewPolicy(
   context: ValidatorContextRow,
 ): boolean {
   if (!context.can_sign) return false;
+  if (policy === 'NONE') return false;
   if (policy === 'QUALIDADE') return context.area_code === 'QUALITY';
   if (policy === 'SEGURANCA') return context.area_code === 'SAFETY';
   if (policy === 'QUALIDADE_OU_SEGURANCA' || policy === 'QUALIDADE_E_SEGURANCA') {
@@ -262,6 +277,7 @@ function approvalReached(
   required: number,
   progress: ReviewProgressRow,
 ): boolean {
+  if (policy === 'NONE') return true;
   if (policy === 'QUALIDADE') return progress.quality_approved;
   if (policy === 'SEGURANCA') return progress.safety_approved;
   if (policy === 'QUALIDADE_OU_SEGURANCA') {
@@ -839,7 +855,10 @@ export class PlanningService {
     route: ChecklistSubmissionRoute,
     audit: RequestAuditMetadata,
   ) {
-    const guidance = normalizeText(route.managerGuidance);
+    const guidance =
+      route.signaturePolicy === 'NONE'
+        ? normalizeNullableText(route.managerGuidance) ?? 'Sem revisão documental exigida.'
+        : normalizeText(route.managerGuidance);
     const validatorUserIds = [...new Set(route.validatorUserIds.filter(Boolean))];
     if (validatorUserIds.length !== route.validatorUserIds.length) {
       throw invalid(
@@ -851,7 +870,18 @@ export class PlanningService {
       validatorUserIds.push(route.responsibleUserId);
     }
 
+    if (
+      route.signaturePolicy === 'NONE' &&
+      (route.responsibleUserId !== null || validatorUserIds.length > 0)
+    ) {
+      throw invalid(
+        'CHECKLIST_NO_REVIEW_VALIDATORS_FORBIDDEN',
+        'Uma rota sem revisão documental não pode indicar validadores.',
+      );
+    }
+
     const fixedRequirements: Readonly<Partial<Record<SignaturePolicy, number>>> = {
+      NONE: 0,
       QUALIDADE: 1,
       SEGURANCA: 1,
       QUALIDADE_OU_SEGURANCA: 1,
@@ -917,12 +947,8 @@ export class PlanningService {
           validatorUserIds,
         );
         const contentHash = await this.checklistContentHash(client, checklistId, versionId);
-        await this.repository.updateChecklistVersionStatus(
-          client,
-          versionId,
-          'IN_REVIEW',
-          contentHash,
-        );
+        const status = requiredSignatures === 0 ? 'APPROVED' : 'IN_REVIEW';
+        await this.repository.updateChecklistVersionStatus(client, versionId, status, contentHash);
         await this.repository.writeAudit(
           client,
           user.tenantId,
@@ -933,7 +959,7 @@ export class PlanningService {
           versionId,
           version,
           {
-            status: 'IN_REVIEW',
+            status,
             politica_assinatura: route.signaturePolicy,
             assinaturas_exigidas: requiredSignatures,
             responsavel_atual_id: route.responsibleUserId,
@@ -941,15 +967,17 @@ export class PlanningService {
             hash_conteudo: contentHash,
           },
         );
-        await this.notifyChecklistValidation(
-          client,
-          user,
-          checklistId,
-          versionId,
-          contentHash,
-          route.signaturePolicy,
-          guidance,
-        );
+        if (status === 'IN_REVIEW') {
+          await this.notifyChecklistValidation(
+            client,
+            user,
+            checklistId,
+            versionId,
+            contentHash,
+            route.signaturePolicy,
+            guidance,
+          );
+        }
         return this.requiredChecklistDetail(client, checklistId);
       },
     );

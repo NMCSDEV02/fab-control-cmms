@@ -356,7 +356,7 @@ async function seed(pool: Pool): Promise<Identities> {
 }
 
 test(
-  'fluxo operacional: OS, dupla assinatura permanente, liberação, checklist, evidência e conclusão',
+  'fluxo operacional: liberação direta e políticas documentais explícitas, checklist, evidência e conclusão',
   { skip: !integrationEnabled },
   async (context) => {
     assert.ok(databaseUrl);
@@ -862,5 +862,41 @@ test(
       assert.equal(Number(persisted.rows[0]!.readings), 1);
       assert.equal(persisted.rows[0]!.work_order_status, 'COMPLETED');
     });
+
+    const directReleaseDraft = await app.inject({
+      method: 'POST',
+      url: '/v1/maintenance/work-orders',
+      headers: bearer(identities.admin),
+      payload: {
+        plano_versao_id: ids.planVersion,
+        tipo_origem: 'ADMIN',
+        entidade_origem_id: null,
+        tipo_trabalho: 'PREVENTIVE',
+        titulo: 'OS sem revisão documental obrigatória',
+        descricao: 'Atividade normal liberada sem assinatura técnica adicional.',
+        prioridade: 'MEDIUM',
+        responsavel_id: null,
+        programada_para: null,
+        analise_tecnica: { situacao: 'Fluxo operacional normal' },
+      },
+    });
+    assert.equal(directReleaseDraft.statusCode, 200, directReleaseDraft.body);
+    const directReleaseWorkOrderId: string = directReleaseDraft.json().data.id;
+
+    const directReleased = await app.inject({
+      method: 'POST',
+      url: `/v1/maintenance/work-orders/${directReleaseWorkOrderId}/submit-review`,
+      headers: bearer(identities.admin),
+      payload: {
+        politica_assinatura: 'NONE',
+        assinaturas_exigidas: 0,
+        primeira_resposta_ate: null,
+        resolucao_ate: null,
+      },
+    });
+    assert.equal(directReleased.statusCode, 200, directReleased.body);
+    assert.equal(directReleased.json().data.status, 'RELEASED');
+    assert.equal(directReleased.json().data.validacao, null);
+    assert.equal(directReleased.json().data.acoes.length, 1);
   },
 );

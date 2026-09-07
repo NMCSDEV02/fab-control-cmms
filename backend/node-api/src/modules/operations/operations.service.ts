@@ -85,6 +85,7 @@ function codeForWorkOrder(): string {
 }
 
 function eligibleArea(policy: SignaturePolicy, areaCode: string): boolean {
+  if (policy === 'NONE') return false;
   if (policy === 'QUALIDADE') return areaCode === 'QUALITY';
   if (policy === 'SEGURANCA') return areaCode === 'SAFETY';
   return areaCode === 'QUALITY' || areaCode === 'SAFETY';
@@ -471,13 +472,80 @@ export class OperationsService {
             409,
           );
         }
+
+        if (input.signaturePolicy === 'NONE') {
+          const demandId = randomUUID();
+          await this.repository.createNoReviewDemand(
+            client,
+            user.tenantId,
+            demandId,
+            workOrder,
+            user.id,
+            audit.roleSnapshot,
+          );
+          await this.repository.attachDemand(client, workOrderId, demandId);
+          await this.repository.approveDemand(client, demandId, workOrderId);
+          const approvedWorkOrder = await this.repository.findWorkOrder(client, workOrderId, true);
+          if (!approvedWorkOrder) {
+            throw error('WORK_ORDER_NOT_FOUND', 'Ordem de serviço não encontrada.', 404);
+          }
+          const actionId = await this.repository.releaseWorkOrder(client, approvedWorkOrder);
+          await this.repository.appendDemandEvent(
+            client,
+            user.tenantId,
+            demandId,
+            'RELEASED_WITHOUT_REVIEW',
+            user.id,
+            'APPROVED',
+            'NO_REVIEW_POLICY',
+            text(workOrder, 'content_hash_sha256'),
+          );
+          const detail = await this.requiredWorkOrderDetail(client, workOrderId);
+          await this.repository.writeAudit(
+            client,
+            user.tenantId,
+            user.id,
+            audit,
+            'WORK_ORDER_RELEASED_WITHOUT_REVIEW',
+            'WORK_ORDER',
+            workOrderId,
+            {
+              politica_assinatura: input.signaturePolicy,
+              assinaturas_exigidas: input.requiredSignatures,
+              demanda_tecnica_id: demandId,
+              acao_id: actionId,
+              ordem: detail,
+            },
+          );
+          return detail;
+        }
+
         const areas = await this.repository.findTechnicalAreas(client);
         const qualityArea = areas.find((area) => area.code === 'QUALITY');
         const safetyArea = areas.find((area) => area.code === 'SAFETY');
-        if (!qualityArea || !safetyArea) {
+        const requiredAreaCodes =
+          input.signaturePolicy === 'QUALIDADE'
+            ? ['QUALITY']
+            : input.signaturePolicy === 'SEGURANCA'
+              ? ['SAFETY']
+              : input.signaturePolicy === 'QUALIDADE_E_SEGURANCA'
+                ? ['QUALITY', 'SAFETY']
+                : [];
+        const missingAreaCodes = requiredAreaCodes.filter(
+          (areaCode) => !areas.some((area) => area.code === areaCode),
+        );
+        const noOptionalValidatorIsActive =
+          input.signaturePolicy === 'QUALIDADE_OU_SEGURANCA' && !qualityArea && !safetyArea;
+        if (missingAreaCodes.length > 0 || noOptionalValidatorIsActive) {
+          const requiredAreas =
+            input.signaturePolicy === 'QUALIDADE_OU_SEGURANCA'
+              ? 'Ao menos uma das áreas de Qualidade ou Segurança'
+              : missingAreaCodes
+                  .map((areaCode) => (areaCode === 'QUALITY' ? 'Qualidade' : 'Segurança'))
+                  .join(' e ');
           throw error(
             'VALIDATION_AREAS_NOT_CONFIGURED',
-            'As áreas de Qualidade e Segurança devem estar ativas.',
+            `${requiredAreas} deve estar ativa para esta política documental.`,
             409,
           );
         }
@@ -492,6 +560,13 @@ export class OperationsService {
           input,
         );
         if (input.signaturePolicy === 'QUALIDADE') {
+          if (!qualityArea) {
+            throw error(
+              'VALIDATION_AREAS_NOT_CONFIGURED',
+              'A área de Qualidade deve estar ativa para esta política documental.',
+              409,
+            );
+          }
           await this.repository.createRequirement(
             client,
             user.tenantId,
@@ -500,6 +575,13 @@ export class OperationsService {
             qualityArea.id,
           );
         } else if (input.signaturePolicy === 'SEGURANCA') {
+          if (!safetyArea) {
+            throw error(
+              'VALIDATION_AREAS_NOT_CONFIGURED',
+              'A área de Segurança deve estar ativa para esta política documental.',
+              409,
+            );
+          }
           await this.repository.createRequirement(
             client,
             user.tenantId,
@@ -508,6 +590,13 @@ export class OperationsService {
             safetyArea.id,
           );
         } else if (input.signaturePolicy === 'QUALIDADE_E_SEGURANCA') {
+          if (!qualityArea || !safetyArea) {
+            throw error(
+              'VALIDATION_AREAS_NOT_CONFIGURED',
+              'As áreas de Qualidade e Segurança devem estar ativas para esta política documental.',
+              409,
+            );
+          }
           await this.repository.createRequirement(
             client,
             user.tenantId,
@@ -1531,7 +1620,12 @@ export class OperationsService {
   }
 
   private validateSignaturePolicy(input: ReviewSubmissionInput): void {
-    const expected = input.signaturePolicy === 'QUALIDADE_E_SEGURANCA' ? 2 : 1;
+    const expected =
+      input.signaturePolicy === 'NONE'
+        ? 0
+        : input.signaturePolicy === 'QUALIDADE_E_SEGURANCA'
+          ? 2
+          : 1;
     if (input.requiredSignatures !== expected) {
       throw error(
         'SIGNATURE_POLICY_COUNT_MISMATCH',

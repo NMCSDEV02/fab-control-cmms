@@ -246,7 +246,7 @@ export class OperationsRepository {
                work_order.submitted_at AS enviada_validacao_em,
                work_order.released_at AS liberada_em,
                work_order.created_at AS criada_em, work_order.updated_at AS atualizada_em,
-               CASE WHEN demand.id IS NULL THEN NULL ELSE jsonb_build_object(
+               CASE WHEN demand.id IS NULL OR demand.signature_policy = 'NONE' THEN NULL ELSE jsonb_build_object(
                  'id', demand.id, 'status', demand.status,
                  'politica_assinatura', demand.signature_policy,
                  'assinaturas_exigidas', demand.required_signature_count,
@@ -336,6 +336,43 @@ export class OperationsRepository {
         input.signaturePolicy,
         input.firstResponseDueAt,
         input.resolutionDueAt,
+        workOrder.content_hash_sha256,
+      ],
+    );
+  }
+
+  async createNoReviewDemand(
+    client: PoolClient,
+    tenantId: string,
+    demandId: string,
+    workOrder: OperationsRow,
+    userId: string,
+    roleSnapshot: string,
+  ): Promise<void> {
+    await client.query(
+      `
+        INSERT INTO workflow.technical_demands (
+          id, tenant_id, demand_type, entity_type, entity_id, origin_type, origin_id,
+          title, description, priority, status, created_by, creator_role_snapshot,
+          signature_required, required_signature_count, segregation_required,
+          signature_policy, payload_hash_sha256, completed_at
+        ) VALUES (
+          $1, $2, 'WORK_ORDER_VALIDATION', 'WORK_ORDER', $3, $4, $5,
+          $6, $7, $8, 'TECHNICALLY_APPROVED', $9, $10,
+          false, 0, false, 'NONE', $11, clock_timestamp()
+        )
+      `,
+      [
+        demandId,
+        tenantId,
+        workOrder.id,
+        workOrder.origin_type,
+        workOrder.origin_entity_id,
+        workOrder.title,
+        workOrder.description,
+        workOrder.priority,
+        userId,
+        roleSnapshot,
         workOrder.content_hash_sha256,
       ],
     );

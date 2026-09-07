@@ -19,6 +19,11 @@ const OPTIONS: Array<{
   detail: string
 }> = [
   {
+    value: 'NONE',
+    title: 'Sem revisão documental',
+    detail: 'Libera o documento sem assinatura adicional quando não há regra aplicável.',
+  },
+  {
     value: 'QUALIDADE_OU_SEGURANCA',
     title: 'Qualidade ou Segurança',
     detail: 'A primeira assinatura válida conclui o filtro.',
@@ -82,8 +87,10 @@ export function ValidationPolicySelector({
       <header>
         <ShieldIcon />
         <span>
-          <strong>Quem deve assinar?</strong>
-          <small>A assinatura fica registrada nesta versão e não será perdida ao encaminhar.</small>
+          <strong>Política documental</strong>
+          <small>
+            Defina revisão somente quando o documento, a operação ou a política aplicável exigir.
+          </small>
         </span>
       </header>
       <div className="validation-policy-selector__options">
@@ -96,7 +103,13 @@ export function ValidationPolicySelector({
               key={option.value}
               onClick={() => selectPolicy(option.value)}
             >
-              <span>{option.value === 'PERSONALIZADA' ? <UsersIcon /> : <ShieldIcon />}</span>
+              <span>
+                {option.value === 'PERSONALIZADA'
+                  ? <UsersIcon />
+                  : option.value === 'NONE'
+                    ? <CheckIcon />
+                    : <ShieldIcon />}
+              </span>
               <span>
                 <strong>{option.title}</strong>
                 <small>{option.detail}</small>

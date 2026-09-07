@@ -745,8 +745,9 @@ function adminChecklistDetail(data: JsonRecord): JsonRecord {
 
 function checklistAggregateBody(payload: JsonRecord): JsonRecord {
   const plan = record(payload.plano);
-  const policy = String(plan.politica_assinatura ?? "QUALIDADE_OU_SEGURANCA");
+  const policy = String(plan.politica_assinatura ?? "NONE");
   const requiredByPolicy: Readonly<Record<string, number>> = {
+    NONE: 0,
     QUALIDADE: 1,
     SEGURANCA: 1,
     QUALIDADE_OU_SEGURANCA: 1,
@@ -1407,7 +1408,12 @@ function nodeActionRequest(
       };
     }
     case "admin.intervencoes.enviar_validacao": {
-      const required = payload.politica_assinatura === "QUALIDADE_E_SEGURANCA" ? 2 : 1;
+      const required =
+        payload.politica_assinatura === "NONE"
+          ? 0
+          : payload.politica_assinatura === "QUALIDADE_E_SEGURANCA"
+            ? 2
+            : 1;
       return {
         method: "POST",
         path: `/v1/maintenance/work-orders/${encodeURIComponent(String(payload.intervencao_id))}/submit-review`,
