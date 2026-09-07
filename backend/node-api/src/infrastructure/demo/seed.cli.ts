@@ -350,8 +350,8 @@ async function seedIdentities(
 
 async function seedTechnicalProfiles(client: PoolClient, tenantId: string): Promise<void> {
   const areas = [
-    [ids.qualityArea, 'QUALITY', 'Qualidade', true, true],
-    [ids.safetyArea, 'SAFETY', 'Segurança', true, true],
+    [ids.qualityArea, 'QUALITY', 'Qualidade', false, false],
+    [ids.safetyArea, 'SAFETY', 'Segurança', false, false],
     [ids.maintenanceArea, 'MAINTENANCE', 'Manutenção', false, false],
   ] as const;
   for (const [id, code, name, signatureRequired, validationArea] of areas) {

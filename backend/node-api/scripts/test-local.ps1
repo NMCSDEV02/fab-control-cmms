@@ -80,7 +80,7 @@ try {
   $env:APP_ENVIRONMENT = 'DEVELOPMENT'
   $env:APP_RELEASE_VERSION = '1.4.0'
   $env:API_VERSION = '2.0.0'
-  $env:SCHEMA_VERSION = 'postgres-0018'
+  $env:SCHEMA_VERSION = 'postgres-0019'
   $env:CONTRACT_VERSION = '2.0.0'
   $env:FRONTEND_VERSION = '1.4.0'
   $env:AUTH_SESSION_HOURS = '8'
@@ -94,7 +94,7 @@ try {
   $env:AUTH_MAINTENANCE_HMAC_SECRET = 'local-test-maintenance-secret-never-used-in-production'
 
   Write-Host '[2/6] Aplicando migracoes...'
-  & $npm run db:migrate
+  & $npm --prefix $apiDirectory run db:migrate
   if ($LASTEXITCODE -ne 0) {
     throw 'As migracoes da API falharam.'
   }
@@ -182,7 +182,7 @@ GRANT fab_control_runtime TO fab_control_api_local;
   $env:DATABASE_URL = $runtimeUrl
 
   Write-Host '[5/6] Executando testes da API...'
-  & $npm test
+  & $npm --prefix $apiDirectory test
   if ($LASTEXITCODE -ne 0) {
     throw 'Os testes da API falharam.'
   }
@@ -195,7 +195,7 @@ GRANT fab_control_runtime TO fab_control_api_local;
 
   Write-Host '[6/6] Validando seed idempotente em duas execucoes...'
   1..2 | ForEach-Object {
-    & $npm run seed:homologation
+    & $npm --prefix $apiDirectory run seed:homologation
     if ($LASTEXITCODE -ne 0) {
       throw "A carga de homologacao falhou na execucao $_."
     }

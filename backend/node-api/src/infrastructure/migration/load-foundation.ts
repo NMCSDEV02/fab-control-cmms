@@ -248,7 +248,7 @@ export async function loadTechnicalArea(
       text(row.payload, 'nome'),
       text(row.payload, 'descricao', 'Área técnica migrada do ambiente legado.'),
       booleanValue(row.payload.exige_assinatura_padrao, false),
-      ['QUALITY', 'SAFETY'].includes(code),
+      false,
       enumValue(row.payload.status, 'status', activeStatus, 'ACTIVE'),
       referenceId(context, 'usuarios', row.payload.criado_por, 'criado_por', true),
       timestamp(row.payload.criado_em, 'criado_em', context.timeZone),
