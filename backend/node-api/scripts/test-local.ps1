@@ -170,9 +170,14 @@ GRANT fab_control_runtime TO fab_control_api_local;
     throw 'O contrato relacional foi reprovado.'
   }
 
-  $runtimePassword |
-    ConvertTo-SecureString -AsPlainText -Force |
-    Export-Clixml -LiteralPath $RuntimeCredentialStore
+  # Evita depender do módulo Microsoft.PowerShell.Security: o script também
+  # precisa funcionar quando for iniciado pelo PowerShell 7 no Windows.
+  $runtimeSecurePassword = [System.Security.SecureString]::new()
+  foreach ($character in $runtimePassword.ToCharArray()) {
+    $runtimeSecurePassword.AppendChar($character)
+  }
+  $runtimeSecurePassword.MakeReadOnly()
+  Export-Clixml -InputObject $runtimeSecurePassword -LiteralPath $RuntimeCredentialStore
 
   $databaseRecord = Join-Path $credentialDirectory 'last-node-api-test-db.txt'
   Set-Content -LiteralPath $databaseRecord -Value $databaseName -Encoding Ascii
