@@ -793,7 +793,55 @@ BEGIN
 END;
 $$;
 
-CREATE ROLE fab_schema_test_runtime NOLOGIN;
+DO $$
+DECLARE
+  persona_count integer;
+  identity_tables_ready boolean;
+BEGIN
+  SELECT
+    to_regclass('iam.technical_personas') IS NOT NULL
+    AND to_regclass('iam.user_technical_personas') IS NOT NULL
+    AND to_regclass('iam.user_operational_scopes') IS NOT NULL
+  INTO identity_tables_ready;
+
+  IF NOT identity_tables_ready THEN
+    RAISE EXCEPTION 'Fundacao de identidade VORQIX nao foi criada.';
+  END IF;
+
+  SELECT count(*) INTO persona_count
+  FROM iam.technical_personas
+  WHERE code IN (
+    'PCM', 'MECANICA', 'ELETRICA', 'AUTOMACAO',
+    'INSTRUMENTACAO', 'UTILIDADES', 'QUALIDADE', 'SEGURANCA'
+  )
+    AND status = 'ACTIVE';
+
+  IF persona_count <> 8 THEN
+    RAISE EXCEPTION 'Catalogo de personas VORQIX incompleto: % de 8.', persona_count;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM iam.users
+    WHERE account_type NOT IN ('OPERADOR', 'TECNICO_MANUTENCAO', 'COMANDO_INTERNO')
+       OR account_type IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Usuario sem tipo de conta VORQIX valido.';
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname = 'fab_schema_test_runtime'
+  ) THEN
+    CREATE ROLE fab_schema_test_runtime NOLOGIN;
+  END IF;
+END;
+$$;
 GRANT USAGE ON SCHEMA platform TO fab_schema_test_runtime;
 GRANT SELECT ON platform.tenants TO fab_schema_test_runtime;
 GRANT EXECUTE ON FUNCTION platform.current_tenant_id() TO fab_schema_test_runtime;

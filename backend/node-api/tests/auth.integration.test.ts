@@ -73,9 +73,10 @@ async function seedIdentity(pool: Pool, passwordHash: string) {
           employee_number,
           name,
           email,
+          account_type,
           first_access_required
         )
-        VALUES ($1, $2, 'USR-ADMIN-TEST', 'Admin Teste', 'admin.test@fabcontrol.local', true)
+        VALUES ($1, $2, 'USR-ADMIN-TEST', 'Admin Teste', 'admin.test@fabcontrol.local', 'COMANDO_INTERNO', true)
       `,
       [userId, tenantId],
     );
@@ -171,6 +172,7 @@ test(
     assert.equal(completed.json().data.authenticated, true);
     assert.match(completed.json().data.access_token, /^fcs_/u);
     assert.equal(completed.json().data.user.perfil, 'ADMIN');
+    assert.equal(completed.json().data.user.tipo_conta, 'COMANDO_INTERNO');
     const accessToken: string = completed.json().data.access_token;
 
     const session = await app.inject({
@@ -182,6 +184,7 @@ test(
     assert.equal(session.json().data.user.id, identity.userId);
     assert.deepEqual(session.json().data.user.papeis, ['ADMIN']);
     assert.equal(session.json().data.user.capacidades.length, 1);
+    assert.deepEqual(session.json().data.user.personas, []);
 
     const maintenanceCode = 'MAINTENANCE-CODE-2026';
     const maintenanceWindowId = randomUUID();

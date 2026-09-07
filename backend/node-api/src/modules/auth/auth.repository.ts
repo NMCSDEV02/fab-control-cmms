@@ -112,6 +112,20 @@ interface CapabilityRow extends QueryResultRow {
 interface AssignmentRow extends QueryResultRow {
   technical_area_id: string;
   technical_role_id: string | null;
+  specialty_code: string | null;
+}
+
+interface AccountTypeRow extends QueryResultRow {
+  account_type: AuthenticatedUser['accountType'];
+}
+
+interface PersonaRow extends QueryResultRow {
+  code: string;
+}
+
+interface ScopeRow extends QueryResultRow {
+  scope_type: string;
+  scope_id: string;
 }
 
 function mapCredential(row: CredentialRow): CredentialRecord {
@@ -259,6 +273,10 @@ export class AuthRepository {
   }
 
   async resolveUser(client: PoolClient, session: SessionRecord): Promise<AuthenticatedUser> {
+    const accountTypeResult = await client.query<AccountTypeRow>(
+      `SELECT account_type FROM iam.users WHERE tenant_id = $1 AND id = $2`,
+      [session.tenantId, session.userId],
+    );
     const rolesResult = await client.query<RoleRow>(
       `
           SELECT role.code, role.role_type
@@ -322,20 +340,54 @@ export class AuthRepository {
     );
     const assignmentResult = await client.query<AssignmentRow>(
       `
-          SELECT technical_area_id, technical_role_id
-          FROM iam.user_technical_assignments
-          WHERE tenant_id = $1
-            AND user_id = $2
-            AND status = 'ACTIVE'
-            AND valid_from <= clock_timestamp()
-            AND (valid_until IS NULL OR valid_until > clock_timestamp())
-          ORDER BY is_primary DESC, created_at
-          LIMIT 1
+          SELECT assignment.technical_area_id, assignment.technical_role_id, technical_role.code AS specialty_code
+          FROM iam.user_technical_assignments assignment
+          LEFT JOIN iam.technical_roles technical_role
+            ON technical_role.tenant_id = assignment.tenant_id
+           AND technical_role.id = assignment.technical_role_id
+          WHERE assignment.tenant_id = $1
+            AND assignment.user_id = $2
+            AND assignment.status = 'ACTIVE'
+            AND assignment.valid_from <= clock_timestamp()
+            AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
+          ORDER BY assignment.is_primary DESC, assignment.created_at
         `,
       [session.tenantId, session.userId],
     );
 
+    const personasResult = await client.query<PersonaRow>(
+      `
+        SELECT persona.code
+        FROM iam.user_technical_personas assignment
+        JOIN iam.technical_personas persona ON persona.id = assignment.persona_id
+        WHERE assignment.tenant_id = $1
+          AND assignment.user_id = $2
+          AND assignment.status = 'ACTIVE'
+          AND assignment.valid_from <= clock_timestamp()
+          AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
+          AND persona.status = 'ACTIVE'
+        ORDER BY persona.code
+      `,
+      [session.tenantId, session.userId],
+    );
+    const scopesResult = await client.query<ScopeRow>(
+      `
+        SELECT scope_type, scope_id
+        FROM iam.user_operational_scopes
+        WHERE tenant_id = $1
+          AND user_id = $2
+          AND valid_from <= clock_timestamp()
+          AND (valid_until IS NULL OR valid_until > clock_timestamp())
+        ORDER BY scope_type, scope_id
+      `,
+      [session.tenantId, session.userId],
+    );
+
     const assignment = assignmentResult.rows[0];
+    const accountType = accountTypeResult.rows[0]?.account_type;
+    if (!accountType) {
+      throw new Error('Conta sem tipo operacional configurado.');
+    }
     return {
       id: session.userId,
       tenantId: session.tenantId,
@@ -343,10 +395,16 @@ export class AuthRepository {
       name: session.name,
       email: session.email,
       profile: profileFromRoles(rolesResult.rows),
+      accountType,
       areaId: assignment?.technical_area_id ?? null,
       technicalRoleId: assignment?.technical_role_id ?? null,
       roles: rolesResult.rows.map((role) => role.code),
       capabilities: capabilitiesResult.rows.map((capability) => capability.code),
+      personas: personasResult.rows.map((persona) => persona.code),
+      specialties: assignmentResult.rows
+        .map((technicalAssignment) => technicalAssignment.specialty_code)
+        .filter((code): code is string => Boolean(code)),
+      scopes: scopesResult.rows.map((scope) => ({ type: scope.scope_type, id: scope.scope_id })),
     };
   }
 

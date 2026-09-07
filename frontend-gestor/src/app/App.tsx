@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { PRODUCT_NAME } from '../brand'
 import {
   AppNavigation,
   type GestorSection,
@@ -41,7 +42,7 @@ import type {
   GestorTechnicalContext,
   GestorWorkView,
 } from '../types/gestor'
-import { isAdministrator } from '../portal'
+import { isAdministrator, isInternalCommand, isPcmIdentity } from '../portal'
 
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
@@ -61,7 +62,8 @@ export function App() {
   const [workspaceReady, setWorkspaceReady] = useState(hasCompletedStartup)
   const [technicalContext, setTechnicalContext] =
     useState<GestorTechnicalContext | null>(null)
-  const isAdmin = session ? isAdministrator(session.user) : false
+  const isAdmin = session ? isAdministrator(session.user) || isInternalCommand(session.user) : false
+  const isPcm = session ? isPcmIdentity(session.user) : false
   const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
   const compactDevice = useAdaptiveDevice()
 
@@ -271,7 +273,7 @@ export function App() {
     )
   }
 
-  if (isAdmin) {
+  if (isAdmin || isPcm) {
     return (
       <AdminWorkspace
         session={session}
@@ -290,7 +292,7 @@ export function App() {
         <header className="topbar">
         <div className="topbar__identity topbar__identity--manager">
           <div>
-            <strong>Fab Control</strong>
+            <strong>{PRODUCT_NAME}</strong>
             <span>
               {technicalContext?.pode_validar
                 ? `Validação técnica · ${technicalContext.identidade.area_nome || 'Qualidade e segurança'}`
@@ -307,7 +309,7 @@ export function App() {
 
           <div className="user-badge">
             <strong>{session.user.nome}</strong>
-            <span>{session.user.perfil}</span>
+            <span>{session.user.personas?.includes('PCM') ? 'PCM' : session.user.perfil}</span>
           </div>
 
           <button

@@ -10,8 +10,11 @@ export interface PortalPresentation {
 
 export interface PortalIdentity {
   perfil: string
+  tipo_conta?: 'OPERADOR' | 'TECNICO_MANUTENCAO' | 'COMANDO_INTERNO'
   papeis?: string[]
   capacidades?: string[]
+  personas?: string[]
+  especialidades?: string[]
   area_id?: string | null
   cargo_tecnico_id?: string | null
   escopo_ids?: string[]
@@ -28,7 +31,20 @@ export function isAdministrator(identity: PortalIdentity | string): boolean {
   return identityRoles(identity).includes('ADMIN')
 }
 
+export function isInternalCommand(identity: PortalIdentity | string): boolean {
+  return typeof identity !== 'string' && identity.tipo_conta === 'COMANDO_INTERNO'
+}
+
+export function isPcmIdentity(identity: PortalIdentity | string): boolean {
+  if (typeof identity === 'string') return false
+  return identity.tipo_conta === 'TECNICO_MANUTENCAO' &&
+    (identity.personas ?? []).some((persona) => persona.trim().toUpperCase() === 'PCM')
+}
+
 export function isGestorIdentity(identity: PortalIdentity | string): boolean {
+  if (typeof identity !== 'string' && identity.tipo_conta !== undefined) {
+    return identity.tipo_conta === 'TECNICO_MANUTENCAO' || identity.tipo_conta === 'COMANDO_INTERNO'
+  }
   const roles = identityRoles(identity)
   return roles.includes('GESTOR') || roles.includes('GESTOR_TECNICO') || isAdministrator(identity)
 }
@@ -47,35 +63,37 @@ export const PORTAL_PROFILE = readPortalProfile()
 
 export function portalAllowsProfile(identity: PortalIdentity | string): boolean {
   if (PORTAL_PROFILE === 'SHARED') return isGestorIdentity(identity)
-  return PORTAL_PROFILE === 'ADMIN' ? isAdministrator(identity) : isGestorIdentity(identity) && !isAdministrator(identity)
+  return PORTAL_PROFILE === 'ADMIN'
+    ? isInternalCommand(identity) || isAdministrator(identity)
+    : isGestorIdentity(identity) && !isInternalCommand(identity) && !isAdministrator(identity)
 }
 
 export function getPortalPresentation(): PortalPresentation {
   if (PORTAL_PROFILE === 'ADMIN') {
     return {
       profile: 'ADMIN',
-      eyebrow: 'FAB CONTROL · ADMINISTRAÇÃO',
-      title: 'Acesso do Administrador',
-      intro: 'Configuração, governança, cadastros e controle integral do ambiente industrial.',
-      exclusiveProfileLabel: 'Administrador',
+      eyebrow: 'VORQIX · COMANDO INTERNO',
+      title: 'Acesso ao Comando Interno',
+      intro: 'Continuidade, versões, governança protegida e suporte técnico da plataforma.',
+      exclusiveProfileLabel: 'Comando Interno',
     }
   }
 
   if (PORTAL_PROFILE === 'GESTOR') {
     return {
       profile: 'GESTOR',
-      eyebrow: 'FAB CONTROL · GESTÃO',
-      title: 'Acesso do Gestor',
-      intro: 'Supervisão técnica, decisões, indicadores e liberação do trabalho operacional.',
-      exclusiveProfileLabel: 'Gestor',
+      eyebrow: 'VORQIX · PCM',
+      title: 'Acesso técnico operacional',
+      intro: 'Planejamento, controle de manutenção, decisões, indicadores e fila técnica.',
+      exclusiveProfileLabel: 'Técnico de manutenção',
     }
   }
 
   return {
     profile: 'SHARED',
-    eyebrow: 'FAB CONTROL',
-    title: 'Acesso de Gestão',
-    intro: 'Supervisão técnica e administração do ambiente industrial.',
-    exclusiveProfileLabel: 'Gestor ou Administrador',
+    eyebrow: 'VORQIX',
+    title: 'Acesso técnico',
+    intro: 'Planejamento e execução de manutenção dentro do escopo autorizado.',
+    exclusiveProfileLabel: 'Técnico de manutenção',
   }
 }

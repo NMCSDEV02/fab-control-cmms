@@ -7,10 +7,14 @@ export interface AuthenticatedUser {
   readonly name: string;
   readonly email: string | null;
   readonly profile: 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'SISTEMA';
+  readonly accountType: 'OPERADOR' | 'TECNICO_MANUTENCAO' | 'COMANDO_INTERNO';
   readonly areaId: string | null;
   readonly technicalRoleId: string | null;
   readonly roles: readonly string[];
   readonly capabilities: readonly string[];
+  readonly personas: readonly string[];
+  readonly specialties: readonly string[];
+  readonly scopes: readonly { readonly type: string; readonly id: string }[];
 }
 
 export interface AuthContext {

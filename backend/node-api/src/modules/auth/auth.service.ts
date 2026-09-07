@@ -802,10 +802,14 @@ export class AuthService {
       nome: user.name,
       email: user.email,
       perfil: user.profile,
+      tipo_conta: user.accountType,
       area_id: user.areaId,
       cargo_tecnico_id: user.technicalRoleId,
       papeis: user.roles,
       capacidades: user.capabilities,
+      personas: user.personas,
+      especialidades: user.specialties,
+      escopos: user.scopes,
     };
   }
 

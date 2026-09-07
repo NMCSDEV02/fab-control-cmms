@@ -7,11 +7,15 @@ export interface AuthenticatedGestor {
   email: string
   matricula: string
   perfil: string
+  tipo_conta?: 'OPERADOR' | 'TECNICO_MANUTENCAO' | 'COMANDO_INTERNO'
   papeis?: string[]
   capacidades?: string[]
+  personas?: string[]
+  especialidades?: string[]
   area_id?: string | null
   cargo_tecnico_id?: string | null
   escopo_ids?: string[]
+  escopos?: Array<{ type: string; id: string }>
 }
 
 export interface GestorSession {
@@ -95,11 +99,16 @@ export async function loginGestor(
 
   const profiles = [response.data.usuario.perfil, ...(response.data.usuario.papeis ?? [])]
     .map((profile) => profile.trim().toUpperCase())
-  if (!profiles.some((profile) => ['GESTOR', 'GESTOR_TECNICO', 'ADMIN'].includes(profile))) {
+  const canUseManagementPortal =
+    response.data.usuario.tipo_conta === 'TECNICO_MANUTENCAO' ||
+    response.data.usuario.tipo_conta === 'COMANDO_INTERNO' ||
+    (response.data.usuario.tipo_conta === undefined &&
+      profiles.some((profile) => ['GESTOR', 'GESTOR_TECNICO', 'ADMIN'].includes(profile)))
+  if (!canUseManagementPortal) {
     throw new ApiRequestError(
       'Este aplicativo permite acesso apenas aos perfis GESTOR ou ADMIN.',
       'ROLE_NOT_ALLOWED',
-      { received: profile },
+      { received: profiles },
     )
   }
 

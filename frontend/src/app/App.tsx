@@ -107,6 +107,14 @@ function clearActiveExecutionContext(): void {
   }
 }
 
+function isMissingActionError(cause: unknown): boolean {
+  if (!(cause instanceof ApiRequestError)) return false
+  if (cause.code === 'ACTION_NOT_FOUND' || cause.code === 'OPERATOR_ACTION_NOT_FOUND') return true
+  const details = cause.details
+  return typeof details === 'object' && details !== null &&
+    'status' in details && (details as { status?: unknown }).status === 404
+}
+
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 }
@@ -483,6 +491,20 @@ export function App() {
       })
     } catch (cause) {
       if (!isCurrentRequest()) return
+      if (isMissingActionError(cause)) {
+        clearActiveExecutionContext()
+        selectedActionIdRef.current = ''
+        detailRequestRef.current += 1
+        setSelectedActionId('')
+        setVisibleActionDetail(null)
+        setActiveStop(null)
+        setDetailError('')
+        setOperationError('')
+        setView('navigation')
+        setSection('home')
+        notify('A atividade anterior não está mais disponível. Sua fila foi atualizada.')
+        return
+      }
       const message = cause instanceof Error ? cause.message : 'Falha ao abrir a ação.'
       if (!cached && !hadVisibleDetail && !options.background) {
         setDetailError(message)

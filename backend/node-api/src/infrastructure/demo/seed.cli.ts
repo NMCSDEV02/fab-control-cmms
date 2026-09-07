@@ -91,11 +91,11 @@ async function seedIdentities(
   passwordService: PasswordService,
 ): Promise<void> {
   const users = [
-    [ids.admin, 'USR-ADMIN-DEMO', 'Administrador de Homologação', 'admin.demo@fabcontrol.local'],
-    [ids.quality, 'USR-QUAL-DEMO', 'Especialista de Qualidade', 'qualidade.demo@fabcontrol.local'],
-    [ids.safety, 'USR-SEG-DEMO', 'Especialista de Segurança', 'seguranca.demo@fabcontrol.local'],
-    [ids.maintenance, 'USR-MAN-DEMO', 'Técnico de Manutenção', 'manutencao.demo@fabcontrol.local'],
-    [ids.operator, 'USR-OPE-DEMO', 'Operador de Homologação', 'operador.demo@fabcontrol.local'],
+    [ids.admin, 'USR-ADMIN-DEMO', 'Comando Interno de Homologação', 'admin.demo@fabcontrol.local', 'COMANDO_INTERNO'],
+    [ids.quality, 'USR-QUAL-DEMO', 'Especialista de Qualidade', 'qualidade.demo@fabcontrol.local', 'TECNICO_MANUTENCAO'],
+    [ids.safety, 'USR-SEG-DEMO', 'Especialista de Segurança', 'seguranca.demo@fabcontrol.local', 'TECNICO_MANUTENCAO'],
+    [ids.maintenance, 'USR-MAN-DEMO', 'PCM de Homologação', 'manutencao.demo@fabcontrol.local', 'TECNICO_MANUTENCAO'],
+    [ids.operator, 'USR-OPE-DEMO', 'Operador de Homologação', 'operador.demo@fabcontrol.local', 'OPERADOR'],
   ] as const;
   const roles = [
     [ids.adminRole, 'ADMIN', 'Administrador', 'ADMIN'],
@@ -117,22 +117,23 @@ async function seedIdentities(
     );
   }
 
-  for (const [id, employeeNumber, name, email] of users) {
+  for (const [id, employeeNumber, name, email, accountType] of users) {
     await client.query(
       `
         INSERT INTO iam.users (
-          id, tenant_id, employee_number, name, email, first_access_required, metadata
+          id, tenant_id, employee_number, name, email, account_type, first_access_required, metadata
         )
-        VALUES ($1, $2, $3, $4, $5, false, '{"demo":true}'::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6, false, '{"demo":true}'::jsonb)
         ON CONFLICT (tenant_id, employee_number) DO UPDATE
         SET
           name = EXCLUDED.name,
           email = EXCLUDED.email,
           status = 'ACTIVE',
+          account_type = EXCLUDED.account_type,
           first_access_required = false,
           metadata = EXCLUDED.metadata
       `,
-      [id, tenantId, employeeNumber, name, email],
+      [id, tenantId, employeeNumber, name, email, accountType],
     );
   }
 
@@ -151,6 +152,28 @@ async function seedIdentities(
         ON CONFLICT (tenant_id, user_id, role_id) DO NOTHING
       `,
       [tenantId, userId, roleId],
+    );
+  }
+
+  const personaAssignments = [
+    [ids.quality, 'QUALIDADE'],
+    [ids.safety, 'SEGURANCA'],
+    [ids.maintenance, 'PCM'],
+    [ids.maintenance, 'MECANICA'],
+  ] as const;
+  for (const [userId, personaCode] of personaAssignments) {
+    await client.query(
+      `
+        INSERT INTO iam.user_technical_personas (
+          tenant_id, user_id, persona_id, assigned_by, justification
+        )
+        SELECT $1, $2, persona.id, $3, 'Carga idempotente de homologação VORQIX.'
+        FROM iam.technical_personas persona
+        WHERE persona.code = $4
+        ON CONFLICT (tenant_id, user_id, persona_id) DO UPDATE
+        SET status = 'ACTIVE', valid_until = NULL, justification = EXCLUDED.justification
+      `,
+      [tenantId, userId, ids.admin, personaCode],
     );
   }
 
