@@ -441,7 +441,7 @@ export class OperationsRepository {
   async listTechnicalDemands(
     client: PoolClient,
     userId: string,
-    isAdmin: boolean,
+    hasGlobalCommand: boolean,
     query: TechnicalDemandListQuery,
   ): Promise<readonly OperationsRow[]> {
     const result = await client.query<OperationsRow>(
@@ -509,7 +509,7 @@ export class OperationsRepository {
                  demand.created_at, demand.id
         LIMIT $5
       `,
-      [query.search, query.statuses, isAdmin, userId, query.limit],
+      [query.search, query.statuses, hasGlobalCommand, userId, query.limit],
     );
     return result.rows;
   }
@@ -518,6 +518,7 @@ export class OperationsRepository {
     client: PoolClient,
     demandId: string,
     userId: string,
+    hasGlobalCommand: boolean,
   ): Promise<boolean> {
     const result = await client.query(
       `UPDATE workflow.technical_demands demand
@@ -526,7 +527,9 @@ export class OperationsRepository {
        WHERE demand.id = $1
          AND demand.status IN ('OPEN','TRIAGE','IN_TECHNICAL_REVIEW','AWAITING_SIGNATURE','FORWARDED')
          AND (demand.current_responsible_id IS NULL OR demand.current_responsible_id = $2)
-         AND EXISTS (
+         AND (
+           $3::boolean
+           OR EXISTS (
            SELECT 1
            FROM workflow.demand_validator_requirements requirement
            JOIN iam.user_technical_assignments assignment
@@ -537,8 +540,9 @@ export class OperationsRepository {
             AND (assignment.valid_until IS NULL OR assignment.valid_until > clock_timestamp())
            WHERE requirement.technical_demand_id = demand.id
              AND requirement.status IN ('PENDING','PARTIALLY_FULFILLED')
+           )
          )`,
-      [demandId, userId],
+      [demandId, userId, hasGlobalCommand],
     );
     return (result.rowCount ?? 0) === 1;
   }

@@ -90,6 +90,10 @@ function eligibleArea(policy: SignaturePolicy, areaCode: string): boolean {
   return areaCode === 'QUALITY' || areaCode === 'SAFETY';
 }
 
+function hasPcmCommand(user: AuthenticatedUser): boolean {
+  return user.personas.some((persona) => persona.trim().toUpperCase() === 'PCM');
+}
+
 function normalizedWorkOrder(input: WorkOrderInput): WorkOrderInput {
   return {
     ...input,
@@ -179,7 +183,11 @@ export class OperationsService {
           pode_encaminhar: user.profile !== 'OPERADOR',
           pode_assinar: canSign,
           pode_validar: validationMode || user.profile === 'ADMIN',
-          modo_trabalho: validationMode ? 'VALIDACAO' : 'ACOMPANHAMENTO',
+          modo_trabalho: hasPcmCommand(user)
+            ? 'PCM'
+            : validationMode
+              ? 'VALIDACAO'
+              : 'ACOMPANHAMENTO',
           politicas_assinatura: [
             { codigo: 'QUALIDADE', nome: 'Qualidade', assinaturas: 1 },
             { codigo: 'SEGURANCA', nome: 'SeguranÃ§a', assinaturas: 1 },
@@ -206,7 +214,7 @@ export class OperationsService {
         const demands = await this.repository.listTechnicalDemands(
           client,
           user.id,
-          user.profile === 'ADMIN',
+          user.profile === 'ADMIN' || hasPcmCommand(user),
           query,
         );
         return { total: demands.length, demandas: demands, limite: query.limit };
@@ -222,7 +230,12 @@ export class OperationsService {
     return this.database.withTransaction(
       { tenantId: user.tenantId, userId: user.id },
       async (client) => {
-        const assumed = await this.repository.assumeTechnicalDemand(client, demandId, user.id);
+        const assumed = await this.repository.assumeTechnicalDemand(
+          client,
+          demandId,
+          user.id,
+          user.profile === 'ADMIN' || hasPcmCommand(user),
+        );
         if (!assumed) {
           const demand = await this.repository.findDemand(client, demandId);
           if (!demand) throw error('TECHNICAL_DEMAND_NOT_FOUND', 'Demanda nÃ£o encontrada.', 404);
@@ -230,7 +243,7 @@ export class OperationsService {
             const visible = await this.repository.listTechnicalDemands(
               client,
               user.id,
-              user.profile === 'ADMIN',
+              user.profile === 'ADMIN' || hasPcmCommand(user),
               { search: '', statuses: [], limit: 300 },
             );
             return {
@@ -258,7 +271,7 @@ export class OperationsService {
         const visible = await this.repository.listTechnicalDemands(
           client,
           user.id,
-          user.profile === 'ADMIN',
+          user.profile === 'ADMIN' || hasPcmCommand(user),
           { search: '', statuses: [], limit: 300 },
         );
         const demand = visible.find((row) => row.id === demandId);
