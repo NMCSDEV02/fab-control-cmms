@@ -221,6 +221,26 @@ async function seedIdentities(
     );
   }
 
+  // PCM administra a operação do cliente, sem receber o Motor protegido do
+  // Comando Interno (`admin.configuration.manage`).
+  for (const capabilityCode of [
+    'admin.identity.read',
+    'admin.identity.manage',
+    'admin.governance.read',
+    'admin.governance.manage',
+  ]) {
+    await client.query(
+      `
+        INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
+        SELECT $1, $2, capability.id, 'ALLOW'
+        FROM iam.capabilities capability
+        WHERE capability.code = $3
+        ON CONFLICT (tenant_id, role_id, capability_id) DO UPDATE SET effect = 'ALLOW'
+      `,
+      [tenantId, ids.managerRole, capabilityCode],
+    );
+  }
+
   await client.query(
     `
       INSERT INTO iam.role_capabilities (tenant_id, role_id, capability_id, effect)
