@@ -42,7 +42,7 @@ import type {
   GestorTechnicalContext,
   GestorWorkView,
 } from '../types/gestor'
-import { isAdministrator, isInternalCommand, isPcmIdentity } from '../portal'
+import { isAdministrator, isInternalCommand } from '../portal'
 
 export function App() {
   const [session, setSession] = useState<GestorSession | null>(readGestorSession)
@@ -63,7 +63,6 @@ export function App() {
   const [technicalContext, setTechnicalContext] =
     useState<GestorTechnicalContext | null>(null)
   const isAdmin = session ? isAdministrator(session.user) || isInternalCommand(session.user) : false
-  const isPcm = session ? isPcmIdentity(session.user) : false
   const isSystem = session?.user.perfil.trim().toUpperCase() === 'SISTEMA'
   const compactDevice = useAdaptiveDevice()
 
@@ -273,7 +272,7 @@ export function App() {
     )
   }
 
-  if (isAdmin || isPcm) {
+  if (isAdmin) {
     return (
       <AdminWorkspace
         session={session}
