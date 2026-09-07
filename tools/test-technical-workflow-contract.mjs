@@ -12,6 +12,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(`Contrato técnico inválido: ${message}`)
 }
 
+function includesQuoted(source, value) {
+  return source.includes(`'${value}'`) || source.includes(`"${value}"`)
+}
+
 function near(actual, expected, tolerance = 0.001) {
   return Math.abs(Number(actual) - Number(expected)) <= tolerance
 }
@@ -19,6 +23,8 @@ function near(actual, expected, tolerance = 0.001) {
 const config = read('backend/apps-script/00_Config.js')
 const router = read('backend/apps-script/03_Http_Auth.js')
 const workflow = read('backend/apps-script/25_Workflow_Tecnico_KPI.js')
+const operationsService = read('backend/node-api/src/modules/operations/operations.service.ts')
+const documentParticipationPolicy = read('database/postgres/migrations/0019_document_participation_policy.sql')
 const adminPermissions = read('backend/apps-script/04_Admin.js')
 const gestorApi = read('frontend-gestor/src/services/api/gestor.ts')
 const decisions = read('frontend-gestor/src/pages/GestorDecisionWorkspace.tsx')
@@ -104,10 +110,16 @@ for (const action of requiredActions.filter((action) => action.startsWith('admin
 }
 
 for (const action of requiredActions.filter((action) => action.startsWith('gestor.') || action === 'cmms.kpis_tecnicos')) {
-  assert(gestorApi.includes(`'${action}'`), `cliente gestor não usa ${action}`)
+  assert(
+    includesQuoted(gestorApi, action),
+    `cliente gestor não usa ${action}`,
+  )
 }
 
-assert(decisions.includes('<h1>Validar</h1>'), 'área de validação não apresenta a ação principal')
+assert(
+  decisions.includes("<h1>{isPcm ? 'Comando de manutenção' : 'Validar'}</h1>"),
+  'área de comando não diferencia PCM de validação documental',
+)
 assert(decisions.includes('PRÓXIMO PASSO'), 'fila não orienta a próxima decisão')
 assert(decisions.includes('<option value="demands">Solicitações') && decisions.includes('<option value="models">Checklists'), 'categorias de documentos não estão organizadas')
 assert(!decisions.includes('<option value="operations">Ocorrências'), 'ocorrências ainda concorrem com documentos na área de assinatura')
@@ -135,17 +147,22 @@ assert(
   'Gestor não consegue abrir as etapas do checklist roteado pelo Administrador',
 )
 assert(
-  workflow.includes('TECH_DEFAULT_VALIDATOR_CODES = ["QUALIDADE","SEGURANCA"]') &&
-    workflow.includes('QUALIDADE_E_SEGURANCA') &&
-    workflow.includes('technicalSignaturesForDemand_') &&
-    workflow.includes('entidade_id:demand.entidade_id') &&
-    workflow.includes('versao_entidade:demand.versao_entidade') &&
-    workflow.includes('payload_hash:demand.payload_hash'),
-  'filtro Qualidade/Segurança ou persistência da assinatura por documento/versão está incompleto',
+  documentParticipationPolicy.includes('default_signature_required = false') &&
+    documentParticipationPolicy.includes('validation_area = false') &&
+    operationsService.includes("input.signaturePolicy === 'QUALIDADE_E_SEGURANCA' ? 2 : 1") &&
+    operationsService.includes("eligibleArea(text(demand, 'signature_policy') as SignaturePolicy, areaCode)") &&
+    operationsService.includes("'TECHNICAL_SIGNATURE_NOT_ALLOWED'"),
+  'participação de Qualidade/Segurança não está condicionada à política do documento',
+)
+assert(
+  operationsService.includes('function hasPcmCommand') &&
+    operationsService.includes("user.profile === 'ADMIN' || hasPcmCommand(user)") &&
+    decisions.includes("isPcm ? 'Comando de manutenção' : 'Validar'"),
+  'PCM não possui comando global de demandas separado da validação documental',
 )
 assert(
   workflow.includes('function gestorDemandaValidar_') &&
-    gestorApi.includes("'gestor.demandas.validar'") &&
+    includesQuoted(gestorApi, 'gestor.demandas.validar') &&
     demandDialog.includes('validateGestorTechnicalDemand'),
   'validação atômica com assinatura não está conectada ao frontend',
 )
@@ -224,8 +241,8 @@ assert(
 assert(gestorApi.includes('getGestorTechnicalKpisForPeriod'), 'cliente não envia período e ativo aos KPIs')
 assert(
   gestorApi.includes('getGestorAssetJourney') &&
-    gestorApi.includes("'gestor.dossie_ativo'") &&
-    !gestorApi.includes("'operador.contexto_qr'"),
+    includesQuoted(gestorApi, 'gestor.dossie_ativo') &&
+    !includesQuoted(gestorApi, 'operador.contexto_qr'),
   'ficha do ativo não usa o dossiê técnico rastreável do Gestor',
 )
 assert(assetJourney.includes('Faixas configuradas') && assetJourney.includes('Últimas alterações') && assetJourney.includes('Histórico'), 'jornada completa do ativo está incompleta')
@@ -300,7 +317,8 @@ assert(gestorApi.includes('getGestorNotifications') && gestorApi.includes('markG
 assert(gestorApp.includes('notification.entidade_tipo') && notifications.includes('NAO_LIDA'), 'notificações não preservam contexto e leitura')
 assert(
   gestorApi.includes("{ limite: 300 }") &&
-    gestorApi.includes("normalizedStatus(item.status) === 'NAO_LIDA'") &&
+    (gestorApi.includes("normalizedStatus(item.status) === 'NAO_LIDA'") ||
+      gestorApi.includes('normalizedStatus(item.status) === "NAO_LIDA"')) &&
     workflow.includes('context_acknowledged:true'),
   'contagem não distingue mensagens não lidas de contextos operacionais já reconhecidos',
 )
@@ -378,13 +396,15 @@ assert(
   analytics.includes('Execuções concluídas') &&
     analytics.includes('Ver auditoria') &&
     gestorApi.includes('getGestorCompletedActions') &&
-    gestorApi.includes("status: 'CONCLUIDA'"),
+    (gestorApi.includes("status: 'CONCLUIDA'") ||
+      gestorApi.includes('status: "CONCLUIDA"')),
   'conclusões do Operador não foram transferidas para o histórico auditável do Gestor',
 )
 assert(
   operatorQueue.includes('status:"PENDENTE,EM_EXECUCAO"') &&
     operatorQueue.includes('incluir_concluidas:false') &&
-    operatorApi.includes("status: 'PENDENTE,EM_EXECUCAO'") &&
+    (operatorApi.includes("status: 'PENDENTE,EM_EXECUCAO'") ||
+      operatorApi.includes('status: "PENDENTE,EM_EXECUCAO"')) &&
     operatorApi.includes('incluir_concluidas: false') &&
     !operatorHome.includes("'CONCLUIDAS'") &&
     operatorApp.includes('remainingActions'),
@@ -395,7 +415,7 @@ assert(
     workflow.includes('function gestorParadaCriarTratamento_') &&
     workflow.includes('TRATAMENTO_PARADA_CRIADO') &&
     notifications.includes('Tratar parada') &&
-    gestorApi.includes("'gestor.paradas.criar_tratamento'"),
+    includesQuoted(gestorApi, 'gestor.paradas.criar_tratamento'),
   'parada técnica aberta não cria uma ocorrência rastreável para tratamento',
 )
 assert(

@@ -4,7 +4,8 @@ param(
   [int]$Port = 55432,
   [string]$DatabaseAdminUser = 'postgres',
   [string]$AdminCredentialStore = (Join-Path $env:LOCALAPPDATA 'FabControl\postgres-dev-credential.xml'),
-  [string]$RuntimeCredentialStore = (Join-Path $env:LOCALAPPDATA 'FabControl\node-api-dev-credential.xml')
+  [string]$RuntimeCredentialStore = (Join-Path $env:LOCALAPPDATA 'FabControl\node-api-dev-credential.xml'),
+  [switch]$PublishHomologation
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,7 +28,7 @@ $apiDirectory = Split-Path -Parent $PSScriptRoot
 $repositoryDirectory = Split-Path -Parent (Split-Path -Parent $apiDirectory)
 $contractFile = Join-Path $repositoryDirectory 'database\postgres\tests\001_schema_contract.sql'
 $databaseName = 'fab_control_node_test_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
-$runtimeUser = 'fab_control_api_local'
+$runtimeUser = 'fab_control_test_' + (Get-Date -Format 'yyyyMMddHHmmss')
 $runtimePasswordBytes = [byte[]]::new(36)
 $randomNumberGenerator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $randomNumberGenerator.GetBytes($runtimePasswordBytes)
@@ -45,6 +46,14 @@ $runtimeUrl = "postgresql://${runtimeUser}:${runtimePasswordEncoded}@${HostName}
 $credentialDirectory = Split-Path -Parent $RuntimeCredentialStore
 if (-not (Test-Path -LiteralPath $credentialDirectory)) {
   New-Item -ItemType Directory -Path $credentialDirectory | Out-Null
+}
+
+if ($PublishHomologation) {
+  $activeApi = Get-NetTCPConnection -State Listen -LocalPort 3333 -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($activeApi) {
+    throw 'Publicação de homologação recusada: encerre a API local da porta 3333 antes de trocar seu role restrito.'
+  }
 }
 
 $env:PGPASSWORD = $adminPassword
@@ -99,15 +108,15 @@ try {
     throw 'As migracoes da API falharam.'
   }
 
-  $createRuntimeRole = @'
+  $createRuntimeRole = (@'
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM pg_catalog.pg_roles
-    WHERE rolname = 'fab_control_api_local'
+    WHERE rolname = '%RUNTIME_USER%'
   ) THEN
-    CREATE ROLE fab_control_api_local
+    CREATE ROLE %RUNTIME_USER%
       LOGIN
       INHERIT
       NOSUPERUSER
@@ -118,7 +127,7 @@ BEGIN
   END IF;
 END;
 $$;
-'@
+'@).Replace('%RUNTIME_USER%', $runtimeUser)
 
   Write-Host '[3/6] Preparando usuario runtime restrito...'
   & $psql `
@@ -137,8 +146,8 @@ $$;
 
   $escapedRuntimePassword = $runtimePassword.Replace("'", "''")
   $runtimeGrantSql = @"
-ALTER ROLE fab_control_api_local PASSWORD '$escapedRuntimePassword';
-GRANT fab_control_runtime TO fab_control_api_local;
+ALTER ROLE $runtimeUser PASSWORD '$escapedRuntimePassword';
+GRANT fab_control_runtime TO $runtimeUser;
 "@
 
   $runtimeGrantSql | & $psql `
@@ -170,18 +179,6 @@ GRANT fab_control_runtime TO fab_control_api_local;
     throw 'O contrato relacional foi reprovado.'
   }
 
-  # Evita depender do módulo Microsoft.PowerShell.Security: o script também
-  # precisa funcionar quando for iniciado pelo PowerShell 7 no Windows.
-  $runtimeSecurePassword = [System.Security.SecureString]::new()
-  foreach ($character in $runtimePassword.ToCharArray()) {
-    $runtimeSecurePassword.AppendChar($character)
-  }
-  $runtimeSecurePassword.MakeReadOnly()
-  Export-Clixml -InputObject $runtimeSecurePassword -LiteralPath $RuntimeCredentialStore
-
-  $databaseRecord = Join-Path $credentialDirectory 'last-node-api-test-db.txt'
-  Set-Content -LiteralPath $databaseRecord -Value $databaseName -Encoding Ascii
-
   $env:TEST_DATABASE_URL = $runtimeUrl
   $env:TEST_MIGRATION_DATABASE_URL = $adminUrl
   $env:DATABASE_URL = $runtimeUrl
@@ -206,9 +203,81 @@ GRANT fab_control_runtime TO fab_control_api_local;
     }
   }
 
+  if ($PublishHomologation) {
+    $publicationUser = 'fab_control_api_local'
+    $publicationCredentialTemporary = Join-Path $credentialDirectory 'node-api-dev-credential.pending.xml'
+    $publicationRecord = Join-Path $credentialDirectory 'last-node-api-test-db.txt'
+    $publicationRecordTemporary = Join-Path $credentialDirectory 'last-node-api-test-db.pending.txt'
+    $publicationCreateRole = @'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname = 'fab_control_api_local'
+  ) THEN
+    CREATE ROLE fab_control_api_local
+      LOGIN
+      INHERIT
+      NOSUPERUSER
+      NOCREATEDB
+      NOCREATEROLE
+      NOREPLICATION
+      NOBYPASSRLS;
+  END IF;
+END;
+$$;
+'@
+    $publicationGrantSql = @"
+ALTER ROLE $publicationUser PASSWORD '$escapedRuntimePassword';
+GRANT fab_control_runtime TO $publicationUser;
+"@
+
+    $runtimeSecurePassword = [System.Security.SecureString]::new()
+    foreach ($character in $runtimePassword.ToCharArray()) {
+      $runtimeSecurePassword.AppendChar($character)
+    }
+    $runtimeSecurePassword.MakeReadOnly()
+    Export-Clixml -InputObject $runtimeSecurePassword -LiteralPath $publicationCredentialTemporary
+    Set-Content -LiteralPath $publicationRecordTemporary -Value $databaseName -Encoding Ascii
+
+    Write-Host '[7/7] Publicando a homologação validada...'
+    & $psql `
+      -X `
+      -q `
+      -h $HostName `
+      -p $Port `
+      -U $DatabaseAdminUser `
+      -d $databaseName `
+      -v ON_ERROR_STOP=1 `
+      -c $publicationCreateRole
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Falha ao preparar o role de homologação publicado.'
+    }
+    $publicationGrantSql | & $psql `
+      -X `
+      -q `
+      -h $HostName `
+      -p $Port `
+      -U $DatabaseAdminUser `
+      -d $databaseName `
+      -v ON_ERROR_STOP=1 `
+      -f -
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Falha ao publicar a senha do role de homologação.'
+    }
+
+    Move-Item -LiteralPath $publicationCredentialTemporary -Destination $RuntimeCredentialStore -Force
+    Move-Item -LiteralPath $publicationRecordTemporary -Destination $publicationRecord -Force
+  }
+
   Write-Host "Validacao Node.js concluida em $databaseName."
   Write-Host 'Testes e carga idempotente de homologacao foram aprovados.'
-  Write-Host 'O banco foi preservado e a senha local foi protegida pelo Windows.'
+  if ($PublishHomologation) {
+    Write-Host 'A homologação validada foi publicada com a credencial local protegida pelo Windows.'
+  } else {
+    Write-Host 'O banco e o role de teste foram isolados; nenhuma credencial da API em execução foi alterada.'
+  }
 }
 finally {
   @(

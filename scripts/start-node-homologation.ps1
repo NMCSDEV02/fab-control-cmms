@@ -15,7 +15,7 @@ $nodeCommand = (Get-Command node.exe -ErrorAction Stop).Source
 
 foreach ($requiredPath in @($databaseRecord, $runtimeCredentialStore)) {
   if (-not (Test-Path -LiteralPath $requiredPath)) {
-    throw "Dependência local não encontrada: $requiredPath. Execute backend/node-api/scripts/test-local.ps1 primeiro."
+    throw "Dependência local não encontrada: $requiredPath. Execute backend/node-api/scripts/test-local.ps1 -PublishHomologation primeiro."
   }
 }
 

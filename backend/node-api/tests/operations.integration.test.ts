@@ -14,10 +14,12 @@ const tenantId = randomUUID();
 
 const ids = {
   admin: randomUUID(),
+  pcm: randomUUID(),
   quality: randomUUID(),
   safety: randomUUID(),
   operator: randomUUID(),
   adminRole: randomUUID(),
+  pcmRole: randomUUID(),
   validatorRole: randomUUID(),
   operatorRole: randomUUID(),
   qualityArea: randomUUID(),
@@ -43,6 +45,7 @@ const ids = {
 
 interface Identities {
   readonly admin: string;
+  readonly pcm: string;
   readonly quality: string;
   readonly safety: string;
   readonly operator: string;
@@ -98,6 +101,7 @@ async function transaction<T>(
 
 async function seed(pool: Pool): Promise<Identities> {
   const admin = token();
+  const pcm = token();
   const quality = token();
   const safety = token();
   const operator = token();
@@ -109,31 +113,35 @@ async function seed(pool: Pool): Promise<Identities> {
     );
     await client.query(
       `INSERT INTO iam.roles (id,tenant_id,code,name,description,role_type,protected) VALUES
-      ($1,$4,'OPS_ADMIN','Administrador','Administra o fluxo.','ADMIN',true),
-      ($2,$4,'OPS_VALIDATOR','Validador','Valida o fluxo.','MANAGER',true),
-      ($3,$4,'OPS_OPERATOR','Operador','Executa o fluxo.','OPERATOR',true)`,
-      [ids.adminRole, ids.validatorRole, ids.operatorRole, tenantId],
+      ($1,$5,'OPS_ADMIN','Administrador','Administra o fluxo.','ADMIN',true),
+      ($2,$5,'OPS_VALIDATOR','Validador','Valida o fluxo.','MANAGER',true),
+      ($3,$5,'OPS_OPERATOR','Operador','Executa o fluxo.','OPERATOR',true),
+      ($4,$5,'OPS_PCM','PCM','Comanda demandas técnicas.','MANAGER',true)`,
+      [ids.adminRole, ids.validatorRole, ids.operatorRole, ids.pcmRole, tenantId],
     );
     await client.query(
-      `INSERT INTO iam.users (id,tenant_id,employee_number,name,email,first_access_required) VALUES
-      ($1,$5,'USR-OPS-ADM','Admin Operações','ops.admin@fabcontrol.local',false),
-      ($2,$5,'USR-OPS-QUA','Qualidade Operações','ops.quality@fabcontrol.local',false),
-      ($3,$5,'USR-OPS-SEG','Segurança Operações','ops.safety@fabcontrol.local',false),
-      ($4,$5,'USR-OPS-OPE','Operador Operações','ops.operator@fabcontrol.local',false)`,
-      [ids.admin, ids.quality, ids.safety, ids.operator, tenantId],
+      `INSERT INTO iam.users (id,tenant_id,employee_number,name,email,first_access_required,account_type) VALUES
+      ($1,$6,'USR-OPS-ADM','Admin Operações','ops.admin@fabcontrol.local',false,'COMANDO_INTERNO'),
+      ($2,$6,'USR-OPS-PCM','PCM Operações','ops.pcm@fabcontrol.local',false,'TECNICO_MANUTENCAO'),
+      ($3,$6,'USR-OPS-QUA','Qualidade Operações','ops.quality@fabcontrol.local',false,'TECNICO_MANUTENCAO'),
+      ($4,$6,'USR-OPS-SEG','Segurança Operações','ops.safety@fabcontrol.local',false,'TECNICO_MANUTENCAO'),
+      ($5,$6,'USR-OPS-OPE','Operador Operações','ops.operator@fabcontrol.local',false,'OPERADOR')`,
+      [ids.admin, ids.pcm, ids.quality, ids.safety, ids.operator, tenantId],
     );
     await client.query(
       `INSERT INTO iam.user_roles (tenant_id,user_id,role_id) VALUES
-      ($1,$2,$6),($1,$3,$7),($1,$4,$7),($1,$5,$8)`,
+      ($1,$2,$7),($1,$3,$10),($1,$4,$8),($1,$5,$8),($1,$6,$9)`,
       [
         tenantId,
         ids.admin,
+        ids.pcm,
         ids.quality,
         ids.safety,
         ids.operator,
         ids.adminRole,
         ids.validatorRole,
         ids.operatorRole,
+        ids.pcmRole,
       ],
     );
     await client.query(
@@ -144,6 +152,21 @@ async function seed(pool: Pool): Promise<Identities> {
         ids.adminRole,
         [
           'maintenance.work-orders.read',
+          'maintenance.work-orders.manage',
+          'maintenance.work-orders.release',
+          'maintenance.executions.read',
+        ],
+      ],
+    );
+    await client.query(
+      `INSERT INTO iam.role_capabilities (tenant_id,role_id,capability_id,effect)
+      SELECT $1,$2,id,'ALLOW' FROM iam.capabilities WHERE code=ANY($3::text[])`,
+      [
+        tenantId,
+        ids.pcmRole,
+        [
+          'maintenance.work-orders.read',
+          'maintenance.work-orders.review',
           'maintenance.work-orders.manage',
           'maintenance.work-orders.release',
           'maintenance.executions.read',
@@ -208,8 +231,17 @@ async function seed(pool: Pool): Promise<Identities> {
         ids.safetyTechnicalRole,
       ],
     );
+    await client.query(
+      `INSERT INTO iam.user_technical_personas
+        (tenant_id,user_id,persona_id,assigned_by,justification)
+      SELECT $1,$2,persona.id,$3,'Comando PCM de testes de integração.'
+      FROM iam.technical_personas persona
+      WHERE persona.code='PCM'`,
+      [tenantId, ids.pcm, ids.admin],
+    );
     for (const [userId, session] of [
       [ids.admin, admin],
+      [ids.pcm, pcm],
       [ids.quality, quality],
       [ids.safety, safety],
       [ids.operator, operator],
@@ -314,7 +346,13 @@ async function seed(pool: Pool): Promise<Identities> {
       [ids.storageObject, tenantId, 'd'.repeat(64), ids.operator],
     );
   });
-  return { admin: admin.raw, quality: quality.raw, safety: safety.raw, operator: operator.raw };
+  return {
+    admin: admin.raw,
+    pcm: pcm.raw,
+    quality: quality.raw,
+    safety: safety.raw,
+    operator: operator.raw,
+  };
 }
 
 test(
@@ -407,7 +445,8 @@ test(
       },
     });
     assert.equal(correctionResubmitted.statusCode, 200, correctionResubmitted.body);
-    assert.notEqual(correctionResubmitted.json().data.validacao.id, previousDemandId);
+    const pcmDemandId: string = correctionResubmitted.json().data.validacao.id;
+    assert.notEqual(pcmDemandId, previousDemandId);
 
     await transaction(pool, async (client) => {
       const history = await client.query(
@@ -419,6 +458,31 @@ test(
       assert.equal(history.rows[0]!.previous_status, 'CHANGES_REQUESTED');
       assert.equal(Number(history.rows[0]!.review_count), 2);
     });
+
+    const pcmTechnicalContext = await app.inject({
+      method: 'GET',
+      url: '/v1/workflow/technical-context',
+      headers: bearer(identities.pcm),
+    });
+    assert.equal(pcmTechnicalContext.statusCode, 200, pcmTechnicalContext.body);
+    assert.equal(pcmTechnicalContext.json().data.modo_trabalho, 'PCM');
+    assert.equal(pcmTechnicalContext.json().data.pode_validar, false);
+
+    const pcmTechnicalQueue = await app.inject({
+      method: 'GET',
+      url: '/v1/workflow/technical-demands?status=AWAITING_SIGNATURE',
+      headers: bearer(identities.pcm),
+    });
+    assert.equal(pcmTechnicalQueue.statusCode, 200, pcmTechnicalQueue.body);
+    assert.match(pcmTechnicalQueue.body, new RegExp(pcmDemandId));
+
+    const pcmAssumedDemand = await app.inject({
+      method: 'POST',
+      url: `/v1/workflow/technical-demands/${pcmDemandId}/assume`,
+      headers: bearer(identities.pcm),
+    });
+    assert.equal(pcmAssumedDemand.statusCode, 200, pcmAssumedDemand.body);
+    assert.equal(pcmAssumedDemand.json().data.demanda.responsavel_atual_id, ids.pcm);
 
     const created = await app.inject({
       method: 'POST',
