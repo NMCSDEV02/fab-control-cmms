@@ -162,6 +162,8 @@ function openActionsForContextFast_(ctx){
 function fastNeedsMotorForContext_(ctx){
   var ativo = ctx.ativo;
   if(!ativo || !ativo.id) return false;
+  if(upper_(ativo.status) === ST.INATIVO) return false;
+  if(ctx.componente && upper_(ctx.componente.status) === ST.INATIVO) return false;
 
   var planos = rows_("planos_manutencao").filter(function(pl){
     return String(pl.ativo_id) === String(ativo.id) &&

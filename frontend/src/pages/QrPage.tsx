@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
 import { ApiRequestError } from '../services/api/client'
 import { QrIcon, ScanIcon } from '../components/Icons'
@@ -21,9 +22,6 @@ import type {
   StartStopResponseData,
 } from '../types/api'
 
-type BarcodeDetectorResult = { rawValue?: string }
-type BarcodeDetectorInstance = { detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]> }
-type BarcodeDetectorConstructor = new (options: { formats: string[] }) => BarcodeDetectorInstance
 type OccurrenceTarget = '' | 'EQUIPAMENTO' | 'COMPONENTE'
 type ParameterTarget = 'EQUIPAMENTO' | 'COMPONENTE'
 type ParameterCode =
@@ -179,8 +177,7 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   )
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const scanTimerRef = useRef<number | null>(null)
+  const scannerControlsRef = useRef<IScannerControls | null>(null)
   const lookupRequestRef = useRef(0)
   const actionCarouselRef = useRef<HTMLDivElement | null>(null)
   const parameters = useMemo(() => context ? latestParameters(context) : [], [context])
@@ -224,6 +221,24 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   const openOccurrences = context?.ocorrencias_abertas ?? []
   const visibleOccurrences = openOccurrences.slice(0, visibleOccurrenceCount)
   const hasMoreOccurrences = visibleOccurrenceCount < openOccurrences.length
+
+  function occurrenceTreatmentLabel(status?: string, treatmentStatus?: string): string {
+    const value = String(treatmentStatus || status || '').trim().toUpperCase()
+    const labels: Record<string, string> = {
+      AGUARDANDO_ANALISE: 'Enviada para análise',
+      EM_ANALISE_TECNICA: 'Em análise técnica',
+      AGUARDANDO_ADMIN: 'Em tratamento pelo Admin',
+      EM_TRATAMENTO_ADMIN: 'Em tratamento pelo Admin',
+      CHECKLIST_EM_PREPARACAO: 'Checklist em preparação',
+      EM_PREPARACAO_CHECKLIST: 'Checklist em preparação',
+      AGUARDANDO_ASSINATURA: 'Aguardando validação',
+      EM_VALIDACAO_TECNICA: 'Aguardando validação',
+      LIBERADA_OPERACAO: 'Ação liberada',
+      EM_EXECUCAO: 'Execução em andamento',
+      FINALIZADA: 'Tratamento concluído',
+    }
+    return labels[value] || 'Tratamento registrado'
+  }
   const availableActions = useMemo(() => {
     const candidates = context?.acoes_pendentes?.length
       ? context.acoes_pendentes
@@ -354,10 +369,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
   }
 
   function stopCamera(updateState = true) {
-    if (scanTimerRef.current !== null) window.clearTimeout(scanTimerRef.current)
-    scanTimerRef.current = null
-    streamRef.current?.getTracks().forEach((track) => track.stop())
-    streamRef.current = null
+    scannerControlsRef.current?.stop()
+    scannerControlsRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
     if (updateState) setCameraActive(false)
   }
@@ -369,43 +382,33 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
     let cancelled = false
 
     const start = async () => {
-      const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector
-      if (!Detector) {
-        setCameraError('Este navegador não possui leitura nativa de QR. Tente novamente ou digite o código.')
-        // O modo manual permanece fechado até o operador solicitar.
-        setManualOpen(false)
+      if (!navigator.mediaDevices?.getUserMedia || !videoRef.current) {
+        setCameraError('Este dispositivo não disponibiliza câmera. Digite o código do ativo para continuar.')
         setCameraActive(false)
         return
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        })
-        if (cancelled) return stream.getTracks().forEach((track) => track.stop())
-        streamRef.current = stream
-        if (!videoRef.current) return
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-        const detector = new Detector({ formats: ['qr_code'] })
-        const scan = async () => {
-          if (cancelled || !videoRef.current) return
-          try {
-            const results = await detector.detect(videoRef.current)
-            const raw = results.find((item) => item.rawValue)?.rawValue?.trim()
-            if (raw) {
-              setQuery(raw)
-              setManualOpen(false)
-              stopCamera()
-              await lookup(raw)
-              return
-            }
-          } catch {
-            // Quadro sem QR é esperado durante a leitura.
-          }
-          scanTimerRef.current = window.setTimeout(() => void scan(), 350)
+        const reader = new BrowserQRCodeReader()
+        const controls = await reader.decodeFromVideoDevice(
+          undefined,
+          videoRef.current,
+          (result) => {
+            const raw = result?.getText().trim()
+            if (!raw || cancelled) return
+            cancelled = true
+            scannerControlsRef.current?.stop()
+            scannerControlsRef.current = null
+            setQuery(raw)
+            setManualOpen(false)
+            setCameraActive(false)
+            void lookup(raw)
+          },
+        )
+        if (cancelled) {
+          controls.stop()
+          return
         }
-        void scan()
+        scannerControlsRef.current = controls
       } catch (cause) {
         setCameraError(cause instanceof Error ? `Não foi possível abrir a câmera: ${cause.message}` : 'Não foi possível abrir a câmera.')
         // Permissão negada ou falha de câmera não deve abrir o teclado automaticamente.
@@ -1136,8 +1139,8 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
         <section className="content-section occurrence-compact">
           <div className="section-heading occurrence-compact__heading">
             <div>
-              <h2>Ocorrências aguardando análise</h2>
-              <p>Registros enviados para gestão e administração.</p>
+              <h2>Ocorrências registradas</h2>
+              <p>Acompanhe o tratamento sem precisar registrar novamente.</p>
             </div>
             <span>{openOccurrences.length}</span>
           </div>
@@ -1157,9 +1160,14 @@ export function QrPage({ onNotify, onOpenAction }: QrPageProps) {
                 <article className="occurrence-compact__card" key={item.id}>
                   <div className="occurrence-compact__top">
                     <strong>{item.titulo}</strong>
-                    <span className={`occurrence-compact__severity occurrence-compact__severity--${String(item.severidade || 'MEDIA').toLowerCase()}`}>
-                      {displayName(item.severidade || 'MEDIA')}
-                    </span>
+                    <div>
+                      <span className="occurrence-compact__treatment">
+                        {occurrenceTreatmentLabel(item.status, item.tratamento_status)}
+                      </span>
+                      <span className={`occurrence-compact__severity occurrence-compact__severity--${String(item.severidade || 'MEDIA').toLowerCase()}`}>
+                        {displayName(item.severidade || 'MEDIA')}
+                      </span>
+                    </div>
                   </div>
 
                   <p className={expanded ? 'occurrence-compact__description is-expanded' : 'occurrence-compact__description'}>

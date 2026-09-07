@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { PRODUCT_OPERATOR_NAME } from '../brand'
 import { APP_RELEASE_VERSION } from '../release'
 import { clearOperatorCache } from '../services/storage/operatorCache'
 
@@ -332,7 +333,7 @@ export function SettingsPage({
           <div className="settings-panel__heading">
             <div>
               <span className="settings-kicker">Aplicativo</span>
-              <h2>FAB Control Operador</h2>
+              <h2>{PRODUCT_OPERATOR_NAME}</h2>
             </div>
             <span className="status-chip status-chip--online">8.5</span>
           </div>

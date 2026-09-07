@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { PRODUCT_NAME } from '../brand'
+import { BrandLogo } from '../components/BrandLogo'
 import { APP_RELEASE_VERSION, isCompatibleRelease } from '../release'
 import { ApiRequestError } from '../services/api/client'
 import { getApiUrl } from '../services/api/config'
@@ -36,7 +38,7 @@ function wait(milliseconds: number): Promise<void> {
 
 function passwordMeetsPreviewRules(password: string): boolean {
   return (
-    password.length >= 8 &&
+    password.length >= 12 &&
     /[a-z]/.test(password) &&
     /[A-Z]/.test(password) &&
     /\d/.test(password)
@@ -71,6 +73,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
   const [recoveryRequestId, setRecoveryRequestId] = useState('')
   const [firstAccessRegistration, setFirstAccessRegistration] = useState('')
   const [firstAccessToken, setFirstAccessToken] = useState('')
+  const [firstAccessCurrentPassword, setFirstAccessCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -180,6 +183,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     setView('login')
     setPassword('')
     setFirstAccessToken('')
+    setFirstAccessCurrentPassword('')
     setNewPassword('')
     setNewPasswordConfirmation('')
     setError('')
@@ -210,6 +214,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
         setFirstAccessRegistration(result.usuario.matricula || normalizedRegistration)
         setFirstAccessToken(result.change_token)
+        setFirstAccessCurrentPassword(password)
         setNewPassword('')
         setNewPasswordConfirmation('')
         setPassword('')
@@ -306,7 +311,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     if (!passwordMeetsPreviewRules(newPassword)) {
       setError(
-        'A nova senha deve ter ao menos 8 caracteres, com letra maiúscula, minúscula e número.',
+        'A nova senha deve ter ao menos 12 caracteres, com letra maiúscula, minúscula e número.',
       )
       return
     }
@@ -323,9 +328,16 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
     setSubmitting(true)
     try {
-      await completeFirstAccess(firstAccessToken, newPassword)
-      setRegistration(firstAccessRegistration)
-      returnToLogin('Nova senha definida. Entre novamente para continuar.')
+      const result = await completeFirstAccess(firstAccessToken, firstAccessCurrentPassword, newPassword)
+      if (!result.token || !result.expira_ms) {
+        throw new ApiRequestError('A API não retornou uma sessão operacional válida após a troca de senha.', 'AUTH_SESSION_INVALID')
+      }
+      onAuthenticated({
+        token: result.token,
+        startedAt: new Date().toISOString(),
+        expiresAt: result.expira_ms,
+        user: result.usuario,
+      })
     } catch (cause) {
       if (
         cause instanceof ApiRequestError &&
@@ -362,9 +374,9 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     return (
       <main className="auth-shell auth-shell--startup">
         <section className="auth-startup" aria-live="polite" aria-busy="true">
-          <span className="auth-brand__mark auth-brand__mark--startup" aria-hidden="true">FC</span>
+          <BrandLogo className="auth-brand__mark auth-brand__mark--startup" decorative />
           <div className="auth-startup__spinner" aria-hidden="true" />
-          <h1>FAB Control</h1>
+          <h1>{PRODUCT_NAME}</h1>
           <p>{startupLabel}</p>
           <div className="auth-startup__progress" aria-hidden="true">
             <span />
@@ -387,10 +399,10 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     <main className="auth-shell">
       <section className="auth-card" aria-labelledby="auth-title">
         <header className="auth-brand">
-          <span className="auth-brand__mark" aria-hidden="true">FC</span>
+          <BrandLogo className="auth-brand__mark" decorative />
           <div>
             <span className="auth-brand__eyebrow">Operação industrial</span>
-            <h1 id="auth-title">FAB Control</h1>
+            <h1 id="auth-title">{PRODUCT_NAME}</h1>
           </div>
         </header>
 
@@ -598,7 +610,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
 
               <div className="auth-password-rules">
                 <strong>Requisitos mínimos</strong>
-                <span>8 caracteres · letra maiúscula · letra minúscula · número</span>
+                <span>12 caracteres · letra maiúscula · letra minúscula · número</span>
               </div>
 
               {error && <p className="auth-feedback auth-feedback--error" role="alert">{error}</p>}

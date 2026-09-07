@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppHeader, type ConnectionState } from '../components/AppHeader'
 import { BottomNavigation, type AppSection } from '../components/BottomNavigation'
+import { ExecutionErrorBoundary } from '../components/ExecutionErrorBoundary'
 import { OperationOverlay } from '../components/OperationOverlay'
 import { ActionDetailPage } from '../pages/ActionDetailPage'
 import { ChecklistExecutionPage } from '../pages/ChecklistExecutionPage'
@@ -104,6 +105,14 @@ function clearActiveExecutionContext(): void {
   } catch {
     // Sem impacto na operação corrente.
   }
+}
+
+function isMissingActionError(cause: unknown): boolean {
+  if (!(cause instanceof ApiRequestError)) return false
+  if (cause.code === 'ACTION_NOT_FOUND' || cause.code === 'OPERATOR_ACTION_NOT_FOUND') return true
+  const details = cause.details
+  return typeof details === 'object' && details !== null &&
+    'status' in details && (details as { status?: unknown }).status === 404
 }
 
 function wait(milliseconds: number): Promise<void> {
@@ -413,14 +422,16 @@ export function App() {
     }
     const interval = window.setInterval(() => {
       if (canRefreshHome()) void refresh({ silent: true })
-    }, 60_000)
+    }, 12_000)
 
     document.addEventListener('visibilitychange', refreshWhenVisible)
     window.addEventListener('focus', refreshOnFocus)
+    window.addEventListener('online', refreshOnFocus)
     return () => {
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
       window.removeEventListener('focus', refreshOnFocus)
+      window.removeEventListener('online', refreshOnFocus)
     }
   }, [refresh])
 
@@ -480,6 +491,20 @@ export function App() {
       })
     } catch (cause) {
       if (!isCurrentRequest()) return
+      if (isMissingActionError(cause)) {
+        clearActiveExecutionContext()
+        selectedActionIdRef.current = ''
+        detailRequestRef.current += 1
+        setSelectedActionId('')
+        setVisibleActionDetail(null)
+        setActiveStop(null)
+        setDetailError('')
+        setOperationError('')
+        setView('navigation')
+        setSection('home')
+        notify('A atividade anterior não está mais disponível. Sua fila foi atualizada.')
+        return
+      }
       const message = cause instanceof Error ? cause.message : 'Falha ao abrir a ação.'
       if (!cached && !hadVisibleDetail && !options.background) {
         setDetailError(message)
@@ -758,6 +783,9 @@ export function App() {
       })
 
       setActiveStop((current) => result.parada_operacional ?? result.parada ?? current)
+      const remainingActions = actionsRef.current.filter((action) => action.id !== actionId)
+      actionsRef.current = remainingActions
+      setActions(remainingActions)
       await removeActionDetailCache(actionId)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha ao finalizar a execução.'
@@ -915,24 +943,71 @@ export function App() {
             />
           ) : view === 'checklist' ? (
             actionDetail ? (
-            <ChecklistExecutionPage
-              detail={actionDetail}
-              evidenceSaving={savingEvidence}
-              finalizing={finalizing}
-              error={operationError}
-              activeStop={activeStop}
-              onBack={() => {
-                setOperationError('')
-                saveActiveExecutionContext(selectedActionIdRef.current, 'action-detail')
-                setView('action-detail')
-              }}
-              onRefresh={refreshCurrentDetail}
-              onSaveProgress={saveChecklistProgress}
-              onRegisterEvidence={saveEvidencePhotos}
-              onFinish={finishOperatorExecution}
-              onReturnHome={returnHomeAfterCompletion}
-            />
-          ) : null
+              <ExecutionErrorBoundary
+                key={`${actionDetail.acao.id}:${actionDetail.execucao?.id || 'pending'}`}
+                onBack={() => {
+                  setOperationError('')
+                  saveActiveExecutionContext(selectedActionIdRef.current, 'action-detail')
+                  setView('action-detail')
+                }}
+                onRetry={refreshCurrentDetail}
+              >
+                <ChecklistExecutionPage
+                  detail={actionDetail}
+                  evidenceSaving={savingEvidence}
+                  finalizing={finalizing}
+                  error={operationError}
+                  activeStop={activeStop}
+                  onBack={() => {
+                    setOperationError('')
+                    saveActiveExecutionContext(selectedActionIdRef.current, 'action-detail')
+                    setView('action-detail')
+                  }}
+                  onRefresh={refreshCurrentDetail}
+                  onSaveProgress={saveChecklistProgress}
+                  onRegisterEvidence={saveEvidencePhotos}
+                  onFinish={finishOperatorExecution}
+                  onReturnHome={returnHomeAfterCompletion}
+                />
+              </ExecutionErrorBoundary>
+            ) : (
+              <section className="screen">
+                <article
+                  className={`state-panel${detailError ? ' state-panel--error' : ''}`}
+                  role={detailError ? 'alert' : 'status'}
+                >
+                  <span className="state-panel__kicker">
+                    {detailError ? 'Execução indisponível' : 'Preparando execução'}
+                  </span>
+                  <h1>
+                    {detailError
+                      ? 'Não foi possível carregar o checklist'
+                      : 'Carregando checklist'}
+                  </h1>
+                  <p>
+                    {detailError
+                      ? detailError
+                      : 'Sincronizando as etapas e respostas já registradas.'}
+                  </p>
+                  {detailError ? (
+                    <div className="detail-error-actions">
+                      <button type="button" className="secondary-button" onClick={closeAction}>
+                        Voltar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void loadActionDetail(
+                          selectedActionIdRef.current,
+                          { forceNetwork: true },
+                        )}
+                      >
+                        Tentar novamente
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+              </section>
+            )
           ) : (
            <>
               {section === 'home' && (

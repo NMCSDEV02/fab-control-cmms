@@ -7,6 +7,15 @@ export interface AuthenticatedOperator {
   email: string
   matricula: string
   perfil: string
+  tipo_conta?: 'OPERADOR' | 'TECNICO_MANUTENCAO' | 'COMANDO_INTERNO'
+  papeis?: string[]
+  capacidades?: string[]
+  personas?: string[]
+  especialidades?: string[]
+  area_id?: string | null
+  cargo_tecnico_id?: string | null
+  escopo_ids?: string[]
+  escopos?: Array<{ type: string; id: string }>
 }
 
 export interface OperatorSession {
@@ -33,10 +42,8 @@ export interface LoginResponseData {
   warmup_action?: string
 }
 
-export interface FirstAccessResponseData {
+export interface FirstAccessResponseData extends Omit<LoginResponseData, 'requires_password_change'> {
   password_changed: boolean
-  usuario: AuthenticatedOperator
-  release_version?: string
 }
 
 export interface RecoveryResponseData {
@@ -76,17 +83,35 @@ export async function loginOperator(
   }
 
   assertReleaseVersion(response.data.release_version)
+  const roles = [response.data.usuario.perfil, ...(response.data.usuario.papeis ?? [])]
+    .map((profile) => profile.trim().toUpperCase())
+  if (response.data.usuario.tipo_conta !== undefined && response.data.usuario.tipo_conta !== 'OPERADOR') {
+    throw new ApiRequestError(
+      'Este aplicativo permite acesso apenas a contas de Operador.',
+      'ROLE_NOT_ALLOWED',
+      { received: response.data.usuario.tipo_conta },
+    )
+  }
+  if (response.data.usuario.tipo_conta === undefined && !roles.includes('OPERADOR')) {
+    throw new ApiRequestError(
+      'Este aplicativo permite acesso apenas ao perfil OPERADOR.',
+      'ROLE_NOT_ALLOWED',
+      { received: roles },
+    )
+  }
   return response.data
 }
 
 export async function completeFirstAccess(
   changeToken: string,
+  currentPassword: string,
   newPassword: string,
 ): Promise<FirstAccessResponseData> {
   const response = await callApi<FirstAccessResponseData>(
     'auth.first_access.complete',
     {
       change_token: changeToken,
+      senha_atual: currentPassword,
       nova_senha: newPassword,
       user_agent: navigator.userAgent,
     },

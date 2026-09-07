@@ -1,12 +1,8 @@
 const API_URL_KEY = 'fab-control.api-url'
-const OPERATOR_TOKEN_SESSION_KEY = 'fab-control.operator-token'
 const LEGACY_OPERATOR_TOKEN_PERSISTENT_KEY = 'fab-control.operator-token-persistent'
+const AUTH_SESSION_KEY = 'fab-control.auth-session'
 
-let inMemoryOperatorToken = ''
-
-function environmentOperatorToken(): string {
-  return (import.meta.env.VITE_OPERATOR_TOKEN as string | undefined)?.trim() ?? ''
-}
+export type ApiTransport = 'auto' | 'node' | 'apps-script'
 
 function readLocalStorage(key: string): string {
   try {
@@ -25,23 +21,6 @@ function writeLocalStorage(key: string, value: string): void {
   }
 }
 
-function readSessionStorage(key: string): string {
-  try {
-    return window.sessionStorage.getItem(key)?.trim() ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function writeSessionStorage(key: string, value: string): void {
-  try {
-    if (value) window.sessionStorage.setItem(key, value)
-    else window.sessionStorage.removeItem(key)
-  } catch {
-    // A sessão pode continuar em memória no componente atual.
-  }
-}
-
 function clearLegacyPersistentToken(): void {
   writeLocalStorage(LEGACY_OPERATOR_TOKEN_PERSISTENT_KEY, '')
 }
@@ -52,27 +31,45 @@ export function getApiUrl(): string {
   return readLocalStorage(API_URL_KEY)
 }
 
+export function getLegacyApiUrl(): string {
+  return (import.meta.env.VITE_APPS_SCRIPT_API_URL as string | undefined)?.trim() ?? ''
+}
+
+export function getApiTransport(): ApiTransport {
+  const value = (import.meta.env.VITE_API_TRANSPORT as string | undefined)?.trim().toLowerCase()
+  return value === 'node' || value === 'apps-script' ? value : 'auto'
+}
+
 export function saveApiUrl(value: string): void {
   writeLocalStorage(API_URL_KEY, value.trim())
 }
 
 export function getOperatorToken(): string {
   clearLegacyPersistentToken()
-  return (
-    readSessionStorage(OPERATOR_TOKEN_SESSION_KEY) ||
-    inMemoryOperatorToken ||
-    environmentOperatorToken()
-  )
+  try {
+    const raw = window.sessionStorage.getItem(AUTH_SESSION_KEY)
+    if (!raw) return ''
+    const value = JSON.parse(raw) as { token?: unknown; expiresAt?: unknown }
+    return typeof value.token === 'string' && Number(value.expiresAt) > Date.now()
+      ? value.token.trim()
+      : ''
+  } catch {
+    return ''
+  }
 }
 
-export function saveOperatorToken(value: string): void {
+/** @deprecated The authenticated session is the sole token authority. */
+export function saveOperatorToken(_value: string): void {
   clearLegacyPersistentToken()
-  inMemoryOperatorToken = value.trim()
-  writeSessionStorage(OPERATOR_TOKEN_SESSION_KEY, inMemoryOperatorToken)
 }
 
 export function clearOperatorToken(): void {
-  saveOperatorToken('')
+  clearLegacyPersistentToken()
+  try {
+    window.sessionStorage.removeItem('fab-control.operator-token')
+  } catch {
+    // A limpeza da sessão continua no chamador.
+  }
 }
 
 export function hasApiConfiguration(): boolean {

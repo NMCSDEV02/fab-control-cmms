@@ -10,11 +10,32 @@ function gestorListarAcoes_(p){
 function enrichGestorAction_(a){
   var atv = find_("ativos","id",a.ativo_id);
   var comp = a.componente_id ? find_("componentes","id",a.componente_id) : null;
+  var responsibleId = clean_(a.responsavel_id || a.executor_id);
+  var responsible = responsibleId ? find_("usuarios","id",responsibleId) : null;
+  var line = atv && atv.linha_id ? find_("linhas","id",atv.linha_id) : null;
+  var sector = line && line.setor_id ? find_("setores","id",line.setor_id) : null;
   var out = strip_(a);
   out.ativo_tag = atv ? atv.tag : "";
   out.ativo_nome = atv ? atv.nome : "";
+  out.ativo_localizacao = atv ? clean_(atv.localizacao_tecnica) : "";
+  out.linha_nome = line ? clean_(line.nome) : "";
+  out.setor_nome = sector ? clean_(sector.nome) : "";
   out.componente_nome = comp ? comp.nome : "";
+  out.responsavel_nome = responsible ? clean_(responsible.nome) : clean_(a.responsavel_nome);
+  out.responsavel_perfil = responsible ? clean_(responsible.perfil) : clean_(a.responsavel_perfil);
   out.locks_ativos = activeLocks_(a.id).length;
+  return out;
+}
+
+function gestorEvidencePublic_(evidence){
+  var out = strip_(evidence);
+  var fileId = clean_(out.arquivo_id);
+  if(!out.url && fileId){
+    out.url = "https://drive.google.com/file/d/"+encodeURIComponent(fileId)+"/view";
+  }
+  if(!out.thumbnail_url && fileId && String(out.mime_type || "").toLowerCase().indexOf("image/") === 0){
+    out.thumbnail_url = "https://drive.google.com/thumbnail?id="+encodeURIComponent(fileId)+"&sz=w800";
+  }
   return out;
 }
 
@@ -29,7 +50,7 @@ function gestorDetalheAcao_(p){
     componente:a.componente_id ? strip_(find_("componentes","id",a.componente_id)) : null,
     execucoes:rows_("execucoes").filter(function(e){ return String(e.acao_id)===String(a.id); }).map(strip_),
     checklist:rows_("checklist_execucao").filter(function(c){ return String(c.acao_id)===String(a.id); }).map(strip_),
-    evidencias:rows_("evidencias").filter(function(e){ return String(e.acao_id)===String(a.id); }).map(strip_),
+    evidencias:rows_("evidencias").filter(function(e){ return String(e.acao_id)===String(a.id); }).map(gestorEvidencePublic_),
     materiais:rows_("materiais_uso").filter(function(m){ return String(m.acao_id)===String(a.id); }).map(strip_),
     locks:activeLocks_(a.id).map(strip_),
     historico:rows_("historico").filter(function(h){ return String(h.acao_id)===String(a.id); }).sort(sortByDateDesc_("criado_em")).slice(0,30).map(strip_)
@@ -39,6 +60,7 @@ function gestorDetalheAcao_(p){
 function gestorValidarAcao_(p){
   req_(p,["acao_id","decisao"]);
   var auth = p.__auth || {};
+  technicalAssertValidationIdentity_(auth);
   var acao = find_("os_acoes","id",p.acao_id);
   if(!acao) err_("ACTION_NOT_FOUND","Ação não encontrada.",404);
 
@@ -65,6 +87,17 @@ function gestorValidarAcao_(p){
   var novo = dec === "APROVAR" ? ST.CONCLUIDA : ST.PENDENTE;
   update_("os_acoes", acao.__rowIndex, {status:novo, atualizado_em:now_()});
   acao.status = novo;
+  if(dec === "APROVAR"){
+    rows_("ocorrencias_operacionais", true).filter(function(occurrence){
+      return String(occurrence.acao_id) === String(acao.id);
+    }).forEach(function(occurrence){
+      update_("ocorrencias_operacionais", occurrence.__rowIndex, {
+        status:ST.FINALIZADA,
+        tratamento_status:"FINALIZADA",
+        atualizado_em:now_()
+      });
+    });
+  }
   refreshPlanoControleStatus_(acao);
   syncOsStatus_(acao.os_id);
   releaseLocksForAction_(acao.id, "VALIDACAO_GESTOR");

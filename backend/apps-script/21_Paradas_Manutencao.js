@@ -24,7 +24,10 @@ function modoParadaAcao115_(acao){
   if(clean_(acao.modo_parada_manutencao)) return direct;
 
   var plano = clean_(acao.plano_id) ? find_("planos_manutencao","id",acao.plano_id) : null;
-  return normalizaModoParadaManutencao115_(plano && plano.modo_parada_manutencao);
+  return normalizaModoParadaManutencao115_(
+    plano && clean_(plano.modo_parada_manutencao) ||
+    configurationRuntimeValue_("manutencao.modo_parada_padrao", "DECISAO_EXECUTOR")
+  );
 }
 
 function normalizaDecisaoParada115_(value){

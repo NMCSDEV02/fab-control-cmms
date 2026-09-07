@@ -313,8 +313,7 @@ function evidenciaMinFotos116_(item){
 }
 
 function evidenciaFotoMaxBytes116_(){
-  var cfg = find_("config", "chave", "evidencia.foto.max_bytes");
-  return Math.max(250000, Math.min(5000000, num_(cfg && cfg.valor, 2500000)));
+  return Math.max(250000, Math.min(5000000, num_(configurationRuntimeValue_("evidencia.foto.max_bytes", 2500000), 2500000)));
 }
 
 function pastaEvidencias116_(){

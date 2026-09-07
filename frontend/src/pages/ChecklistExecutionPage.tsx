@@ -9,6 +9,7 @@ import type {
   RawChecklistItem,
 } from '../types/api'
 import { ActiveStopBanner } from '../components/ActiveStopBanner'
+import { EvidenceFileLink } from '../components/EvidenceFileLink'
 import { prepareEvidencePhoto } from '../services/media/imageEvidence'
 
 interface ChecklistExecutionPageProps {
@@ -63,12 +64,18 @@ const FINAL_OUTCOME_OPTIONS: Array<{
 ]
 
 function typeOf(item: RawChecklistItem): string {
-  return (item.input?.tipo_resposta || item.tipo_resposta || 'TEXTO').toUpperCase()
+  return String(
+    item.input?.tipo_resposta || item.tipo_resposta || 'TEXTO',
+  ).toUpperCase()
 }
 
 function optionsOf(item: RawChecklistItem): string[] {
   const options = item.input?.opcoes?.length ? item.input.opcoes : item.opcoes
-  if (options?.length) return options
+  if (Array.isArray(options) && options.length) {
+    return options
+      .map((option) => String(option ?? '').trim())
+      .filter(Boolean)
+  }
   if (typeOf(item) === 'OK_NOK') return ['OK', 'NOK', 'N/A']
   if (typeOf(item) === 'CONFIRMACAO') return ['SIM']
   return []
@@ -81,8 +88,11 @@ function evidenceMinimum(item: RawChecklistItem): number {
   return typeOf(item) === 'EVIDENCIA' || item.evidencia_obrigatoria ? 1 : 0
 }
 
-function normalizeTechnicalText(value?: string): string {
-  return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+function normalizeTechnicalText(value?: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
 }
 
 function isHourMeterItem(item: RawChecklistItem): boolean {
@@ -103,7 +113,7 @@ function existingAnswer(item: RawChecklistItem): string {
     const raw = item.valor_numero ?? item.resposta ?? ''
     return raw === null || raw === undefined ? '' : String(raw)
   }
-  return item.resposta ?? ''
+  return String(item.resposta ?? '')
 }
 
 function answered(item: RawChecklistItem, draft: DraftAnswer): boolean {
@@ -215,7 +225,7 @@ export function ChecklistExecutionPage({
           : ''
       serverDrafts[item.id] = {
         answer: serverAnswer || automaticHourMeterValue,
-        observation: item.observacao ?? '',
+        observation: String(item.observacao ?? ''),
       }
     }
 
@@ -668,6 +678,7 @@ export function ChecklistExecutionPage({
 
   const currentType = typeOf(current)
   const options = optionsOf(current)
+  const choice = ['OK_NOK', 'CONFIRMACAO', 'SELECAO'].includes(currentType)
   const numeric = ['NUMERO', 'PARAMETRO', 'LEITURA_OPERACIONAL'].includes(currentType)
   const evidenceOnly = currentType === 'EVIDENCIA'
   const instruction = currentType === 'INSTRUCAO'
@@ -684,6 +695,7 @@ export function ChecklistExecutionPage({
   const evidenceCount = current.evidencias_count ?? 0
   const evidenceRemaining = Math.max(0, evidenceMax - evidenceCount)
   const currentJustificationRequired = justificationRequired(current, currentDraft)
+  const currentItemTitleId = `checklist-item-title-${String(current.id || index + 1)}`
 
   return (
     <section className="screen checklist-screen">
@@ -737,20 +749,22 @@ export function ChecklistExecutionPage({
         <div className="checklist-alert">{error || message}</div>
       )}
 
-      <article className="checklist-item-card">
+      <article className="checklist-item-card" aria-labelledby={currentItemTitleId}>
         <div className="checklist-item-card__top">
           <span>Checklist dinâmico</span>
           <em>{current.obrigatorio === false ? 'Opcional' : 'Obrigatório'}</em>
         </div>
-        <h2>{current.titulo}</h2>
+        <h2 id={currentItemTitleId}>{current.titulo}</h2>
         <p>{current.instrucao || 'Registre a condição observada.'}</p>
 
         {numeric && (
           <div className="numeric-answer">
             <input
               type="number"
+              inputMode="decimal"
               step={hourMeter ? '0.1' : 'any'}
               min={hourMeter ? currentHourMeter : undefined}
+              aria-label={`Valor de ${current.titulo}`}
               readOnly={hourMeter && Boolean(detail.horimetro?.automatico)}
               value={currentDraft.answer}
               onChange={(event) => updateDraft({ answer: event.target.value })}
@@ -786,8 +800,8 @@ export function ChecklistExecutionPage({
           </div>
         )}
 
-        {!numeric && !evidenceOnly && !instruction && options.length > 0 && (
-          <div className="answer-options">
+        {choice && options.length > 0 && (
+          <div className="answer-options" role="group" aria-label={`Resposta para ${current.titulo}`}>
             {options.map((option) => (
               <button
                 type="button"
@@ -797,6 +811,7 @@ export function ChecklistExecutionPage({
                     : 'answer-option'
                 }
                 key={option}
+                aria-pressed={currentDraft.answer === option}
                 onClick={() => updateDraft({ answer: option })}
               >
                 {option}
@@ -805,9 +820,16 @@ export function ChecklistExecutionPage({
           </div>
         )}
 
-        {!numeric && !evidenceOnly && !instruction && options.length === 0 && (
+        {choice && options.length === 0 && (
+          <div className="checklist-alert" role="alert">
+            Este item não possui opções configuradas. Solicite a correção do modelo ao responsável.
+          </div>
+        )}
+
+        {!numeric && !evidenceOnly && !instruction && !choice && (
           <textarea
             className="text-answer"
+            aria-label={`Resposta para ${current.titulo}`}
             value={currentDraft.answer}
             onChange={(event) => updateDraft({ answer: event.target.value })}
             placeholder={current.input?.placeholder || 'Digite a resposta'}
@@ -822,6 +844,7 @@ export function ChecklistExecutionPage({
                 ? 'instruction-check instruction-check--done'
                 : 'instruction-check'
             }
+            aria-pressed={Boolean(currentDraft.answer)}
             onClick={() =>
               updateDraft({ answer: currentDraft.answer ? '' : 'LIDO' })
             }
@@ -844,6 +867,7 @@ export function ChecklistExecutionPage({
               {currentEvidenceMode === 'required' ? 'Evidência obrigatória' : 'Evidência opcional'}
             </span>
             <div
+              aria-live="polite"
               className={
                 currentEvidenceMode === 'required'
                   ? evidenceCount >= evidenceMin
@@ -872,19 +896,12 @@ export function ChecklistExecutionPage({
             {(current.evidencias?.length ?? 0) > 0 && (
               <div className="evidence-gallery">
                 {current.evidencias?.map((photo, photoIndex) => (
-                  <a
-                    href={photo.url || '#'}
-                    target="_blank"
-                    rel="noreferrer"
+                  <EvidenceFileLink
+                    evidence={photo}
+                    index={photoIndex}
                     key={photo.id || `${photo.nome_arquivo}-${photoIndex}`}
                     className="evidence-thumbnail"
-                  >
-                    {photo.thumbnail_url ? (
-                      <img src={photo.thumbnail_url} alt={photo.nome_arquivo || `Evidência ${photoIndex + 1}`} />
-                    ) : (
-                      <span>Foto {photoIndex + 1}</span>
-                    )}
-                  </a>
+                  />
                 ))}
               </div>
             )}
