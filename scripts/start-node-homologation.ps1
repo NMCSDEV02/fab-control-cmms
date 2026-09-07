@@ -159,6 +159,44 @@ function Assert-AdminBootstrap {
   }
 }
 
+function Assert-DemoIdentityContract {
+  param(
+    [Parameter(Mandatory)][System.Collections.IDictionary]$Passwords
+  )
+
+  $expectedProfiles = @(
+    @{ Label = 'Administrador'; EmployeeNumber = 'USR-ADMIN-DEMO'; Password = $Passwords.Administrador; AccountType = 'COMANDO_INTERNO'; Personas = @() },
+    @{ Label = 'Qualidade'; EmployeeNumber = 'USR-QUAL-DEMO'; Password = $Passwords.Qualidade; AccountType = 'TECNICO_MANUTENCAO'; Personas = @('QUALIDADE') },
+    @{ Label = 'Seguranca'; EmployeeNumber = 'USR-SEG-DEMO'; Password = $Passwords.Seguranca; AccountType = 'TECNICO_MANUTENCAO'; Personas = @('SEGURANCA') },
+    @{ Label = 'Manutencao'; EmployeeNumber = 'USR-MAN-DEMO'; Password = $Passwords.Manutencao; AccountType = 'TECNICO_MANUTENCAO'; Personas = @('PCM', 'MECANICA') },
+    @{ Label = 'Operador'; EmployeeNumber = 'USR-OPE-DEMO'; Password = $Passwords.Operador; AccountType = 'OPERADOR'; Personas = @() }
+  )
+
+  foreach ($expected in $expectedProfiles) {
+    $body = @{ matricula = $expected.EmployeeNumber; senha = $expected.Password } | ConvertTo-Json
+    $login = Invoke-RestMethod `
+      -Method Post `
+      -Uri 'http://127.0.0.1:3333/v1/auth/login' `
+      -ContentType 'application/json' `
+      -Body $body `
+      -TimeoutSec 10
+
+    $user = $login.data.user
+    if ([string]$user.tipo_conta -ne $expected.AccountType) {
+      throw "$($expected.Label) recebeu tipo de conta inválido: $($user.tipo_conta)."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$login.data.access_token)) {
+      throw "$($expected.Label) não recebeu sessão de aplicação."
+    }
+
+    $actualPersonas = @($user.personas | ForEach-Object { [string]$_ } | Sort-Object)
+    $requiredPersonas = @($expected.Personas | Sort-Object)
+    if (($actualPersonas -join '|') -ne ($requiredPersonas -join '|')) {
+      throw "$($expected.Label) recebeu personas inválidas: $($actualPersonas -join ', ')."
+    }
+  }
+}
+
 $passwords = [ordered]@{
   Administrador = New-HomologationPassword
   Qualidade = New-HomologationPassword
@@ -240,6 +278,7 @@ try {
   Assert-AdminBootstrap `
     -EmployeeNumber 'USR-ADMIN-DEMO' `
     -Password $passwords.Administrador
+  Assert-DemoIdentityContract -Passwords $passwords
 
   foreach ($application in ($applications | Where-Object Type -eq 'web')) {
     $env:VITE_API_BASE_URL = 'http://127.0.0.1:3333'
