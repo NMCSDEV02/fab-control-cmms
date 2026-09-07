@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { PRODUCT_MARK, PRODUCT_NAME } from '../brand'
+import { PRODUCT_NAME } from '../brand'
+import { BrandLogo } from '../components/BrandLogo'
 import { APP_RELEASE_VERSION, isCompatibleRelease } from '../release'
 import { ApiRequestError } from '../services/api/client'
 import { getApiUrl } from '../services/api/config'
@@ -373,7 +374,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     return (
       <main className="auth-shell auth-shell--startup">
         <section className="auth-startup" aria-live="polite" aria-busy="true">
-          <span className="auth-brand__mark auth-brand__mark--startup" aria-hidden="true">{PRODUCT_MARK}</span>
+          <BrandLogo className="auth-brand__mark auth-brand__mark--startup" decorative />
           <div className="auth-startup__spinner" aria-hidden="true" />
           <h1>{PRODUCT_NAME}</h1>
           <p>{startupLabel}</p>
@@ -398,7 +399,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     <main className="auth-shell">
       <section className="auth-card" aria-labelledby="auth-title">
         <header className="auth-brand">
-          <span className="auth-brand__mark" aria-hidden="true">{PRODUCT_MARK}</span>
+          <BrandLogo className="auth-brand__mark" decorative />
           <div>
             <span className="auth-brand__eyebrow">Operação industrial</span>
             <h1 id="auth-title">{PRODUCT_NAME}</h1>

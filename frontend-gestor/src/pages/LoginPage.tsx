@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { PRODUCT_MARK, PRODUCT_NAME } from '../brand'
+import { PRODUCT_NAME } from '../brand'
+import { BrandLogo } from '../components/BrandLogo'
 import { ApiConnectionPanel } from '../components/ApiConnectionPanel'
 import {
   API_COMPATIBLE_RELEASE,
@@ -333,7 +334,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     return (
       <main className="auth-shell auth-shell--startup">
         <section className="auth-startup" aria-live="polite" aria-busy="true">
-          <span className="auth-brand__mark auth-brand__mark--startup" aria-hidden="true">{PRODUCT_MARK}</span>
+          <BrandLogo className="auth-brand__mark auth-brand__mark--startup" decorative />
           <div className="auth-startup__spinner" aria-hidden="true" />
           <h1>{PRODUCT_NAME}</h1>
           <p>{startupLabel}</p>
@@ -358,7 +359,7 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
     <main className="auth-shell">
       <section className="auth-panel" aria-labelledby="auth-title">
         <div className="auth-brand">
-          <span className="auth-brand__mark" aria-hidden="true">{PRODUCT_MARK}</span>
+          <BrandLogo className="auth-brand__mark" decorative />
           <div>
             <span className="eyebrow">{portal.eyebrow}</span>
             <h1 id="auth-title">{portal.title}</h1>

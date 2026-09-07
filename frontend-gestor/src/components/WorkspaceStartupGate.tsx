@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PRODUCT_MARK, PRODUCT_NAME } from '../brand'
+import { PRODUCT_NAME } from '../brand'
+import { BrandLogo } from './BrandLogo'
 import type { GestorSession } from '../services/api/auth'
 import { isGestorAuthenticationError } from '../services/api/gestor'
 import type { WorkspaceStartupProgress } from '../services/startup/workspace'
@@ -88,7 +89,7 @@ export function WorkspaceStartupGate({
     <main className="workspace-startup-shell" aria-busy={!error}>
       <section className="workspace-startup-card" aria-live="polite">
         <div className="workspace-startup-brand">
-          <span className="auth-brand__mark" aria-hidden="true">{PRODUCT_MARK}</span>
+          <BrandLogo className="auth-brand__mark" decorative />
           <div>
             <span className="eyebrow">{PRODUCT_NAME}</span>
             <strong>{role === 'ADMIN' ? 'Preparando Administração' : 'Preparando Gestão'}</strong>
